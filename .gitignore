@@ -46,3 +46,6 @@ diff_stat.txt
 temp_line.txt
 *.swp
 *~
+database.sqlite
+*.sqlite
+desktop.ini
