@@ -1,5 +1,6 @@
 {
   "cleanUrls": true,
+  "outputDirectory": "client/build",
   "rewrites": [
     {
       "source": "/(.*)",
