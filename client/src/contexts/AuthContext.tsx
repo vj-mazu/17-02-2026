@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+console.log('[API Configuration] Base URL:', API_BASE_URL);
 
 // Configure axios defaults
 axios.defaults.baseURL = API_BASE_URL;

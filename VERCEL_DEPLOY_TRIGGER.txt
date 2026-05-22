@@ -6,3 +6,4 @@ Update this timestamp whenever you want to force a Vercel rebuild.
 
 Deployment History:
 - 2026-01-31 15:30:00 - Initial trigger file created
+- 2026-05-22 13:54:00 - Trigger rebuild after adding API URL debug logging
