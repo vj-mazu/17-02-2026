@@ -4,8 +4,7 @@ import type { SampleEntry, EntryType } from '../types/sampleEntry';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+import { API_URL } from '../utils/apiConfig';
 
 const SampleEntryPage: React.FC = () => {
   const { user } = useAuth();

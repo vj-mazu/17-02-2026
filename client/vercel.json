@@ -1,6 +1,13 @@
 {
+  "buildCommand": "npm install && npm run build",
+  "outputDirectory": "build",
+  "framework": null,
   "cleanUrls": true,
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://mother-india-server.onrender.com/api/:path*"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

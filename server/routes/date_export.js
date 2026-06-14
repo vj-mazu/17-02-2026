@@ -1,4 +1,5 @@
 const express = require('express');
+const { Op } = require('sequelize');
 const PDFDocument = require('pdfkit');
 const { auth } = require('../middleware/auth');
 const Arrival = require('../models/Arrival');

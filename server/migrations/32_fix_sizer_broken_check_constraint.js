@@ -10,7 +10,7 @@ module.exports = {
       `);
             console.log('✅ Dropped old CHECK constraint');
 
-            // Add new CHECK constraint with Sizer Broken included
+            // Add new CHECK constraint with Sizer Broken and RJ Broken included
             await queryInterface.sequelize.query(`
         ALTER TABLE rice_productions
         ADD CONSTRAINT rice_productions_productType_check
@@ -21,6 +21,7 @@ module.exports = {
           'Rejection Rice', 
           'Sizer Broken', 
           'Rejection Broken', 
+          'RJ Broken',
           'Broken', 
           'Zero Broken', 
           'Faram', 
@@ -29,7 +30,7 @@ module.exports = {
           'RJ Rice 2'
         ));
       `);
-            console.log('✅ Added new CHECK constraint with Sizer Broken');
+            console.log('✅ Added new CHECK constraint with Sizer Broken and RJ Broken');
 
             console.log('✅ Migration completed successfully');
         } catch (error) {
