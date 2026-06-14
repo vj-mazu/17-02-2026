@@ -1,7 +1,4 @@
 {
-  "buildCommand": "cd client && npm install && npm run build",
-  "outputDirectory": "client/build",
-  "framework": null,
   "cleanUrls": true,
   "rewrites": [
     {
@@ -9,7 +6,7 @@
       "destination": "https://mother-india-server.onrender.com/api/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!static|favicon.ico|manifest.json|robots.txt|logo192.png|logo512.png).*)" ,
       "destination": "/index.html"
     }
   ]
