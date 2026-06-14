@@ -1,5 +1,5 @@
 Vercel Deploy Trigger File
-Last Updated: 2026-06-14 11:46:00 UTC
+Last Updated: 2026-06-14 11:57:00 UTC
 
 This file is used to trigger Vercel deployments.
 Update this timestamp whenever you want to force a Vercel rebuild.
@@ -10,3 +10,4 @@ Deployment History:
 - 2026-06-14 11:21:00 - Force rebuild for rewrite rules deployment
 - 2026-06-14 11:28:00 - Force rebuild for refined regex fallback rule
 - 2026-06-14 11:46:00 - Force rebuild for corrected buildCommand
+- 2026-06-14 11:57:00 - Force rebuild for cleanUrls disabled and simplified regex
