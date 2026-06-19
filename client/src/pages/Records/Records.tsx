@@ -6484,8 +6484,8 @@ const Records: React.FC = () => {
                               <td>{new Date(record.date).toLocaleDateString('en-GB')}</td>
                               <td>{isForProduction ? 'For Production' : 'Production Shifting'}</td>
                               <td>{record.broker || '-'}</td>
-                              <td>{isForProduction ? (record.fromLocation || 'Direct') : `${record.fromKunchinittu?.code || ''} - ${record.fromWarehouse?.name || ''}`}</td>
-                              <td>{isForProduction ? '-' : `${record.toKunchinittu?.code || ''} - ${record.toWarehouseShift?.name || ''}`}</td>
+                              <td>{isForProduction ? (record.fromLocation || 'Direct') : `${record.fromKunchinittu?.name || record.fromKunchinittu?.code || ''} - ${record.fromWarehouse?.name || ''}`}</td>
+                              <td>{isForProduction ? '-' : `${record.toKunchinittu?.name || record.toKunchinittu?.code || ''} - ${record.toWarehouseShift?.name || ''}`}</td>
                               <VarietyCell hasLocation={!!(record.variety && (record.fromKunchinittu || isForProduction))}>
                                 {record.variety || '-'}
                               </VarietyCell>
@@ -7306,12 +7306,12 @@ const Records: React.FC = () => {
                                         console.log(`✓ Created purchase group with outturn: ${outturnCode}`);
                                       } else {
                                         // Normal purchase - goes to warehouse (will later be shifted to production)
-                                        const toKunchinittu = record.toKunchinittu?.code || '';
+                                        const toKunchinittu = record.toKunchinittu?.name || record.toKunchinittu?.code || '';
                                         const toWarehouse = record.toWarehouse?.name || '';
                                         console.log(`✓ Normal Purchase #${record.id}: ${record.variety} (${record.bags} bags) → Warehouse: ${toKunchinittu} - ${toWarehouse} | Broker: ${record.broker}`);
 
                                         const key = `${record.variety}|${record.broker}|${toKunchinittu}|${record.id}`;
-                                        const highlightKey = `${record.variety}|${toKunchinittu}`;
+                                        const highlightKey = `${record.variety}|${record.toKunchinittu?.code || toKunchinittu}`;
                                         const shouldHighlight = openingStockKeys.has(highlightKey);
 
                                         if (!purchaseGroups[key]) {
@@ -7327,11 +7327,11 @@ const Records: React.FC = () => {
                                         purchaseGroups[key].bags += record.bags || 0;
                                       }
                                     } else if (record.movementType === 'production-shifting') {
-                                      const fromKunchinittu = record.fromKunchinittu?.code || '';
+                                      const fromKunchinittu = record.fromKunchinittu?.name || record.fromKunchinittu?.code || '';
                                       const outturnCode = record.outturn?.code || '';
                                       // Use record ID to keep each entry separate (no grouping on same day)
                                       const key = `${record.variety}|${fromKunchinittu}|${outturnCode}|${record.id}`;
-                                      const highlightKey = `${record.variety}|${fromKunchinittu}`;
+                                      const highlightKey = `${record.variety}|${record.fromKunchinittu?.code || fromKunchinittu}`;
                                       const shouldHighlight = openingStockKeys.has(highlightKey);
 
                                       // Format destination with outturn code
@@ -7354,11 +7354,11 @@ const Records: React.FC = () => {
                                       }
                                       productionGroups[key].bags += record.bags || 0;
                                     } else if (record.movementType === 'shifting') {
-                                      const fromKunchinittu = record.fromKunchinittu?.code || '';
-                                      const toKunchinittu = record.toKunchinittu?.code || '';
+                                      const fromKunchinittu = record.fromKunchinittu?.name || record.fromKunchinittu?.code || '';
+                                      const toKunchinittu = record.toKunchinittu?.name || record.toKunchinittu?.code || '';
                                       // Use record ID to keep each entry separate (no grouping on same day)
                                       const key = `${record.variety}|${fromKunchinittu}|${toKunchinittu}|${record.id}`;
-                                      const highlightKey = `${record.variety}|${fromKunchinittu}`;
+                                      const highlightKey = `${record.variety}|${record.fromKunchinittu?.code || fromKunchinittu}`;
                                       const shouldHighlight = openingStockKeys.has(highlightKey);
 
                                       if (!shiftingGroups[key]) {
@@ -7374,10 +7374,10 @@ const Records: React.FC = () => {
                                       shiftingGroups[key].bags += record.bags || 0;
                                     } else if (record.movementType === 'loose') {
                                       // Loose entries - treat as inward like purchase
-                                      const toKunchinittu = record.toKunchinittu?.code || '';
+                                      const toKunchinittu = record.toKunchinittu?.name || record.toKunchinittu?.code || '';
                                       const toWarehouse = record.toWarehouse?.name || '';
                                       const key = `loose-${record.variety}|${toKunchinittu}|${record.id}`;
-                                      const highlightKey = `${record.variety}|${toKunchinittu}`;
+                                      const highlightKey = `${record.variety}|${record.toKunchinittu?.code || toKunchinittu}`;
                                       const shouldHighlight = openingStockKeys.has(highlightKey);
 
                                       if (!looseGroups[key]) {
@@ -8288,19 +8288,19 @@ const Records: React.FC = () => {
                                   {isLoose ? '-' : (record.movementType === 'purchase'
                                     ? (record.outturnId ? (record.fromLocation || 'Direct Purchase') : (record.fromLocation || '-'))
                                     : record.movementType === 'production-shifting'
-                                      ? `${record.fromKunchinittu?.code || '-'} - ${record.fromWarehouse?.name || '-'}`
-                                      : `${record.fromKunchinittu?.name || '-'}`
+                                      ? `${record.fromKunchinittu?.name || record.fromKunchinittu?.code || '-'} - ${record.fromWarehouse?.name || '-'}`
+                                      : `${record.fromKunchinittu?.name || record.fromKunchinittu?.code || '-'}`
                                   )}
                                 </LocationCell>
                                 <LocationCell
                                   hasLocation={!!(record.movementType === 'purchase' ? (record.outturnId ? false : record.toKunchinittu) : (record.movementType === 'production-shifting' ? record.outturn : record.toKunchinittu))}
                                   isPurple={record.movementType !== 'purchase'}
                                 >
-                                  {isLoose ? (record.toKunchinittu?.code || '-') : (record.movementType === 'purchase'
+                                  {isLoose ? (record.toKunchinittu?.name || record.toKunchinittu?.code || '-') : (record.movementType === 'purchase'
                                     ? (record.outturnId ? '-' : (record.toKunchinittu?.name || '-'))
                                     : record.movementType === 'production-shifting'
                                       ? `→ Production (${record.outturn?.code || '-'})`
-                                      : record.toKunchinittu?.code || '-'
+                                      : record.toKunchinittu?.name || record.toKunchinittu?.code || '-'
                                   )}
                                 </LocationCell>
                                 <LocationCell
@@ -8594,7 +8594,7 @@ const Records: React.FC = () => {
                               <LocationCell hasLocation={!!(record.outturnId || record.toKunchinittu || record.toWarehouse)} isPurple={record.outturnId ? true : false}>
                                 {record.outturnId
                                   ? `→ Production (${record.outturn?.code || `OUT${record.outturnId}`})`
-                                  : `${record.toKunchinittu?.name || ''} - ${record.toWarehouse?.name || ''}`
+                                  : `${record.toKunchinittu?.name || record.toKunchinittu?.code || ''} - ${record.toWarehouse?.name || ''}`
                                 }
                               </LocationCell>
                               <VarietyCell hasLocation={!!record.variety} isPurple={false}>

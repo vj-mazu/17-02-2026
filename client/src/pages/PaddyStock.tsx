@@ -559,7 +559,7 @@ const PaddyStock: React.FC = () => {
 
       {kunchinittuInfo && (
         <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
-          <strong>Kunchinittu:</strong> {kunchinittuInfo.code} | <strong>Warehouse:</strong> {kunchinittuInfo.warehouse.name}
+          <strong>Kunchinittu:</strong> {kunchinittuInfo.name || kunchinittuInfo.code} | <strong>Warehouse:</strong> {kunchinittuInfo.warehouse.name}
         </div>
       )}
 
@@ -606,7 +606,7 @@ const PaddyStock: React.FC = () => {
                               fontWeight: 'bold'
                             }}
                           >
-                            {kunchinittuInfo?.code}
+                            {kunchinittuInfo?.name || kunchinittuInfo?.code}
                           </span>
                         )}({stock.warehouse || kunchinittuInfo?.warehouse.name})
                       </div>
