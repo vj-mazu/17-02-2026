@@ -490,7 +490,7 @@ const Locations: React.FC = () => {
         // Update existing
         await axios.put(`/locations/kunchinittus/${editingKunchinittu.id}`, {
           name: kunchinintuName.toUpperCase(),
-          code: editingKunchinittu.code,
+          code: kunchinintuName.substring(0, 10).toUpperCase(),
           warehouseId: parseInt(selectedWarehouseId),
           varietyId: parseInt(selectedVarietyId),
           isActive: true

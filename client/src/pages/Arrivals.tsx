@@ -898,14 +898,14 @@ const Arrivals: React.FC = () => {
                               // Show only kunchinittus for this variety
                               varietyAllocations.map((allocation) => (
                                 <option key={allocation.kunchinintuId} value={allocation.kunchinintuId}>
-                                  {allocation.kunchinintuCode} - {allocation.warehouseName}
+                                  {allocation.kunchinintuCode} ({allocation.kunchinintuName}) - {allocation.warehouseName}
                                 </option>
                               ))
                             ) : (
                               // Show all kunchinittus if no variety selected
                               activeKunchinittus.map((k) => (
                                 <option key={k.id} value={k.id}>
-                                  {k.code}
+                                  {k.code} - {k.name}
                                 </option>
                               ))
                             )}
@@ -1165,7 +1165,7 @@ const Arrivals: React.FC = () => {
                                 <option value="">Select Kunchinittu</option>
                                 {activeKunchinittus.map((k) => (
                                   <option key={k.id} value={k.id}>
-                                    {k.code}
+                                    {k.code} - {k.name}
                                   </option>
                                 ))}
                               </Select>
@@ -1274,7 +1274,7 @@ const Arrivals: React.FC = () => {
                                 <option value="">Select Kunchinittu</option>
                                 {activeKunchinittus.map((k) => (
                                   <option key={k.id} value={k.id}>
-                                    {k.code}
+                                    {k.code} - {k.name}
                                   </option>
                                 ))}
                               </Select>
@@ -1315,7 +1315,7 @@ const Arrivals: React.FC = () => {
                                 <option value="">Select Kunchinittu</option>
                                 {activeKunchinittus.map((k) => (
                                   <option key={k.id} value={k.id}>
-                                    {k.code}
+                                    {k.code} - {k.name}
                                   </option>
                                 ))}
                               </Select>
@@ -1479,7 +1479,7 @@ const Arrivals: React.FC = () => {
                                 <option value="">Select Kunchinittu</option>
                                 {activeKunchinittus.map((k) => (
                                   <option key={k.id} value={k.id}>
-                                    {k.code}
+                                    {k.code} - {k.name}
                                   </option>
                                 ))}
                               </Select>

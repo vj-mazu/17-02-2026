@@ -27,8 +27,8 @@ router.get('/warehouses', auth, async (req, res) => {
       nest: true
     });
 
-    // Cache headers for 5 minutes
-    res.set('Cache-Control', 'public, max-age=300');
+    // Disable caching to ensure instant updates
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json({ warehouses });
   } catch (error) {
     console.error('Get warehouses error:', error);
@@ -147,8 +147,8 @@ router.get('/kunchinittus', auth, async (req, res) => {
       nest: true
     });
 
-    // Cache headers for 5 minutes
-    res.set('Cache-Control', 'public, max-age=300');
+    // Disable caching to ensure instant updates
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json({ kunchinittus });
   } catch (error) {
     console.error('Get kunchinittus error:', error);
@@ -314,8 +314,8 @@ router.get('/varieties', auth, async (req, res) => {
       raw: true // Faster, returns plain objects
     });
 
-    // Cache headers for 10 minutes (varieties change rarely)
-    res.set('Cache-Control', 'public, max-age=600');
+    // Disable caching to ensure instant updates
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json({ varieties });
   } catch (error) {
     console.error('Get varieties error:', error);
@@ -468,8 +468,8 @@ router.get('/rice-stock-locations', auth, async (req, res) => {
       });
     }
 
-    // Cache headers for 5 minutes
-    res.set('Cache-Control', 'public, max-age=300');
+    // Disable caching to ensure instant updates
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json({ locations });
   } catch (error) {
     console.error('❌ Get rice stock locations error:', error);
@@ -621,7 +621,8 @@ router.get('/rice-varieties', auth, async (req, res) => {
       raw: true
     });
 
-    res.set('Cache-Control', 'public, max-age=300');
+    // Disable caching to ensure instant updates
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json({ varieties });
   } catch (error) {
     console.error('Get rice varieties error:', error);
@@ -732,7 +733,8 @@ router.get('/brokers', auth, async (req, res) => {
       raw: true
     });
 
-    res.set('Cache-Control', 'public, max-age=300');
+    // Disable caching to ensure instant updates
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json({ brokers });
   } catch (error) {
     console.error('Get brokers error:', error);
