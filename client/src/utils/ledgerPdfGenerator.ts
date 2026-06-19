@@ -77,7 +77,7 @@ export const generateKunchinintuLedgerPDF = (
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text(`Kunchinittu Ledger - ${ledgerData.kunchinittu.code}`, pageWidth / 2, 12, { align: 'center' });
+    doc.text(`Kunchinittu Ledger - ${ledgerData.kunchinittu.name || ledgerData.kunchinittu.code}`, pageWidth / 2, 12, { align: 'center' });
 
     let yPos = 28;
 
@@ -90,9 +90,9 @@ export const generateKunchinintuLedgerPDF = (
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
-    doc.text(`Kanchi Nittu Code:`, MARGIN + 5, yPos + 2);
+    doc.text(`Kanchi Nittu Name:`, MARGIN + 5, yPos + 2);
     doc.setFont('helvetica', 'normal');
-    doc.text(ledgerData.kunchinittu.code, MARGIN + 45, yPos + 2);
+    doc.text(ledgerData.kunchinittu.name || ledgerData.kunchinittu.code, MARGIN + 45, yPos + 2);
 
     doc.setFont('helvetica', 'bold');
     doc.text(`Alloted Warehouse:`, MARGIN + 100, yPos + 2);
@@ -255,7 +255,8 @@ export const generateKunchinintuLedgerPDF = (
     }
 
     // Download
-    const filename = `Kunchinittu_Ledger_${ledgerData.kunchinittu.code}_${new Date().toISOString().split('T')[0]}.pdf`;
+    const cleanKunchiCode = (ledgerData.kunchinittu.name || ledgerData.kunchinittu.code).replace(/\s+/g, '_');
+    const filename = `Kunchinittu_Ledger_${cleanKunchiCode}_${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(filename);
     console.log(`✅ PDF Generated: ${filename}`);
 };
@@ -288,7 +289,7 @@ export const generateKunchinintuPortraitPDF = (
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
 
-    const kunchinittuCode = ledgerData.kunchinittu?.code || 'Unknown';
+    const kunchinittuCode = ledgerData.kunchinittu?.name || ledgerData.kunchinittu?.code || 'Unknown';
     doc.text(`Kunchinittu Ledger: ${kunchinittuCode}`, pageWidth / 2, 9, { align: 'center' });
 
     let yPos = 18;
@@ -478,7 +479,8 @@ export const generateKunchinintuPortraitPDF = (
     }
 
     // Download
-    const filename = `${kunchinittuCode}_Ledger_${new Date().toISOString().split('T')[0]}.pdf`;
+    const cleanKunchiCode = kunchinittuCode.replace(/\s+/g, '_');
+    const filename = `${cleanKunchiCode}_Ledger_${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(filename);
     console.log(`✅ Portrait PDF Generated: ${filename}`);
 };

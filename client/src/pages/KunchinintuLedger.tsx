@@ -648,8 +648,8 @@ const KunchinintuLedger: React.FC = () => {
           wbNo: r.wbNo || '-',
           netWeight: r.netWeight || 0,
           lorryNumber: r.lorryNumber || '-',
-          fromLocation: r.fromLocation || r.fromKunchinittu?.code || '-',
-          toLocation: r.toLocation || r.toKunchinittu?.code || kunchinittu.code || '-'
+          fromLocation: r.fromLocation || r.fromKunchinittu?.name || r.fromKunchinittu?.code || '-',
+          toLocation: r.toLocation || r.toKunchinittu?.name || r.toKunchinittu?.code || kunchinittu.name || kunchinittu.code || '-'
         })),
         outwardRecords: outwardTrans.map((r: any, idx: number) => ({
           id: r.id || idx,
@@ -664,7 +664,7 @@ const KunchinintuLedger: React.FC = () => {
           wbNo: r.wbNo || '-',
           netWeight: r.netWeight || 0,
           lorryNumber: r.lorryNumber || '-',
-          fromLocation: r.fromLocation || kunchinittu.code || '-',
+          fromLocation: kunchinittu.name || kunchinittu.code || '-',
           toLocation: r.toLocation || r.outturn?.code || '-'
         }))
       };
@@ -813,8 +813,8 @@ const KunchinintuLedger: React.FC = () => {
           wbNo: r.wbNo || '-',
           netWeight: r.netWeight || 0,
           lorryNumber: r.lorryNumber || '-',
-          fromLocation: r.fromLocation || r.fromKunchinittu?.code || '-',
-          toLocation: r.toKunchinittu?.code || kunchi.code || '-',
+          fromLocation: r.fromLocation || r.fromKunchinittu?.name || r.fromKunchinittu?.code || '-',
+          toLocation: r.toKunchinittu?.name || r.toKunchinittu?.code || kunchi.name || kunchi.code || '-',
           fromKunchinittu: r.fromKunchinittu,
           toKunchinittu: r.toKunchinittu
         })),
@@ -831,7 +831,7 @@ const KunchinintuLedger: React.FC = () => {
           wbNo: r.wbNo || '-',
           netWeight: r.netWeight || 0,
           lorryNumber: r.lorryNumber || '-',
-          fromLocation: kunchi.code || '-',
+          fromLocation: kunchi.name || kunchi.code || '-',
           toLocation: r.outturn?.code || r.toWarehouseShift?.code || '-',
           outturn: r.outturn
         })),
@@ -1019,9 +1019,9 @@ const KunchinintuLedger: React.FC = () => {
                   <table style={{ borderCollapse: 'collapse', flex: 1 }}>
                     <tbody>
                       <tr>
-                        <td style={{ padding: '4px 8px', fontWeight: 'bold', width: '200px' }}>Kanchi Nittu Code:</td>
+                        <td style={{ padding: '4px 8px', fontWeight: 'bold', width: '200px' }}>Kanchi Nittu Name:</td>
                         <td style={{ padding: '4px 8px' }}>
-                          {ledgerData.kunchinittu.code}
+                          {ledgerData.kunchinittu.name || ledgerData.kunchinittu.code}
                           {(ledgerData.kunchinittu as any).isClosed && (
                             <span style={{
                               background: '#fef2f2',
@@ -1419,11 +1419,11 @@ const KunchinintuLedger: React.FC = () => {
                                 ? '-'
                                 : record.movementType === 'purchase'
                                   ? (record.fromLocation || '-')
-                                  : `${record.fromKunchinittu?.code || ''} ${record.fromWarehouse?.name || ''}`
+                                  : `${record.fromKunchinittu?.name || record.fromKunchinittu?.code || ''} ${record.fromWarehouse?.name || ''}`
                               }
                             </td>
                             <td>
-                              {record.movementType === 'loose' ? '-' : `${ledgerData.kunchinittu.code} ${record.toWarehouse?.name || ledgerData.kunchinittu.warehouse.name}`}
+                              {record.movementType === 'loose' ? '-' : `${ledgerData.kunchinittu.name || ledgerData.kunchinittu.code} ${record.toWarehouse?.name || ledgerData.kunchinittu.warehouse.name}`}
                             </td>
                             <td>{record.movementType === 'loose' ? '-' : (record.variety || '-')}</td>
                             <td>{record.bags || 0}</td>
@@ -1522,9 +1522,9 @@ const KunchinintuLedger: React.FC = () => {
                           <td>-</td>
                           <td>
                             {record.movementType === 'production-shifting' || record.movementType === 'for-production' ? (
-                              `${ledgerData.kunchinittu.code} ${record.fromWarehouse?.name || ledgerData.kunchinittu.warehouse.name}`
+                              `${ledgerData.kunchinittu.name || ledgerData.kunchinittu.code} ${record.fromWarehouse?.name || ledgerData.kunchinittu.warehouse.name}`
                             ) : (
-                              `${ledgerData.kunchinittu.code} ${record.fromWarehouse?.name || ledgerData.kunchinittu.warehouse.name}`
+                              `${ledgerData.kunchinittu.name || ledgerData.kunchinittu.code} ${record.fromWarehouse?.name || ledgerData.kunchinittu.warehouse.name}`
                             )}
                           </td>
                           <td>
@@ -1533,7 +1533,7 @@ const KunchinintuLedger: React.FC = () => {
                                 Production - {record.outturn?.code || 'out01'}
                               </span>
                             ) : (
-                              `${record.toKunchinittu?.code || ''} ${record.toWarehouseShift?.name || ''}`
+                              `${record.toKunchinittu?.name || record.toKunchinittu?.code || ''} ${record.toWarehouseShift?.name || ''}`
                             )}
                           </td>
                           <td>{record.variety || '-'}</td>
@@ -1562,14 +1562,14 @@ const KunchinintuLedger: React.FC = () => {
                                   {record.movementType === 'production-shifting' || record.movementType === 'for-production' ? `🏭 ${record.movementType === 'for-production' ? 'For Production' : 'Production Shifting'}` : 'Shifting'}
                                 </td>
                                 <td>-</td>
-                                <td>{ledgerData.kunchinittu.code} - {record.fromWarehouse?.name || warehouseName}</td>
+                                <td>{ledgerData.kunchinittu.name || ledgerData.kunchinittu.code} - {record.fromWarehouse?.name || warehouseName}</td>
                                 <td>
                                   {record.movementType === 'production-shifting' || record.movementType === 'for-production' ? (
                                     <span style={{ color: '#9f1239', fontWeight: 'bold' }}>
                                       → Production {record.outturn?.code ? `(${record.outturn.code})` : ''}
                                     </span>
                                   ) : (
-                                    `${record.toKunchinittu?.name || ''} - ${record.toWarehouseShift?.name || ''}`
+                                    `${record.toKunchinittu?.name || record.toKunchinittu?.code || ''} - ${record.toWarehouseShift?.name || ''}`
                                   )}
                                 </td>
                                 <td>{record.variety || '-'}</td>
