@@ -114,6 +114,8 @@ const Label = styled.label`
 `;
 
 const Input = styled.input`
+  width: 100%;
+  box-sizing: border-box;
   padding: 0.75rem;
   border: 2px solid #e5e7eb;
   border-radius: 8px;
@@ -133,6 +135,8 @@ const Input = styled.input`
 `;
 
 const Select = styled.select`
+  width: 100%;
+  box-sizing: border-box;
   padding: 0.75rem;
   border: 2px solid #e5e7eb;
   border-radius: 8px;
