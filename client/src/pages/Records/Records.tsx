@@ -4419,6 +4419,57 @@ const Records: React.FC = () => {
                               const productType = 'Rice';
                               const hasData = (openingGroups[productType]?.length > 0 || productionGroups[productType]?.length > 0);
 
+                              // Build Palti splits map using today's palti movements for this product type
+                              const todayPaltiItems = (productionGroups[productType] || []).filter((item: any) => item.movementType === 'palti');
+                              const seenIds = new Set<string>();
+                              const paltiItems = todayPaltiItems.filter((item: any) => {
+                                const itemId = String(item.id);
+                                if (seenIds.has(itemId)) return false;
+                                seenIds.add(itemId);
+                                return true;
+                              });
+
+                              const paltiSplitsMap: { [key: string]: any[] } = {};
+                              paltiItems.forEach((palti: any) => {
+                                const sourceVariety = palti.variety || palti.sourceVariety;
+                                const sourceLoc = palti.fromLocation || palti.locationCode;
+                                const sourcePkg = palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown';
+                                const sourceBagSize = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
+
+                                const sourceKey = getPaltiMatchKey(sourceVariety, sourceLoc, sourcePkg, sourceBagSize, productType);
+
+                                if (!paltiSplitsMap[sourceKey]) {
+                                  paltiSplitsMap[sourceKey] = [];
+                                }
+
+                                let targetPkg = palti.targetPackaging?.brandName || palti.target_packaging_brand || palti.target_packaging || palti.packaging?.brandName || palti.packaging || 'Unknown';
+                                if (typeof targetPkg === 'string' && targetPkg.includes('→')) {
+                                  const parts = targetPkg.split('→').map((s: string) => s.trim());
+                                  targetPkg = parts[1] || parts[0];
+                                }
+                                const targetBagSizeKg = palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || 26;
+                                const targetLocation = palti.toLocation || palti.location || 'Unknown';
+                                const shortageKg = Number(palti.shortageKg || palti.conversionShortageKg || palti.conversion_shortage_kg || 0);
+
+                                const sourceKgPerBag = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
+                                const paltiQtls = Math.abs(palti.qtls || palti.quantityQuintals || 0);
+                                const paltiShortageQtls = (shortageKg || 0) / 100;
+                                const sourceQtls = paltiQtls + paltiShortageQtls;
+                                const calculatedSourceBags = Math.ceil((sourceQtls * 100) / sourceKgPerBag);
+                                const actualSourceBags = palti.sourceBags || calculatedSourceBags;
+
+                                paltiSplitsMap[sourceKey].push({
+                                  qtls: paltiQtls,
+                                  bags: palti.bags || 0,
+                                  sourceBags: actualSourceBags,
+                                  targetPackaging: targetPkg,
+                                  targetBagSizeKg,
+                                  targetLocation,
+                                  shortageKg,
+                                  variety: palti.variety || 'Unknown'
+                                });
+                              });
+
                               return (
                                 <div key={productType}>
                                   <div style={{
@@ -4563,68 +4614,6 @@ const Records: React.FC = () => {
 
                                               if (bifurcationItems.length === 0) return null;
 
-                                              // Get all Palti items for this product type to find splits
-                                              // ONLY show palti splits if there are palti movements TODAY
-                                              // Don't show yesterday's palti splits on today's opening stock
-                                              const todayPaltiItems = (productionGroups[productType] || []).filter((item: any) => item.movementType === 'palti');
-
-                                              // Deduplicate by ID
-                                              const seenIds = new Set<string>();
-                                              const paltiItems = todayPaltiItems.filter((item: any) => {
-                                                const itemId = String(item.id);
-                                                if (seenIds.has(itemId)) return false;
-                                                seenIds.add(itemId);
-                                                return true;
-                                              });
-
-                                              const paltiSplitsMap: { [key: string]: any[] } = {};
-                                              paltiItems.forEach((palti: any) => {
-                                                // Create source key matching: variety + location + packaging
-                                                // Improved Variety Normalization for matching (sum25 rnr -> sum25 rnr raw/steam)
-                                                const sourceVariety = palti.variety || palti.sourceVariety;
-                                                const sourceLoc = palti.fromLocation || palti.locationCode;
-                                                const sourcePkg = palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown';
-                                                const sourceBagSize = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
-
-                                                const sourceKey = getPaltiMatchKey(sourceVariety, sourceLoc, sourcePkg, sourceBagSize, productType);
-                                                console.log('🔄 Registered Palti SOURCE:', { sourceKey, variety: sourceVariety, loc: sourceLoc, pkg: sourcePkg, size: sourceBagSize });
-
-                                                if (!paltiSplitsMap[sourceKey]) {
-                                                  paltiSplitsMap[sourceKey] = [];
-                                                }
-
-                                                // Extract target info for this split
-                                                let targetPkg = palti.targetPackaging?.brandName || palti.target_packaging_brand || palti.target_packaging || palti.packaging?.brandName || palti.packaging || 'Unknown';
-                                                if (typeof targetPkg === 'string' && targetPkg.includes('→')) {
-                                                  const parts = targetPkg.split('→').map((s: string) => s.trim());
-                                                  targetPkg = parts[1] || parts[0];
-                                                }
-                                                const targetBagSizeKg = palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || 26;
-                                                const targetLocation = palti.toLocation || palti.location || 'Unknown';
-                                                const shortageKg = Number(palti.shortageKg || palti.conversionShortageKg || palti.conversion_shortage_kg || 0);
-
-                                                // CRITICAL FIX: Calculate sourceBags from qtls if not provided
-                                                // source_bags should contain how many bags were used from source
-                                                const sourceKgPerBag = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
-                                                const paltiQtls = Math.abs(palti.qtls || palti.quantityQuintals || 0);
-                                                const paltiShortageQtls = (shortageKg || 0) / 100;
-                                                const sourceQtls = paltiQtls + paltiShortageQtls;
-                                                // sourceBags = ceil((targetQtls + shortageQtls) * 100 / sourceKgPerBag)
-                                                const calculatedSourceBags = Math.ceil((sourceQtls * 100) / sourceKgPerBag);
-                                                const actualSourceBags = palti.sourceBags || calculatedSourceBags;
-
-                                                paltiSplitsMap[sourceKey].push({
-                                                  qtls: paltiQtls,
-                                                  bags: palti.bags || 0,
-                                                  sourceBags: actualSourceBags, // CRITICAL: Track how many source bags were used
-                                                  targetPackaging: targetPkg,
-                                                  targetBagSizeKg,
-                                                  targetLocation,
-                                                  shortageKg,
-                                                  variety: palti.variety || 'Unknown'
-                                                });
-                                              });
-
                                               return (
                                                 <>
                                                   <div style={{
@@ -4642,7 +4631,37 @@ const Records: React.FC = () => {
                                                     // Improved Variety Normalization for matching (sum25 rnr -> sum25 rnr raw/steam)
                                                     // NEW: Key uses getPaltiMatchKey for 101% accurate matching
                                                     const itemKey = getPaltiMatchKey(item.variety, item.location, item.packaging, item.bagSizeKg, item.category || productType);
-                                                    const splits = paltiSplitsMap[itemKey] || [];
+                                                    const allSplitsForKey = paltiSplitsMap[itemKey] || [];
+
+                                                    const splits = [];
+
+                                                    let allocatedSourceBags = 0;
+
+                                                    const remainingSplits = [];
+
+                                                    const itemBagsLimit = item.bags || 0;
+
+                                                    for (let i = 0; i < allSplitsForKey.length; i++) {
+
+                                                      const s = allSplitsForKey[i];
+
+                                                      const sBags = s.sourceBags || 0;
+
+                                                      if (allocatedSourceBags < itemBagsLimit || splits.length === 0) {
+
+                                                        splits.push(s);
+
+                                                        allocatedSourceBags += sBags;
+
+                                                      } else {
+
+                                                        remainingSplits.push(s);
+
+                                                      }
+
+                                                    }
+
+                                                    paltiSplitsMap[itemKey] = remainingSplits;
                                                     const totalSourceBagsUsed = splits.reduce((sum: number, s: any) => sum + (s.sourceBags || 0), 0);
                                                     const remainingBags = (item.bags || 0) - totalSourceBagsUsed;
                                                     const hasSplits = splits.length > 0;
@@ -4835,29 +4854,163 @@ const Records: React.FC = () => {
                                                   default: return '#ffffff';
                                                 }
                                               };
+
+                                              const itemKey = getPaltiMatchKey(prod.variety, prod.locationCode || prod.location || '', prod.packaging?.brandName || prod.packaging || '', prod.bagSizeKg, productType);
+                                              const allSplitsForKey = paltiSplitsMap[itemKey] || [];
+
+                                              const splits = [];
+
+                                              let allocatedSourceBags = 0;
+
+                                              const remainingSplits = [];
+
+                                              const itemBagsLimit = prod.bags || 0;
+
+                                              for (let i = 0; i < allSplitsForKey.length; i++) {
+
+                                                const s = allSplitsForKey[i];
+
+                                                const sBags = s.sourceBags || 0;
+
+                                                if (allocatedSourceBags < itemBagsLimit || splits.length === 0) {
+
+                                                  splits.push(s);
+
+                                                  allocatedSourceBags += sBags;
+
+                                                } else {
+
+                                                  remainingSplits.push(s);
+
+                                                }
+
+                                              }
+
+                                              paltiSplitsMap[itemKey] = remainingSplits;
+                                              const totalSourceBagsUsed = splits.reduce((sum: number, s: any) => sum + (s.sourceBags || 0), 0);
+                                              const remainingBags = (prod.bags || 0) - totalSourceBagsUsed;
+                                              const hasSplits = splits.length > 0;
+                                              const totalShortage = splits.reduce((sum: number, s: any) => sum + (s.shortageKg || 0), 0);
+
                                               return (
-                                                <div key={`${productType}-${idx}`} style={{
-                                                  display: 'grid',
-                                                  gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
-                                                  gap: '8px',
-                                                  padding: '3px 0',
-                                                  fontSize: '8pt',
-                                                  background: getMovementColor(prod.movementType),
-                                                  marginBottom: '2px',
-                                                  borderRadius: '4px'
-                                                }}>
-                                                  <div style={{ textAlign: 'center' }}>{Math.abs(Number(prod.qtls) || 0).toFixed(2)}</div>
-                                                  <div style={{ textAlign: 'center' }}>{prod.bags || 0}{prod.bagSizeKg ? `/${prod.bagSizeKg}kgs` : ''}</div>
-                                                  <div style={{ textAlign: 'center' }}>
-                                                    {String(prod.product || '')}
-                                                    {prod.outturn?.code && (
-                                                      <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(prod.outturn.code)}>→ {prod.outturn.code}</span>
-                                                    )}
+                                                <React.Fragment key={`${productType}-prod-${idx}`}>
+                                                  {/* Main Daily Movement Row - Highlighted Yellow if has Palti splits */}
+                                                  <div style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                    gap: '8px',
+                                                    padding: '3px 0',
+                                                    fontSize: '9pt',
+                                                    background: hasSplits ? '#fef3c7' : getMovementColor(prod.movementType),
+                                                    marginBottom: hasSplits ? '0' : '2px',
+                                                    borderRadius: hasSplits ? '3px 3px 0 0' : '4px',
+                                                    border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
+                                                    borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
+                                                  }}>
+                                                    <div style={{ textAlign: 'center', fontSize: '8pt', fontWeight: hasSplits ? 'bold' : 'normal' }}>{Math.abs(Number(prod.qtls) || 0).toFixed(2)}</div>
+                                                    <div style={{ textAlign: 'center', fontSize: '8pt' }}>{prod.bags || 0}{prod.bagSizeKg ? `/${prod.bagSizeKg}kgs` : ''}</div>
+                                                    <div style={{ fontSize: '8pt', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                      <div>
+                                                        {String(prod.product || '')}
+                                                        {prod.outturn?.code && (
+                                                          <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(prod.outturn.code)}>→ {prod.outturn.code}</span>
+                                                        )}
+                                                      </div>
+                                                      {hasSplits && totalShortage > 0 && (
+                                                        <div style={{
+                                                          background: '#fee2e2',
+                                                          color: '#dc2626',
+                                                          fontSize: '7pt',
+                                                          padding: '1px 4px',
+                                                          borderRadius: '4px',
+                                                          fontWeight: 'bold',
+                                                          border: '1px solid #fca5a5'
+                                                        }}>
+                                                          S: {totalShortage.toFixed(1)}kg
+                                                        </div>
+                                                      )}
+                                                      {hasSplits && (
+                                                        <div style={{
+                                                          background: remainingBags <= 0 ? '#dcfce7' : '#fef3c7',
+                                                          color: remainingBags <= 0 ? '#166534' : '#854d0e',
+                                                          fontSize: '7pt',
+                                                          padding: '1px 4px',
+                                                          borderRadius: '4px',
+                                                          fontWeight: 'bold',
+                                                          border: '1px solid',
+                                                          borderColor: remainingBags <= 0 ? '#bbf7d0' : '#fde68a'
+                                                        }}>
+                                                          Rem: {remainingBags} bags
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                    <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{prod.variety || 'Unknown'}</div>
+                                                    <div style={{ fontSize: '8pt', textAlign: 'center' }}>{prod.packaging?.brandName || prod.packaging || 'A1'}</div>
+                                                    <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{prod.locationCode || prod.location || ''}</div>
                                                   </div>
-                                                  <div style={{ textAlign: 'center' }}>{String(prod.variety || 'Unknown')}</div>
-                                                  <div style={{ textAlign: 'center' }}>{prod.packaging?.brandName || prod.packaging || 'A1'}</div>
-                                                  <div style={{ textAlign: 'center' }}>{prod.locationCode || prod.location || ''}</div>
-                                                </div>
+
+                                                  {/* Palti Splits - Shown below the source entry with reference-accurate styling */}
+                                                  {hasSplits && (
+                                                    <div style={{
+                                                      border: '2px solid #f59e0b',
+                                                      borderTop: 'none',
+                                                      borderRadius: '0 0 4px 4px',
+                                                      marginBottom: '6px',
+                                                      overflow: 'hidden'
+                                                    }}>
+                                                      {splits.map((split: any, splitIdx: number) => (
+                                                        <div key={`split-${splitIdx}`} style={{
+                                                          display: 'grid',
+                                                          gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                          gap: '8px',
+                                                          padding: '4px 12px',
+                                                          fontSize: '8.5pt',
+                                                          background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
+                                                          color: '#7c2d12',
+                                                          borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
+                                                          position: 'relative'
+                                                        }}>
+                                                          <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
+                                                            {split.qtls.toFixed(2)}
+                                                          </div>
+                                                          <div style={{ textAlign: 'center', color: '#9a3412' }}>
+                                                            {split.bags}/{split.targetBagSizeKg}kg
+                                                          </div>
+                                                          <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                            <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                          </div>
+                                                          <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
+                                                          <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
+                                                          <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
+                                                        </div>
+                                                      ))}
+
+                                                      {/* Total shortage row - Matching Red reference style */}
+                                                      {totalShortage > 0 && (
+                                                        <div style={{
+                                                          display: 'grid',
+                                                          gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                          gap: '8px',
+                                                          padding: '5px 12px',
+                                                          fontSize: '8.5pt',
+                                                          background: '#fee2e2',
+                                                          color: '#dc2626',
+                                                          borderTop: '1.5px solid #fca5a5',
+                                                          fontWeight: 'bold'
+                                                        }}>
+                                                          <div style={{ textAlign: 'center' }}>{(totalShortage / 100).toFixed(2)}</div>
+                                                          <div style={{ textAlign: 'center' }}>-</div>
+                                                          <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                            <span style={{ fontSize: '10pt' }}>⚠️</span> Shortage From Palti
+                                                          </div>
+                                                          <div style={{ textAlign: 'center' }}>-</div>
+                                                          <div style={{ textAlign: 'center' }}>-</div>
+                                                          <div style={{ textAlign: 'center' }}>{totalShortage.toFixed(1)}kg</div>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </React.Fragment>
                                               );
                                             })}
 
@@ -4902,6 +5055,56 @@ const Records: React.FC = () => {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             {['Broken', '0 Broken', 'RJ Broken', 'RJ Rice 1', 'Unpolish', 'Faram'].map((productType) => {
                               const hasData = (openingGroups[productType]?.length > 0 || productionGroups[productType]?.length > 0);
+
+                              // Get Palti items for splits
+                              const paltiItems = (productionGroups[productType] || []).filter((item: any) => item.movementType === 'palti');
+
+                              // Deduplicate palti items by ID
+                              const seenPaltiIds = new Set<string>();
+                              const dedupedPaltiItems = paltiItems.filter((p: any) => {
+                                const pid = String(p.id);
+                                if (seenPaltiIds.has(pid)) return false;
+                                seenPaltiIds.add(pid);
+                                return true;
+                              });
+
+                              // Map source key -> splits
+                              const paltiSplitsMap: { [key: string]: any[] } = {};
+
+                              dedupedPaltiItems.forEach((palti: any) => {
+                                const sourceVariety = palti.variety || palti.sourceVariety;
+                                const sourceLoc = palti.fromLocation || palti.locationCode;
+                                const sourcePkg = palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown';
+                                const sourceBagSize2 = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
+                                const sourceKey = getPaltiMatchKey(sourceVariety, sourceLoc, sourcePkg, sourceBagSize2, productType);
+                                console.log('🔄 Registered Palti SOURCE (Right):', { sourceKey, variety: sourceVariety, loc: sourceLoc, pkg: sourcePkg, size: sourceBagSize2 });
+
+                                if (!paltiSplitsMap[sourceKey]) paltiSplitsMap[sourceKey] = [];
+
+                                let targetPkg = palti.targetPackaging?.brandName || palti.target_packaging_brand || palti.target_packaging || palti.packaging?.brandName || palti.packaging || 'Unknown';
+                                if (typeof targetPkg === 'string' && targetPkg.includes('→')) {
+                                  targetPkg = targetPkg.split('→').map((s: string) => s.trim())[1] || targetPkg.split('→')[0];
+                                }
+
+                                // Calculate sourceBags from qtls if not provided
+                                const sourceKgPerBag2 = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
+                                const paltiQtls2 = Math.abs(palti.qtls || palti.quantityQuintals || 0);
+                                const shortageKg2 = Number(palti.shortageKg || palti.conversionShortageKg || palti.conversion_shortage_kg || 0);
+                                const sourceQtls2 = paltiQtls2 + (shortageKg2 / 100);
+                                const calculatedSourceBags2 = Math.ceil((sourceQtls2 * 100) / sourceKgPerBag2);
+                                const actualSourceBags2 = palti.sourceBags || calculatedSourceBags2;
+
+                                paltiSplitsMap[sourceKey].push({
+                                  qtls: paltiQtls2,
+                                  bags: palti.bags || 0,
+                                  sourceBags: actualSourceBags2, // CRITICAL: Track how many source bags were used
+                                  targetPackaging: targetPkg,
+                                  targetBagSizeKg: palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || palti.sourceBagSizeKg || 26,
+                                  targetLocation: palti.toLocation || palti.location || 'Unknown',
+                                  shortageKg: shortageKg2,
+                                  variety: palti.variety || 'Unknown'
+                                });
+                              });
 
                               return (
                                 <div key={productType}>
@@ -4954,66 +5157,44 @@ const Records: React.FC = () => {
 
                                         if (bifurcationItems.length === 0) return null;
 
-                                        // Get Palti items for splits
-                                        // ONLY show palti splits if there are palti movements TODAY
-                                        const paltiItems = (productionGroups[productType] || []).filter((item: any) => item.movementType === 'palti');
-
-                                        // Map source key -> splits
-                                        // FIXED: Use only variety for matching (matching Rice section logic)
-                                        const paltiSplitsMap: { [key: string]: any[] } = {};
-
-                                        // FIXED: Deduplicate palti items by ID
-                                        const seenPaltiIds = new Set<string>();
-                                        const dedupedPaltiItems = paltiItems.filter((p: any) => {
-                                          const pid = String(p.id);
-                                          if (seenPaltiIds.has(pid)) return false;
-                                          seenPaltiIds.add(pid);
-                                          return true;
-                                        });
-
-                                        dedupedPaltiItems.forEach((palti: any) => {
-                                          const sourceVariety = palti.variety || palti.sourceVariety;
-                                          const sourceLoc = palti.fromLocation || palti.locationCode;
-                                          const sourcePkg = palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown';
-                                          const sourceBagSize2 = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
-                                          const sourceKey = getPaltiMatchKey(sourceVariety, sourceLoc, sourcePkg, sourceBagSize2);
-                                          console.log('🔄 Registered Palti SOURCE (Right):', { sourceKey, variety: sourceVariety, loc: sourceLoc, pkg: sourcePkg, size: sourceBagSize2 });
-
-                                          if (!paltiSplitsMap[sourceKey]) paltiSplitsMap[sourceKey] = [];
-
-                                          let targetPkg = palti.targetPackaging?.brandName || palti.target_packaging_brand || palti.target_packaging || palti.packaging?.brandName || palti.packaging || 'Unknown';
-                                          if (typeof targetPkg === 'string' && targetPkg.includes('→')) {
-                                            targetPkg = targetPkg.split('→').map((s: string) => s.trim())[1] || targetPkg.split('→')[0];
-                                          }
-
-                                          // CRITICAL FIX: Calculate sourceBags from qtls if not provided
-                                          const sourceKgPerBag2 = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
-                                          const paltiQtls2 = Math.abs(palti.qtls || palti.quantityQuintals || 0);
-                                          const shortageKg2 = Number(palti.shortageKg || palti.conversionShortageKg || palti.conversion_shortage_kg || 0);
-                                          const sourceQtls2 = paltiQtls2 + (shortageKg2 / 100);
-                                          const calculatedSourceBags2 = Math.ceil((sourceQtls2 * 100) / sourceKgPerBag2);
-                                          const actualSourceBags2 = palti.sourceBags || calculatedSourceBags2;
-
-                                          paltiSplitsMap[sourceKey].push({
-                                            qtls: paltiQtls2,
-                                            bags: palti.bags || 0,
-                                            sourceBags: actualSourceBags2, // CRITICAL: Track how many source bags were used
-                                            targetPackaging: targetPkg,
-                                            targetBagSizeKg: palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || palti.sourceBagSizeKg || 26,
-                                            targetLocation: palti.toLocation || palti.location || 'Unknown',
-                                            shortageKg: shortageKg2,
-                                            variety: palti.variety || 'Unknown'
-                                          });
-                                        });
-
                                         return (
                                           <>
                                             <div style={{ fontSize: '8pt', fontWeight: 'bold', color: '#4b5563', padding: '2px 4px', marginBottom: '2px' }}>
                                               📋 Variety-wise Opening Stock
                                             </div>
                                             {bifurcationItems.map((item: any, idx: number) => {
-                                              const itemKey = getPaltiMatchKey(item.variety, item.location, item.packaging, item.bagSizeKg);
-                                              const splits = paltiSplitsMap[itemKey] || [];
+                                              const itemKey = getPaltiMatchKey(item.variety, item.location, item.packaging, item.bagSizeKg, productType);
+                                              const allSplitsForKey = paltiSplitsMap[itemKey] || [];
+
+                                              const splits = [];
+
+                                              let allocatedSourceBags = 0;
+
+                                              const remainingSplits = [];
+
+                                              const itemBagsLimit = item.bags || 0;
+
+                                              for (let i = 0; i < allSplitsForKey.length; i++) {
+
+                                                const s = allSplitsForKey[i];
+
+                                                const sBags = s.sourceBags || 0;
+
+                                                if (allocatedSourceBags < itemBagsLimit || splits.length === 0) {
+
+                                                  splits.push(s);
+
+                                                  allocatedSourceBags += sBags;
+
+                                                } else {
+
+                                                  remainingSplits.push(s);
+
+                                                }
+
+                                              }
+
+                                              paltiSplitsMap[itemKey] = remainingSplits;
                                               const totalSourceBagsUsed = splits.reduce((sum: number, s: any) => sum + (s.sourceBags || 0), 0);
                                               const remainingBags = (item.bags || 0) - totalSourceBagsUsed;
                                               const hasSplits = splits.length > 0;
@@ -5032,7 +5213,6 @@ const Records: React.FC = () => {
                                                 }
                                                 console.groupEnd();
                                               }
-
 
                                               return (
                                                 <React.Fragment key={`bifurcation-${productType}-${idx}`}>
@@ -5212,71 +5392,203 @@ const Records: React.FC = () => {
                                             }
                                           };
 
+                                          const itemKey = getPaltiMatchKey(prod.variety, prod.locationCode || prod.location || '', prod.packaging?.brandName || prod.packaging || '', prod.bagSizeKg, productType);
+                                          const allSplitsForKey = paltiSplitsMap[itemKey] || [];
+
+                                          const splits = [];
+
+                                          let allocatedSourceBags = 0;
+
+                                          const remainingSplits = [];
+
+                                          const itemBagsLimit = prod.bags || 0;
+
+                                          for (let i = 0; i < allSplitsForKey.length; i++) {
+
+                                            const s = allSplitsForKey[i];
+
+                                            const sBags = s.sourceBags || 0;
+
+                                            if (allocatedSourceBags < itemBagsLimit || splits.length === 0) {
+
+                                              splits.push(s);
+
+                                              allocatedSourceBags += sBags;
+
+                                            } else {
+
+                                              remainingSplits.push(s);
+
+                                            }
+
+                                          }
+
+                                          paltiSplitsMap[itemKey] = remainingSplits;
+                                          const totalSourceBagsUsed = splits.reduce((sum: number, s: any) => sum + (s.sourceBags || 0), 0);
+                                          const remainingBags = (prod.bags || 0) - totalSourceBagsUsed;
+                                          const hasSplits = splits.length > 0;
+                                          const totalShortage = splits.reduce((sum: number, s: any) => sum + (s.shortageKg || 0), 0);
+
                                           return (
-                                            <div key={`${productType.toLowerCase().replace(/\s+/g, '-')}-prod-${idx}`} style={{
-                                              display: 'grid',
-                                              gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
-                                              gap: '6px',
-                                              padding: '2px 0',
-                                              fontSize: '8pt',
-                                              background: getMovementColor(prod.movementType),
-                                              marginBottom: '1px',
-                                              borderRadius: '3px'
-                                            }}>
-                                              <div style={{ textAlign: 'center' }}>
-                                                {Math.abs(Number(prod.qtls) || 0).toFixed(2)}
-                                              </div>
-                                              <div style={{ textAlign: 'center' }}>
-                                                {prod.bags || 0}{prod.bagSizeKg ? `/${prod.bagSizeKg}kgs` : ''}
-                                              </div>
-                                              <div style={{ textAlign: 'center' }}>
-                                                {String(prod.product || '')}
-                                                {prod.outturn?.code && (
-                                                  <span
-                                                    style={{
-                                                      color: '#7c3aed',
-                                                      fontWeight: 'bold',
-                                                      marginLeft: '4px',
-                                                      cursor: 'pointer',
-                                                      textDecoration: 'underline'
-                                                    }}
-                                                    onClick={() => navigateToOutturn(prod.outturn.code)}
-                                                    title={`Click to view outturn ${prod.outturn.code}`}
-                                                  >
-                                                    → {prod.outturn.code}
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div style={{ textAlign: 'center' }}>
-                                                <div>{String(prod.variety || 'Unknown')}</div>
-                                                {prod.processType && (
-                                                  <div style={{ fontSize: '7pt', color: '#666', fontStyle: 'italic' }}>
-                                                    {prod.processType}
-                                                  </div>
-                                                )}
-                                              </div>
-                                              <div style={{ textAlign: 'center' }}>
-                                                <div style={{ fontSize: '8pt' }}>
-                                                  {prod.movementType === 'palti' && prod.sourcePackaging ?
-                                                    `${prod.sourcePackaging.brandName || 'A1'} → ${prod.targetPackaging?.brandName || 'A1'}` :
-                                                    prod.packaging?.brandName || prod.packaging || 'A1'
-                                                  }
+                                            <React.Fragment key={`${productType.toLowerCase().replace(/\s+/g, '-')}-prod-${idx}`}>
+                                              <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                gap: '6px',
+                                                padding: '2px 0',
+                                                fontSize: '8pt',
+                                                background: hasSplits ? '#fef3c7' : getMovementColor(prod.movementType),
+                                                marginBottom: hasSplits ? '0' : '1px',
+                                                borderRadius: hasSplits ? '2px 2px 0 0' : '3px',
+                                                border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
+                                                borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
+                                              }}>
+                                                <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>
+                                                  {Math.abs(Number(prod.qtls) || 0).toFixed(2)}
                                                 </div>
-                                                {prod.movementType && (
-                                                  <div style={{ fontSize: '7pt', color: '#666', fontStyle: 'italic' }}>
-                                                    {prod.movementType}
+                                                <div style={{ textAlign: 'center' }}>
+                                                  {prod.bags || 0}{prod.bagSizeKg ? `/${prod.bagSizeKg}kgs` : ''}
+                                                </div>
+                                                <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                  <div>
+                                                    {String(prod.product || '')}
+                                                    {prod.outturn?.code && (
+                                                      <span
+                                                        style={{
+                                                          color: '#7c3aed',
+                                                          fontWeight: 'bold',
+                                                          marginLeft: '4px',
+                                                          cursor: 'pointer',
+                                                          textDecoration: 'underline'
+                                                        }}
+                                                        onClick={() => navigateToOutturn(prod.outturn.code)}
+                                                        title={`Click to view outturn ${prod.outturn.code}`}
+                                                      >
+                                                        → {prod.outturn.code}
+                                                      </span>
+                                                    )}
                                                   </div>
-                                                )}
-                                              </div>
-                                              <div style={{ textAlign: 'center' }}>
-                                                <div>{prod.locationCode || prod.location || ''}</div>
-                                                {prod.billNumber && (
-                                                  <div style={{ fontSize: '7pt', color: '#666' }}>
-                                                    {prod.billNumber}
+                                                  {hasSplits && totalShortage > 0 && (
+                                                    <div style={{
+                                                      background: '#fee2e2',
+                                                      color: '#dc2626',
+                                                      fontSize: '6.5pt',
+                                                      padding: '0px 3px',
+                                                      borderRadius: '3px',
+                                                      fontWeight: 'bold',
+                                                      border: '1px solid #fca5a5'
+                                                    }}>
+                                                      S: {totalShortage.toFixed(1)}kg
+                                                    </div>
+                                                  )}
+                                                  {hasSplits && (
+                                                    <div style={{
+                                                      background: remainingBags <= 0 ? '#dcfce7' : '#fef3c7',
+                                                      color: remainingBags <= 0 ? '#166534' : '#854d0e',
+                                                      fontSize: '6.5pt',
+                                                      padding: '0px 3px',
+                                                      borderRadius: '3px',
+                                                      fontWeight: 'bold',
+                                                      border: '1px solid',
+                                                      borderColor: remainingBags <= 0 ? '#bbf7d0' : '#fde68a'
+                                                    }}>
+                                                      Rem: {remainingBags} bags
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>
+                                                  <div>{String(prod.variety || 'Unknown')}</div>
+                                                  {prod.processType && (
+                                                    <div style={{ fontSize: '7pt', color: '#666', fontStyle: 'italic' }}>
+                                                      {prod.processType}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div style={{ textAlign: 'center' }}>
+                                                  <div style={{ fontSize: '8pt' }}>
+                                                    {prod.movementType === 'palti' && prod.sourcePackaging ?
+                                                      `${prod.sourcePackaging.brandName || 'A1'} → ${prod.targetPackaging?.brandName || 'A1'}` :
+                                                      prod.packaging?.brandName || prod.packaging || 'A1'
+                                                    }
                                                   </div>
-                                                )}
+                                                  {prod.movementType && (
+                                                    <div style={{ fontSize: '7pt', color: '#666', fontStyle: 'italic' }}>
+                                                      {prod.movementType}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>
+                                                  <div>{prod.locationCode || prod.location || ''}</div>
+                                                  {prod.billNumber && (
+                                                    <div style={{ fontSize: '7pt', color: '#666' }}>
+                                                      {prod.billNumber}
+                                                    </div>
+                                                  )}
+                                                </div>
                                               </div>
-                                            </div>
+
+                                              {/* Palti Splits - Shown below the source entry with reference-accurate styling */}
+                                              {hasSplits && (
+                                                <div style={{
+                                                  border: '2px solid #f59e0b',
+                                                  borderTop: 'none',
+                                                  borderRadius: '0 0 4px 4px',
+                                                  marginBottom: '4px',
+                                                  overflow: 'hidden'
+                                                }}>
+                                                  {splits.map((split: any, splitIdx: number) => (
+                                                    <div key={`split-${splitIdx}`} style={{
+                                                      display: 'grid',
+                                                      gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                      gap: '6px',
+                                                      padding: '3px 8px',
+                                                      fontSize: '7.5pt',
+                                                      background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
+                                                      color: '#7c2d12',
+                                                      borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
+                                                      position: 'relative'
+                                                    }}>
+                                                      <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
+                                                        {split.qtls.toFixed(2)}
+                                                      </div>
+                                                      <div style={{ textAlign: 'center', color: '#9a3412' }}>
+                                                        {split.bags}/{split.targetBagSizeKg}kg
+                                                      </div>
+                                                      <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                                        <span style={{ color: '#f97316' }}>↳</span> Split
+                                                      </div>
+                                                      <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
+                                                      <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
+                                                      <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
+                                                    </div>
+                                                  ))}
+
+                                                  {/* Total shortage row - Matching Red reference style */}
+                                                  {totalShortage > 0 && (
+                                                    <div style={{
+                                                      display: 'grid',
+                                                      gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                      gap: '6px',
+                                                      padding: '4px 8px',
+                                                      fontSize: '7.5pt',
+                                                      background: '#fee2e2',
+                                                      color: '#dc2626',
+                                                      borderTop: '1.2px solid #fca5a5',
+                                                      fontWeight: 'bold'
+                                                    }}>
+                                                      <div style={{ textAlign: 'center' }}>{(totalShortage / 100).toFixed(2)}</div>
+                                                      <div style={{ textAlign: 'center' }}>-</div>
+                                                      <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                                        <span style={{ fontSize: '9pt' }}>⚠️</span> Shortage
+                                                      </div>
+                                                      <div style={{ textAlign: 'center' }}>-</div>
+                                                      <div style={{ textAlign: 'center' }}>-</div>
+                                                      <div style={{ textAlign: 'center' }}>{totalShortage.toFixed(1)}kg</div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </React.Fragment>
                                           );
                                         })}
 
@@ -5335,6 +5647,56 @@ const Records: React.FC = () => {
                           {['Bran', 'RJ Rice (2)', 'Sizer Broken'].map((productType) => {
                             const hasData = (openingGroups[productType]?.length > 0 || productionGroups[productType]?.length > 0);
 
+                            // Get Palti items for splits
+                            const paltiItems = (productionGroups[productType] || []).filter((item: any) => item.movementType === 'palti');
+
+                            // Deduplicate palti items by ID
+                            const seenPaltiIds = new Set<string>();
+                            const dedupedPaltiItems = paltiItems.filter((p: any) => {
+                              const pid = String(p.id);
+                              if (seenPaltiIds.has(pid)) return false;
+                              seenPaltiIds.add(pid);
+                              return true;
+                            });
+
+                            // Map source key -> splits
+                            const paltiSplitsMap: { [key: string]: any[] } = {};
+
+                            dedupedPaltiItems.forEach((palti: any) => {
+                              const sourceVariety = palti.variety || palti.sourceVariety;
+                              const sourceLoc = palti.fromLocation || palti.locationCode;
+                              const sourcePkg = palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown';
+                              const sourceBagSize3 = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
+                              const sourceKey = getPaltiMatchKey(sourceVariety, sourceLoc, sourcePkg, sourceBagSize3, productType);
+                              console.log('🔄 Registered Palti SOURCE (Bottom):', { sourceKey, variety: sourceVariety, loc: sourceLoc, pkg: sourcePkg, size: sourceBagSize3 });
+
+                              if (!paltiSplitsMap[sourceKey]) paltiSplitsMap[sourceKey] = [];
+
+                              let targetPkg = palti.targetPackaging?.brandName || palti.target_packaging_brand || palti.target_packaging || palti.packaging?.brandName || palti.packaging || 'Unknown';
+                              if (typeof targetPkg === 'string' && targetPkg.includes('→')) {
+                                targetPkg = targetPkg.split('→').map((s: string) => s.trim())[1] || targetPkg.split('→')[0];
+                              }
+
+                              // Calculate sourceBags from qtls if not provided
+                              const sourceKgPerBag3 = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
+                              const paltiQtls3 = Math.abs(palti.qtls || palti.quantityQuintals || 0);
+                              const shortageKg3 = Number(palti.shortageKg || palti.conversionShortageKg || palti.conversion_shortage_kg || 0);
+                              const sourceQtls3 = paltiQtls3 + (shortageKg3 / 100);
+                              const calculatedSourceBags3 = Math.ceil((sourceQtls3 * 100) / sourceKgPerBag3);
+                              const actualSourceBags3 = palti.sourceBags || calculatedSourceBags3;
+
+                              paltiSplitsMap[sourceKey].push({
+                                qtls: paltiQtls3,
+                                bags: palti.bags || 0,
+                                sourceBags: actualSourceBags3, // CRITICAL: Track how many source bags were used
+                                targetPackaging: targetPkg,
+                                targetBagSizeKg: palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || palti.sourceBagSizeKg || 26,
+                                targetLocation: palti.toLocation || palti.location || 'Unknown',
+                                shortageKg: shortageKg3,
+                                variety: palti.variety || 'Unknown'
+                              });
+                            });
+
                             return (
                               <div key={productType}>
                                 <div style={{
@@ -5386,59 +5748,44 @@ const Records: React.FC = () => {
 
                                       if (bifurcationItems.length === 0) return null;
 
-                                      // Get Palti items for splits
-                                      // ONLY show palti splits if there are palti movements TODAY
-                                      const paltiItems = (productionGroups[productType] || []).filter((item: any) => item.movementType === 'palti');
-
-                                      // Map source key -> splits
-                                      const paltiSplitsMap: { [key: string]: any[] } = {};
-                                      paltiItems.forEach((palti: any) => {
-                                        const sourceVariety = palti.variety || palti.sourceVariety;
-                                        const sourceLoc = palti.fromLocation || palti.locationCode;
-                                        const sourcePkg = palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown';
-                                        const sourceBagSize3 = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
-
-                                        const sourceKey = getPaltiMatchKey(sourceVariety, sourceLoc, sourcePkg, sourceBagSize3);
-                                        console.log('🔄 Registered Palti SOURCE (Bottom):', { sourceKey, variety: sourceVariety, loc: sourceLoc, pkg: sourcePkg, size: sourceBagSize3 });
-
-                                        if (!paltiSplitsMap[sourceKey]) paltiSplitsMap[sourceKey] = [];
-
-                                        let targetPkg = palti.targetPackaging?.brandName || palti.target_packaging_brand || palti.target_packaging || palti.packaging?.brandName || palti.packaging || 'Unknown';
-                                        if (typeof targetPkg === 'string' && targetPkg.includes('→')) {
-                                          targetPkg = targetPkg.split('→').map((s: string) => s.trim())[1] || targetPkg.split('→')[0];
-                                        }
-
-                                        // CRITICAL FIX: Calculate sourceBags from qtls if not provided
-                                        const sourceKgPerBag3 = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
-                                        const paltiQtls3 = Math.abs(palti.qtls || palti.quantityQuintals || 0);
-                                        const shortageKg3 = Number(palti.shortageKg || palti.conversionShortageKg || palti.conversion_shortage_kg || 0);
-                                        const sourceQtls3 = paltiQtls3 + (shortageKg3 / 100);
-                                        const calculatedSourceBags3 = Math.ceil((sourceQtls3 * 100) / sourceKgPerBag3);
-                                        const actualSourceBags3 = palti.sourceBags || calculatedSourceBags3;
-
-                                        paltiSplitsMap[sourceKey].push({
-                                          qtls: paltiQtls3,
-                                          bags: palti.bags || 0,
-                                          sourceBags: actualSourceBags3, // CRITICAL: Track how many source bags were used
-                                          targetPackaging: targetPkg,
-                                          targetBagSizeKg: palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || 26,
-                                          targetLocation: palti.toLocation || palti.location || 'Unknown',
-                                          shortageKg: shortageKg3,
-                                          variety: palti.variety || 'Unknown'
-                                        });
-                                      });
-
                                       return (
                                         <>
                                           <div style={{ fontSize: '8pt', fontWeight: 'bold', color: '#4b5563', padding: '2px 4px', marginBottom: '2px' }}>
                                             📋 Variety-wise Opening Stock
                                           </div>
                                           {bifurcationItems.map((item: any, idx: number) => {
-                                            // NEW: Key uses getPaltiMatchKey for 101% accurate matching
-                                            const itemKey = getPaltiMatchKey(item.variety, item.location, item.packaging, item.bagSizeKg);
+                                            const itemKey = getPaltiMatchKey(item.variety, item.location, item.packaging, item.bagSizeKg, productType);
+                                            const allSplitsForKey = paltiSplitsMap[itemKey] || [];
 
+                                            const splits = [];
 
-                                            const splits = paltiSplitsMap[itemKey] || [];
+                                            let allocatedSourceBags = 0;
+
+                                            const remainingSplits = [];
+
+                                            const itemBagsLimit = item.bags || 0;
+
+                                            for (let i = 0; i < allSplitsForKey.length; i++) {
+
+                                              const s = allSplitsForKey[i];
+
+                                              const sBags = s.sourceBags || 0;
+
+                                              if (allocatedSourceBags < itemBagsLimit || splits.length === 0) {
+
+                                                splits.push(s);
+
+                                                allocatedSourceBags += sBags;
+
+                                              } else {
+
+                                                remainingSplits.push(s);
+
+                                              }
+
+                                            }
+
+                                            paltiSplitsMap[itemKey] = remainingSplits;
                                             const totalSourceBagsUsed = splits.reduce((sum: number, s: any) => sum + (s.sourceBags || 0), 0);
                                             const remainingBags = (item.bags || 0) - totalSourceBagsUsed;
                                             const hasSplits = splits.length > 0;
@@ -5635,39 +5982,171 @@ const Records: React.FC = () => {
                                           }
                                         };
 
+                                        const itemKey = getPaltiMatchKey(prod.variety, prod.locationCode || prod.location || '', prod.packaging?.brandName || prod.packaging || '', prod.bagSizeKg, productType);
+                                        const allSplitsForKey = paltiSplitsMap[itemKey] || [];
+
+                                        const splits = [];
+
+                                        let allocatedSourceBags = 0;
+
+                                        const remainingSplits = [];
+
+                                        const itemBagsLimit = prod.bags || 0;
+
+                                        for (let i = 0; i < allSplitsForKey.length; i++) {
+
+                                          const s = allSplitsForKey[i];
+
+                                          const sBags = s.sourceBags || 0;
+
+                                          if (allocatedSourceBags < itemBagsLimit || splits.length === 0) {
+
+                                            splits.push(s);
+
+                                            allocatedSourceBags += sBags;
+
+                                          } else {
+
+                                            remainingSplits.push(s);
+
+                                          }
+
+                                        }
+
+                                        paltiSplitsMap[itemKey] = remainingSplits;
+                                        const totalSourceBagsUsed = splits.reduce((sum: number, s: any) => sum + (s.sourceBags || 0), 0);
+                                        const remainingBags = (prod.bags || 0) - totalSourceBagsUsed;
+                                        const hasSplits = splits.length > 0;
+                                        const totalShortage = splits.reduce((sum: number, s: any) => sum + (s.shortageKg || 0), 0);
+
                                         return (
-                                          <div key={`${productType.toLowerCase().replace(/\s+/g, '-')}-prod-${idx}`} style={{
-                                            display: 'grid',
-                                            gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
-                                            gap: '6px',
-                                            padding: '2px 0',
-                                            fontSize: '8pt',
-                                            background: getMovementColor(prod.movementType),
-                                            marginBottom: '1px',
-                                            borderRadius: '3px'
-                                          }}>
-                                            <div style={{ textAlign: 'center' }}>
-                                              {Math.abs(Number(prod.qtls) || 0).toFixed(2)}
+                                          <React.Fragment key={`${productType.toLowerCase().replace(/\s+/g, '-')}-prod-${idx}`}>
+                                            <div style={{
+                                              display: 'grid',
+                                              gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                              gap: '6px',
+                                              padding: '2px 0',
+                                              fontSize: '8pt',
+                                              background: hasSplits ? '#fef3c7' : getMovementColor(prod.movementType),
+                                              marginBottom: hasSplits ? '0' : '1px',
+                                              borderRadius: hasSplits ? '2px 2px 0 0' : '3px',
+                                              border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
+                                              borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
+                                            }}>
+                                              <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>
+                                                {Math.abs(Number(prod.qtls) || 0).toFixed(2)}
+                                              </div>
+                                              <div style={{ textAlign: 'center' }}>
+                                                {prod.bags || 0}{prod.bagSizeKg ? `/${prod.bagSizeKg}kgs` : ''}
+                                              </div>
+                                              <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                <div>
+                                                  {String(prod.product || '')}
+                                                  {prod.outturn?.code && (
+                                                    <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(prod.outturn.code)}>→ {prod.outturn.code}</span>
+                                                  )}
+                                                </div>
+                                                {hasSplits && totalShortage > 0 && (
+                                                  <div style={{
+                                                    background: '#fee2e2',
+                                                    color: '#dc2626',
+                                                    fontSize: '6.5pt',
+                                                    padding: '0px 3px',
+                                                    borderRadius: '3px',
+                                                    fontWeight: 'bold',
+                                                    border: '1px solid #fca5a5'
+                                                  }}>
+                                                    S: {totalShortage.toFixed(1)}kg
+                                                  </div>
+                                                )}
+                                                {hasSplits && (
+                                                  <div style={{
+                                                    background: remainingBags <= 0 ? '#dcfce7' : '#fef3c7',
+                                                    color: remainingBags <= 0 ? '#166534' : '#854d0e',
+                                                    fontSize: '6.5pt',
+                                                    padding: '0px 3px',
+                                                    borderRadius: '3px',
+                                                    fontWeight: 'bold',
+                                                    border: '1px solid',
+                                                    borderColor: remainingBags <= 0 ? '#bbf7d0' : '#fde68a'
+                                                  }}>
+                                                    Rem: {remainingBags} bags
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>
+                                                <div>{String(prod.variety || 'Unknown')}</div>
+                                              </div>
+                                              <div style={{ textAlign: 'center' }}>
+                                                <div style={{ fontSize: '8pt' }}>{prod.packaging?.brandName || prod.packaging || 'A1'}</div>
+                                              </div>
+                                              <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>
+                                                <div>{prod.locationCode || prod.location || ''}</div>
+                                              </div>
                                             </div>
-                                            <div style={{ textAlign: 'center' }}>
-                                              {prod.bags || 0}{prod.bagSizeKg ? `/${prod.bagSizeKg}kgs` : ''}
-                                            </div>
-                                            <div style={{ textAlign: 'center' }}>
-                                              {String(prod.product || '')}
-                                              {prod.outturn?.code && (
-                                                <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(prod.outturn.code)}>→ {prod.outturn.code}</span>
-                                              )}
-                                            </div>
-                                            <div style={{ textAlign: 'center' }}>
-                                              <div>{String(prod.variety || 'Unknown')}</div>
-                                            </div>
-                                            <div style={{ textAlign: 'center' }}>
-                                              <div style={{ fontSize: '8pt' }}>{prod.packaging?.brandName || prod.packaging || 'A1'}</div>
-                                            </div>
-                                            <div style={{ textAlign: 'center' }}>
-                                              <div>{prod.locationCode || prod.location || ''}</div>
-                                            </div>
-                                          </div>
+
+                                            {/* Palti Splits - Shown below the source entry with reference-accurate styling */}
+                                            {hasSplits && (
+                                              <div style={{
+                                                border: '2px solid #f59e0b',
+                                                borderTop: 'none',
+                                                borderRadius: '0 0 4px 4px',
+                                                marginBottom: '4px',
+                                                overflow: 'hidden'
+                                              }}>
+                                                {splits.map((split: any, splitIdx: number) => (
+                                                  <div key={`split-${splitIdx}`} style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                    gap: '6px',
+                                                    padding: '3px 8px',
+                                                    fontSize: '7.5pt',
+                                                    background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
+                                                    color: '#7c2d12',
+                                                    borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
+                                                    position: 'relative'
+                                                  }}>
+                                                    <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
+                                                      {split.qtls.toFixed(2)}
+                                                    </div>
+                                                    <div style={{ textAlign: 'center', color: '#9a3412' }}>
+                                                      {split.bags}/{split.targetBagSizeKg}kg
+                                                    </div>
+                                                    <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                                      <span style={{ color: '#f97316' }}>↳</span> Split
+                                                    </div>
+                                                    <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
+                                                    <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
+                                                    <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
+                                                  </div>
+                                                ))}
+
+                                                {/* Total shortage row - Matching Red reference style */}
+                                                {totalShortage > 0 && (
+                                                  <div style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                    gap: '6px',
+                                                    padding: '4px 8px',
+                                                    fontSize: '7.5pt',
+                                                    background: '#fee2e2',
+                                                    color: '#dc2626',
+                                                    borderTop: '1.2px solid #fca5a5',
+                                                    fontWeight: 'bold'
+                                                  }}>
+                                                    <div style={{ textAlign: 'center' }}>{(totalShortage / 100).toFixed(2)}</div>
+                                                    <div style={{ textAlign: 'center' }}>-</div>
+                                                    <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                                      <span style={{ fontSize: '9pt' }}>⚠️</span> Shortage
+                                                    </div>
+                                                    <div style={{ textAlign: 'center' }}>-</div>
+                                                    <div style={{ textAlign: 'center' }}>-</div>
+                                                    <div style={{ textAlign: 'center' }}>{totalShortage.toFixed(1)}kg</div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </React.Fragment>
                                         );
                                       })}
 
