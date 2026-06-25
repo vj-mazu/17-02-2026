@@ -1265,7 +1265,7 @@ router.post('/movements', auth, async (req, res) => {
 
         // ⚡ PERFORMANCE: Cache rice stock locations in memory (eliminates 41ms query)
         if (!global.riceStockLocationsCache) {
-            const [locations] = await sequelize.query(
+            const locations = await sequelize.query(
                 `SELECT code, is_direct_load FROM rice_stock_locations`,
                 { type: sequelize.QueryTypes.SELECT }
             );
