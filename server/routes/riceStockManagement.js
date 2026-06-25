@@ -1872,6 +1872,16 @@ router.post('/movements', auth, async (req, res) => {
 
         console.log('✅ Rice stock movement created successfully:', { newId, result });
 
+        // Invalidate cache so new purchases/movements reflect immediately
+        try {
+            await cacheService.delPattern('rice*');
+            await cacheService.delPattern('production*');
+            await cacheService.delPattern('byProduct*');
+            await cacheService.delPattern('outturn*');
+        } catch (cacheErr) {
+            console.error('⚠️ Error clearing cache:', cacheErr);
+        }
+
         res.status(201).json({
             success: true,
             data: {
@@ -2490,6 +2500,16 @@ router.post('/movements/batch', auth, async (req, res) => {
                 results.push({ id: result[0][0].id });
             }
         });
+
+        // Invalidate cache so batch movements reflect immediately
+        try {
+            await cacheService.delPattern('rice*');
+            await cacheService.delPattern('production*');
+            await cacheService.delPattern('byProduct*');
+            await cacheService.delPattern('outturn*');
+        } catch (cacheErr) {
+            console.error('⚠️ Error clearing cache:', cacheErr);
+        }
 
         res.status(201).json({
             success: true,
@@ -3308,6 +3328,16 @@ router.post('/palti-with-location', auth, async (req, res) => {
         });
 
         const responseTime = Date.now() - startTime;
+
+        // Invalidate cache so palti operations reflect immediately
+        try {
+            await cacheService.delPattern('rice*');
+            await cacheService.delPattern('production*');
+            await cacheService.delPattern('byProduct*');
+            await cacheService.delPattern('outturn*');
+        } catch (cacheErr) {
+            console.error('⚠️ Error clearing cache:', cacheErr);
+        }
 
         res.status(201).json({
             success: true,
