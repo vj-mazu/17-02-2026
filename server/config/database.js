@@ -34,12 +34,12 @@ const sequelize = dbUrl
       application_name: 'mother_india_stock_mgmt'
     },
     pool: {
-      max: 50,  // Increased for 10 lakh records handling
-      min: 10,  // Higher minimum for faster response under load
+      max: 12,  // Set below Supabase pool_size limit (15) to prevent connection errors
+      min: 2,   // Safe minimum for lower memory usage and pooler compatibility
       acquire: 60000,
       idle: 10000,
       evict: 1000,
-      maxUses: 2000  // Increased for high-volume operations
+      maxUses: 2000
     },
     define: {
       timestamps: true,
@@ -61,12 +61,12 @@ const sequelize = dbUrl
 
     // Connection pool configuration for better performance
     pool: {
-      max: 50,  // Increased for 10 lakh records handling
-      min: 10,  // Higher minimum for faster response under load
+      max: 12,  // Set below Supabase pool_size limit (15) to prevent connection errors
+      min: 2,   // Safe minimum for lower memory usage and pooler compatibility
       acquire: 60000,
       idle: 10000,
       evict: 1000,
-      maxUses: 2000  // Increased for high-volume operations
+      maxUses: 2000
     },
 
     // Query optimization settings
