@@ -163,6 +163,20 @@ const DropdownMenu = styled.div`
     border-right: 8px solid transparent;
     border-bottom: 8px solid white;
   }
+
+  @media (max-width: 768px) {
+    position: static;
+    box-shadow: none;
+    border: none;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 0.25rem 0.5rem 0;
+    min-width: auto;
+    border-radius: 6px;
+    
+    &::before {
+      display: none;
+    }
+  }
 `;
 
 const DropdownLink = styled(Link) <{ $active: boolean }>`
@@ -179,12 +193,29 @@ const DropdownLink = styled(Link) <{ $active: boolean }>`
     background: #f8fafc;
     color: #10b981;
   }
+
+  @media (max-width: 768px) {
+    color: rgba(255, 255, 255, 0.9);
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    background: ${props => props.$active ? 'rgba(255, 255, 255, 0.15)' : 'transparent'};
+    border-radius: 4px;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+  }
 `;
 
 const DropdownDivider = styled.hr`
   border: none;
   border-top: 1px solid #f1f5f9;
   margin: 0.4rem 0;
+
+  @media (max-width: 768px) {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+  }
 `;
 
 const NotificationBadge = styled.span`
@@ -209,6 +240,16 @@ const UserInfo = styled.div`
   padding-left: 0.75rem;
   border-left: 1px solid rgba(255, 255, 255, 0.2);
   white-space: nowrap;
+
+  @media (max-width: 768px) {
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    margin-left: 0;
+    padding-left: 0;
+    padding-top: 1rem;
+    margin-top: 1rem;
+    justify-content: center;
+  }
 `;
 
 const UserBadge = styled.span`
@@ -235,6 +276,13 @@ const LogoutButton = styled.button`
   &:hover {
     background: #dc2626;
     transform: translateY(-1px);
+  }
+
+  @media (max-width: 768px) {
+    margin-left: 0;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    text-align: center;
   }
 `;
 

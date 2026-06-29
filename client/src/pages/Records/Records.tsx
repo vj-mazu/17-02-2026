@@ -87,7 +87,15 @@ const Records: React.FC = () => {
     const [year, month] = selectedMonth.split('-').map(Number);
     return new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
-  const [activeTab, setActiveTab] = useState<'arrivals' | 'purchase' | 'shifting' | 'stock' | 'outturn-report' | 'rice-outturn-report' | 'rice-stock'>('arrivals');
+  const [activeTab, setActiveTab] = useState<'arrivals' | 'purchase' | 'shifting' | 'stock' | 'outturn-report' | 'rice-outturn-report' | 'rice-stock'>(() => {
+    const saved = localStorage.getItem('recordsActiveTab');
+    return (saved as any) || 'arrivals';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('recordsActiveTab', activeTab);
+  }, [activeTab]);
+
   const [records, setRecords] = useState<{ [key: string]: Arrival[] }>({});
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [groupBy, setGroupBy] = useState<'date' | 'week'>('week'); // Default to week grouping
@@ -152,6 +160,15 @@ const Records: React.FC = () => {
 
   // Rice Movement Edit State - for editing rice stock movement entries
   const [editingRiceMovement, setEditingRiceMovement] = useState<any>(null);
+
+  // Deletion Confirmation Dialog State
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    show: boolean;
+    item: any;
+  }>({ show: false, item: null });
+
+  // Inline edit error state
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Get business date (if before 6 AM, use previous day)
   const getBusinessDate = () => {
@@ -1068,7 +1085,15 @@ const Records: React.FC = () => {
           locationCode: updatedData.locationCode || updatedData.location_code,
           billNumber: updatedData.billNumber || updatedData.bill_number,
           lorryNumber: updatedData.lorryNumber || updatedData.lorry_number,
-          quantityQuintals: (updatedData.bags || 0) * ((updatedData.bagSizeKg || updatedData.bag_size_kg || 26) / 100)
+          quantityQuintals: (updatedData.bags || 0) * ((updatedData.bagSizeKg || updatedData.bag_size_kg || 26) / 100),
+          // Palti specific fields
+          sourceBags: updatedData.sourceBags || updatedData.source_bags,
+          fromLocation: updatedData.fromLocation || updatedData.from_location,
+          toLocation: updatedData.toLocation || updatedData.to_location || updatedData.locationCode || updatedData.location_code,
+          sourcePackagingId: updatedData.sourcePackagingId || updatedData.source_packaging_id,
+          targetPackagingId: updatedData.targetPackagingId || updatedData.target_packaging_id || updatedData.packagingId || updatedData.packaging_id,
+          shortageKg: updatedData.shortageKg || updatedData.shortage_kg,
+          shortageBags: updatedData.shortageBags || updatedData.shortage_bags
         });
       } else {
         // Production entries - use rice-productions
@@ -1111,11 +1136,15 @@ const Records: React.FC = () => {
           toast.success('Rice movement updated - Please refresh if data not showing');
         }
       } else {
-        toast.error(data.error || 'Failed to update movement');
+        const errorMsg = data.error || 'Failed to update movement';
+        setEditError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error: any) {
       console.error('Error updating rice movement:', error);
-      toast.error(error.response?.data?.error || 'Failed to update rice movement');
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to update rice movement';
+      setEditError(errorMsg);
+      toast.error(errorMsg);
     }
   };
 
@@ -1801,6 +1830,45 @@ const Records: React.FC = () => {
       fetchAllRiceProductions();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete arrival');
+    }
+  };
+
+  const handleDeleteRiceMovement = (item: any) => {
+    setDeleteConfirmation({ show: true, item });
+  };
+
+  const executeDeleteRiceMovement = async (item: any) => {
+    try {
+      const isStockMovement = String(item.originalId || item.id).includes('movement-') ||
+        ['purchase', 'sale', 'palti'].includes(item.movementType?.toLowerCase());
+      
+      const cleanId = String(item.id).replace('movement-', '');
+
+      if (isStockMovement) {
+        const token = localStorage.getItem('token');
+        await axios.delete(`/rice-stock-management/movements/${cleanId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } else {
+        await axios.delete(`/rice-productions/${cleanId}`);
+      }
+
+      toast.success('Rice movement deleted successfully');
+      
+      // Comprehensive refresh
+      await Promise.all([
+        fetchRiceStock(),
+        fetchProductionRecords(),
+        fetchOutturns(),
+        fetchByProducts(),
+        fetchRecords(),
+        fetchAllRiceProductions(),
+        fetchOpeningBalance(),
+        fetchPendingMovements()
+      ]);
+    } catch (error: any) {
+      console.error('Delete rice movement error:', error);
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to delete rice movement');
     }
   };
 
@@ -2693,7 +2761,7 @@ const Records: React.FC = () => {
                 Next →
               </button>
               <span style={{ fontSize: '0.85rem', color: '#64748b', marginLeft: '0.5rem' }}>
-                ({riceStockTotalRecords.toLocaleString()} total records)
+({riceStockTotalRecords.toLocaleString()} total records)
               </span>
             </div>
           </div>
@@ -2704,22 +2772,22 @@ const Records: React.FC = () => {
             </EmptyState>
           ) : (
             <div style={{ overflowX: 'auto', width: '100%', maxWidth: '100%' }}>
-              <ExcelTable style={{ minWidth: '1500px' }}>
+              <ExcelTable style={{ width: '100%' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#4a90e2', color: 'white' }}>
-                    <th>Sl No</th>
+                    <th className="hide-mobile">Sl No</th>
                     <th>Date</th>
                     <th>Mvmt Type</th>
-                    <th>Bill Number</th>
+                    <th className="hide-mobile">Bill Number</th>
                     <th>Variety</th>
-                    <th>Product Type</th>
+                    <th className="hide-mobile">Product Type</th>
                     <th>Bags</th>
-                    <th>Bag Size</th>
+                    <th className="hide-mobile">Bag Size</th>
                     <th>QTL'S</th>
-                    <th>Packaging</th>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>Lorry Number</th>
+                    <th className="hide-mobile">Packaging</th>
+                    <th className="hide-mobile">From</th>
+                    <th className="hide-mobile">To</th>
+                    <th className="hide-mobile">Lorry Number</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -2754,7 +2822,7 @@ const Records: React.FC = () => {
                       >
                         {/* Only render SL cell for first row of group (with rowspan) */}
                         {item._isFirstOfGroup && (
-                          <td rowSpan={item._rowspan} style={{
+                          <td className="hide-mobile" rowSpan={item._rowspan} style={{
                             verticalAlign: 'middle',
                             textAlign: 'center',
                             fontWeight: 'bold',
@@ -2815,11 +2883,11 @@ const Records: React.FC = () => {
                             </div>
                           )}
                         </td>
-                        <td style={{ fontWeight: 'bold' }}>
+                        <td className="hide-mobile" style={{ fontWeight: 'bold' }}>
                           {item.movementType === 'palti' ? '-' : (item.billNumber || '-')}
                         </td>
                         <td>{item.variety || 'Sum25 RNR Raw'}</td>
-                        <td>{(() => {
+                        <td className="hide-mobile">{(() => {
                           // For grouped sales, show all product types
                           if (item._isGrouped && item._groupedProductTypes) {
                             return item._groupedProductTypes;
@@ -2844,9 +2912,9 @@ const Records: React.FC = () => {
                           return productType || 'Rice'; // Default to Rice if no product type
                         })()}</td>
                         <td>{item.bags}</td>
-                        <td>{item.bagSizeKg || item.packaging?.allottedKg || 26}</td>
+                        <td className="hide-mobile">{item.bagSizeKg || item.packaging?.allottedKg || 26}</td>
                         <td>{isNaN(Number(item.quantityQuintals)) ? '0.00' : Number(item.quantityQuintals).toFixed(2)}</td>
-                        <td>{(() => {
+                        <td className="hide-mobile">{(() => {
                           // Handle Palti packaging display: show "source → target"
                           if (item.movementType === 'palti') {
                             // FIXED: Use server-provided packaging data with proper fallbacks
@@ -2869,7 +2937,7 @@ const Records: React.FC = () => {
 
                           return packaging;
                         })()}</td>
-                        <td>
+                        <td className="hide-mobile">
                           {item.outturn?.code ? (
                             <span
                               style={{
@@ -2887,8 +2955,8 @@ const Records: React.FC = () => {
                             item.from || '-'
                           )}
                         </td>
-                        <td>{item.to || item.locationCode || '-'}</td>
-                        <td style={{ textTransform: 'uppercase' }}>{item.movementType === 'palti' ? (item.lorryNumber || '-') : (item.lorryNumber || item.billNumber || '-')}</td>
+                        <td className="hide-mobile">{item.to || item.locationCode || '-'}</td>
+                        <td className="hide-mobile" style={{ textTransform: 'uppercase' }}>{item.movementType === 'palti' ? (item.lorryNumber || '-') : (item.lorryNumber || item.billNumber || '-')}</td>
                         <td>
                           <div style={{
                             padding: '4px 8px',
@@ -2978,6 +3046,7 @@ const Records: React.FC = () => {
                                       ...item,
                                       id: movementId // Store clean ID for API call
                                     });
+                                    setEditError(null);
                                   }}
                                   style={{
                                     padding: '4px 12px',
@@ -2994,6 +3063,28 @@ const Records: React.FC = () => {
                                   title={item.status === 'approved' ? "Admin Edit: Approved Record" : "Edit this entry"}
                                 >
                                   ✏️ Edit
+                                </button>
+                              )}
+
+                              {/* Delete Button - only for Manager/Admin */}
+                              {(user?.role === 'admin' || user?.role === 'manager') && (
+                                <button
+                                  onClick={() => handleDeleteRiceMovement(item)}
+                                  style={{
+                                    padding: '4px 12px',
+                                    backgroundColor: '#ef4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title="Delete this entry"
+                                >
+                                  🗑️ Delete
                                 </button>
                               )}
 
@@ -4408,8 +4499,8 @@ const Records: React.FC = () => {
                         {/* Top Row: Rice left, Vertical stack right */}
                         <div style={{
                           display: 'grid',
-                          gridTemplateColumns: '1fr 20px 1fr',
-                          gap: '0',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))',
+                          gap: '20px',
                           marginBottom: '8px'
                         }}>
 
@@ -5047,9 +5138,6 @@ const Records: React.FC = () => {
 
                             {/* Palti Section - Removed since Palti entries now appear in their product type sections */}
                           </div>
-
-                          {/* Gap */}
-                          <div></div>
 
                           {/* Right Side: Vertically Stacked Product Types */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -9784,6 +9872,97 @@ const Records: React.FC = () => {
         onDateChange={setPaltiDate}
       />
 
+      {deleteConfirmation.show && deleteConfirmation.item && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 11000,
+          animation: 'fadeIn 0.2s ease'
+        }} onClick={() => setDeleteConfirmation({ show: false, item: null })}>
+          <div style={{
+            background: 'white',
+            width: '90%',
+            maxWidth: '420px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            borderRadius: '16px',
+            padding: '2rem',
+            position: 'relative',
+            animation: 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+            textAlign: 'center'
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              backgroundColor: '#fee2e2',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.75rem',
+              margin: '0 auto 1.25rem auto'
+            }}>
+              ⚠️
+            </div>
+            
+            <h3 style={{ margin: '0 0 0.5rem 0', color: '#1f2937', fontSize: '1.25rem', fontWeight: 700 }}>
+              Confirm Deletion
+            </h3>
+            
+            <p style={{ margin: '0 0 1.5rem 0', color: '#6b7280', fontSize: '0.9rem', lineHeight: '1.5' }}>
+              Are you sure you want to delete this <strong>{deleteConfirmation.item.movementType || 'movement'}</strong> entry? This action is permanent and cannot be undone.
+            </p>
+            
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button
+                onClick={() => setDeleteConfirmation({ show: false, item: null })}
+                style={{
+                  padding: '0.5rem 1.25rem',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                Cancel
+              </button>
+              
+              <button
+                onClick={async () => {
+                  const targetItem = deleteConfirmation.item;
+                  setDeleteConfirmation({ show: false, item: null });
+                  await executeDeleteRiceMovement(targetItem);
+                }}
+                style={{
+                  padding: '0.5rem 1.25rem',
+                  background: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {editingRiceMovement && createPortal(
         <div style={{
           position: 'fixed',
@@ -9841,6 +10020,23 @@ const Records: React.FC = () => {
             </div>
 
             <div style={{ padding: '1.5rem 2rem', flex: 1, overflowY: 'auto' }}>
+              {editError && (
+                <div style={{
+                  background: '#fef2f2',
+                  border: '1.5px solid #f87171',
+                  color: '#991b1b',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span>❌</span> {editError}
+                </div>
+              )}
 
               {/* Movement Type Badge (Read-only) */}
               <div style={{ marginBottom: '16px' }}>
@@ -10052,24 +10248,97 @@ const Records: React.FC = () => {
               {editingRiceMovement.movementType === 'palti' && (
                 <div style={{
                   background: '#f5f3ff',
-                  padding: '12px',
-                  borderRadius: '8px',
+                  padding: '16px',
+                  borderRadius: '12px',
                   marginBottom: '16px',
-                  border: '1px solid #c4b5fd'
+                  border: '1.5px solid #c4b5fd'
                 }}>
-                  <div style={{ fontWeight: '600', color: '#7c3aed', marginBottom: '8px' }}>🔄 Palti Details</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.9rem' }}>
+                  <div style={{ fontWeight: '700', color: '#7c3aed', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🔄</span> Palti Configuration Details
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {/* From Location */}
                     <div>
-                      <span style={{ color: '#6b7280' }}>From:</span> {editingRiceMovement.from_location || editingRiceMovement.fromLocation || 'N/A'}
+                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#4b5563' }}>From Location (Source)</label>
+                      <select
+                        value={editingRiceMovement.fromLocation || editingRiceMovement.from_location || ''}
+                        onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, fromLocation: e.target.value, from_location: e.target.value })}
+                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', backgroundColor: 'white' }}
+                      >
+                        <option value="">Select Location</option>
+                        {riceStockLocations.map((loc: any) => (
+                          <option key={loc.code} value={loc.code}>{loc.code} - {loc.name}</option>
+                        ))}
+                      </select>
                     </div>
+
+                    {/* To Location */}
                     <div>
-                      <span style={{ color: '#6b7280' }}>To:</span> {editingRiceMovement.to_location || editingRiceMovement.toLocation || 'N/A'}
+                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#4b5563' }}>To Location (Target)</label>
+                      <select
+                        value={editingRiceMovement.toLocation || editingRiceMovement.to_location || editingRiceMovement.locationCode || editingRiceMovement.location_code || ''}
+                        onChange={(e) => setEditingRiceMovement({
+                          ...editingRiceMovement,
+                          toLocation: e.target.value,
+                          to_location: e.target.value,
+                          locationCode: e.target.value,
+                          location_code: e.target.value
+                        })}
+                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', backgroundColor: 'white' }}
+                      >
+                        <option value="">Select Location</option>
+                        {riceStockLocations.map((loc: any) => (
+                          <option key={loc.code} value={loc.code}>{loc.code} - {loc.name}</option>
+                        ))}
+                      </select>
                     </div>
-                    {(editingRiceMovement.shortage_kg || editingRiceMovement.shortageKg) && (
-                      <div style={{ gridColumn: '1 / -1', color: '#dc2626', fontWeight: '600' }}>
-                        ⚠️ Shortage: {editingRiceMovement.shortage_kg || editingRiceMovement.shortageKg} kg
-                      </div>
-                    )}
+
+                    {/* Source Bags */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#4b5563' }}>Source Bags</label>
+                      <input
+                        type="number"
+                        value={editingRiceMovement.sourceBags || editingRiceMovement.source_bags || 0}
+                        onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, sourceBags: parseInt(e.target.value) || 0, source_bags: parseInt(e.target.value) || 0 })}
+                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}
+                      />
+                    </div>
+
+                    {/* Source Packaging */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#4b5563' }}>Source Packaging</label>
+                      <select
+                        value={editingRiceMovement.source_packaging_brand || editingRiceMovement.sourcePackaging?.brandName || ''}
+                        onChange={(e) => {
+                          const selectedPkg = packagings.find(pkg => pkg.brandName === e.target.value);
+                          setEditingRiceMovement({
+                            ...editingRiceMovement,
+                            source_packaging_brand: e.target.value,
+                            sourcePackagingId: selectedPkg?.id || editingRiceMovement.sourcePackagingId,
+                            source_packaging_id: selectedPkg?.id || editingRiceMovement.sourcePackagingId
+                          });
+                        }}
+                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', backgroundColor: 'white' }}
+                      >
+                        <option value="">Select Packaging</option>
+                        {packagings.map((pkg: any) => (
+                          <option key={pkg.id} value={pkg.brandName}>{pkg.brandName} ({pkg.allottedKg}kg)</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Shortage kg */}
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#dc2626' }}>Shortage (kg)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editingRiceMovement.shortageKg || editingRiceMovement.shortage_kg || 0}
+                        onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, shortageKg: parseFloat(e.target.value) || 0, shortage_kg: parseFloat(e.target.value) || 0 })}
+                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #fca5a5', borderRadius: '8px', fontSize: '0.9rem', color: '#dc2626', backgroundColor: '#fef2f2' }}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

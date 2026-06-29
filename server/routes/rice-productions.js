@@ -886,6 +886,34 @@ router.delete('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       return res.status(400).json({ error: 'Only admins can delete approved entries' });
     }
 
+    // Validation: Check stock before deleting an approved production
+    if (production.status === 'approved') {
+      try {
+        const { getAvailableStock } = require('../services/riceStockValidationService');
+        const outturn = await Outturn.findByPk(production.outturnId);
+        const packaging = await Packaging.findByPk(production.packagingId);
+        if (outturn && packaging) {
+          const variety = outturn.allottedVariety + (outturn.type ? ' ' + outturn.type : '');
+          const available = await getAvailableStock({
+            locationCode: production.locationCode,
+            productType: production.productType,
+            variety: variety,
+            packagingId: production.packagingId,
+            bagSizeKg: parseFloat(packaging.allottedKg)
+          });
+          
+          if (available < parseFloat(production.quantityQuintals)) {
+            return res.status(400).json({
+              error: `Cannot delete: Insufficient stock remaining. Current stock: ${available} qtls, deleting this requires ${production.quantityQuintals} qtls.`
+            });
+          }
+        }
+      } catch (validationError) {
+        console.error('⚠️ Delete validation error:', validationError.message);
+        // Continue if validation engine fails to avoid blocking admin actions
+      }
+    }
+
     const targetOutturnId = production.outturnId;
     await production.destroy();
 
@@ -894,6 +922,18 @@ router.delete('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       await ByProductSyncService.syncOutturn(targetOutturnId, req.user.userId);
     } catch (syncError) {
       console.error('⚠️ By-Product resync failed during deletion:', syncError.message);
+    }
+
+    // CRITICAL: Clear all related caches to ensure fresh data on refresh
+    try {
+      const cacheService = require('../services/cacheService');
+      await cacheService.delPattern('rice*');
+      await cacheService.delPattern('production*');
+      await cacheService.delPattern('byProduct*');
+      await cacheService.delPattern('outturn*');
+      console.log('✅ All related caches cleared after deletion');
+    } catch (cacheError) {
+      console.warn('⚠️ Failed to clear cache:', cacheError.message);
     }
 
     res.json({ message: 'Rice production entry deleted successfully' });

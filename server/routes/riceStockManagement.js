@@ -1975,7 +1975,7 @@ router.put('/movements/:id', auth, async (req, res) => {
         const finalMovementType = movementType || currentMovement.movement_type;
         const finalProductType = productType || currentMovement.product_type;
         const finalLocationCode = locationCode || currentMovement.location_code;
-        const finalBags = bags || currentMovement.bags;
+        const finalBags = bags !== undefined ? parseInt(bags) : currentMovement.bags;
         const finalVariety = variety || currentMovement.variety;
         const finalPackagingId = packagingId || currentMovement.packaging_id;
         const finalSourcePackagingId = sourcePackagingId || currentMovement.source_packaging_id;
@@ -2354,9 +2354,11 @@ router.delete('/movements/:id', auth, async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Check if movement exists
+        // Check if movement exists and fetch its details
         const existing = await sequelize.query(`
-            SELECT id FROM rice_stock_movements WHERE id = :id
+            SELECT id, status, movement_type, location_code, product_type, variety, 
+                   packaging_id, target_packaging_id, to_location, quantity_quintals
+            FROM rice_stock_movements WHERE id = :id
         `, {
             replacements: { id },
             type: sequelize.QueryTypes.SELECT
@@ -2369,6 +2371,59 @@ router.delete('/movements/:id', auth, async (req, res) => {
             });
         }
 
+        const current = existing[0];
+
+        // Cannot delete approved entries unless admin/manager
+        if (current.status === 'approved' && req.user.role !== 'admin' && req.user.role !== 'manager') {
+            return res.status(400).json({
+                success: false,
+                error: 'Only admins and managers can delete approved entries'
+            });
+        }
+
+        // Validate stock if deleting an approved stock-adding movement (Purchase, Palti target)
+        if (current.status === 'approved') {
+            const isPurchase = current.movement_type === 'purchase';
+            const isPalti = current.movement_type === 'palti';
+
+            if (isPurchase || isPalti) {
+                try {
+                    const packagingId = isPalti ? current.target_packaging_id : current.packaging_id;
+                    const locationToCheck = isPalti ? current.to_location : current.location_code;
+                    const qtlsToCheck = parseFloat(current.quantity_quintals || 0);
+
+                    if (packagingId && locationToCheck) {
+                        const [packaging] = await sequelize.query(`
+                            SELECT "allottedKg" FROM packagings WHERE id = :packagingId
+                        `, {
+                            replacements: { packagingId },
+                            type: sequelize.QueryTypes.SELECT
+                        });
+
+                        const bagSizeKg = packaging ? parseFloat(packaging.allottedKg || 26) : 26;
+                        const { getAvailableStock } = require('../services/riceStockValidationService');
+                        const available = await getAvailableStock({
+                            locationCode: locationToCheck,
+                            productType: current.product_type,
+                            variety: current.variety,
+                            packagingId: packagingId,
+                            bagSizeKg
+                        });
+
+                        if (available < qtlsToCheck) {
+                            return res.status(400).json({
+                                success: false,
+                                error: `Cannot delete: Insufficient stock remaining at ${locationToCheck}. Current stock: ${available.toFixed(2)} qtls, deleting this requires ${qtlsToCheck.toFixed(2)} qtls.`
+                            });
+                        }
+                    }
+                } catch (validationError) {
+                    console.error('⚠️ Delete validation error:', validationError.message);
+                    // Continue deletion if verification fails to avoid blocking admins
+                }
+            }
+        }
+
         // Delete movement
         await sequelize.query(`
             DELETE FROM rice_stock_movements WHERE id = :id
@@ -2376,6 +2431,18 @@ router.delete('/movements/:id', auth, async (req, res) => {
             replacements: { id },
             type: sequelize.QueryTypes.DELETE
         });
+
+        // CRITICAL: Clear all related caches to ensure fresh data on refresh
+        try {
+            const cacheService = require('../services/cacheService');
+            await cacheService.delPattern('rice*');
+            await cacheService.delPattern('production*');
+            await cacheService.delPattern('byProduct*');
+            await cacheService.delPattern('outturn*');
+            console.log('✅ All related caches cleared after movement deletion');
+        } catch (cacheError) {
+            console.warn('⚠️ Failed to clear cache:', cacheError.message);
+        }
 
         res.json({
             success: true,

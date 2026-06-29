@@ -162,7 +162,32 @@ function validateDimensionsPresent(dimensions) {
   };
 }
 
+/**
+ * Gets available stock for specific dimensions
+ */
+async function getAvailableStock({
+  locationCode,
+  productType,
+  variety,
+  packagingId,
+  bagSizeKg,
+  date = new Date().toISOString().split('T')[0]
+}) {
+  const result = await validateCompletePaltiDimensions({
+    sourceLocation: locationCode,
+    productType,
+    variety,
+    sourcePackagingId: packagingId,
+    sourceBagSizeKg: bagSizeKg,
+    requestedQuantity: 0,
+    date
+  });
+  return result.available;
+}
+
 module.exports = {
   validateCompletePaltiDimensions,
-  validateDimensionsPresent
+  validateDimensionsPresent,
+  getAvailableStock
 };
+

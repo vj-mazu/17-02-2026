@@ -5,6 +5,11 @@ import styled from 'styled-components';
 // ═══════════════════════════════════════════════════════
 
 export const Container = styled.div`
+  @media (max-width: 768px) {
+    .hide-mobile {
+      display: none !important;
+    }
+  }
 `;
 
 export const Title = styled.h1`
@@ -19,13 +24,23 @@ export const Title = styled.h1`
 
 export const TabContainer = styled.div`
   display: flex;
-  gap: 1rem;
+  gap: 0.5rem;
   margin-bottom: 2rem;
   border-bottom: 2px solid #e5e7eb;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 0.25rem;
+  -webkit-overflow-scrolling: touch;
+  
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 `;
 
 export const Tab = styled.button<{ $active: boolean }>`
-  padding: 1rem 2rem;
+  padding: 0.75rem 1.25rem;
   border: none;
   background: ${props => props.$active ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'transparent'};
   color: ${props => props.$active ? 'white' : '#6b7280'};
@@ -33,6 +48,7 @@ export const Tab = styled.button<{ $active: boolean }>`
   cursor: pointer;
   border-radius: 8px 8px 0 0;
   transition: all 0.3s ease;
+  flex-shrink: 0;
 
   &:hover {
     background: ${props => props.$active ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#f3f4f6'};
