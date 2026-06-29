@@ -734,7 +734,7 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
 
         if (!date) newErrors.date = 'Date is required';
         if (!productType) newErrors.productType = 'Select product type';
-        if (!outturnId || !selectedVarietyData) newErrors.variety = 'Select variety';
+        if (!outturnId && !selectedVarietyData) newErrors.variety = 'Select variety';
         if (!sourcePackagingId) newErrors.sourcePackaging = 'Select source packaging';
         if (!sourceBags || parseInt(sourceBags) <= 0) newErrors.sourceBags = 'Enter valid bags';
         if (!locationCode) newErrors.location = 'Select location';
@@ -947,6 +947,7 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                                     <Label>Variety *</Label>
                                     <RiceStockVarietyDropdown
                                         value={outturnId}
+                                        varietyName={selectedVarietyData?.standardized_variety}
                                         onChange={handleVarietyChange}
                                         placeholder="Select variety..."
                                         required

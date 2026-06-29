@@ -327,7 +327,7 @@ const AddRiceSaleModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault();
 
     // Validation
-    if (!formData.date || !formData.productType || !formData.bags || !formData.packagingId || !formData.locationCode || !formData.outturnId) {
+    if (!formData.date || !formData.productType || !formData.bags || !formData.packagingId || !formData.locationCode || (!formData.outturnId && !selectedVarietyData)) {
       toast.error('Please fill in all required fields including rice variety');
       return;
     }
@@ -449,6 +449,7 @@ const AddRiceSaleModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
             <FormGroup>
               <RiceStockVarietyDropdown
                 value={formData.outturnId}
+                varietyName={selectedVarietyData?.standardized_variety}
                 onChange={handleVarietyChange}
                 label="Rice Variety"
                 placeholder="-- Select Rice Variety --"

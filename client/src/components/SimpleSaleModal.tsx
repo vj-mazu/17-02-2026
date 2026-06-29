@@ -459,7 +459,7 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!date || !billNumber || !outturnId || !selectedVarietyData) {
+    if (!date || !billNumber || (!outturnId && !selectedVarietyData)) {
       toast.error('Please fill in Date, Bill Number and Variety');
       return;
     }
@@ -562,6 +562,7 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
                 <FormGroup>
                   <RiceStockVarietyDropdown
                     value={outturnId}
+                    varietyName={selectedVarietyData?.standardized_variety}
                     onChange={handleVarietyChange}
                     label="Rice Variety *"
                     placeholder="Select variety..."

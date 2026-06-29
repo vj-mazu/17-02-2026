@@ -311,7 +311,7 @@ const SimplePurchaseModal: React.FC<SimplePurchaseModalProps> = ({ isOpen, onClo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.date || !formData.billNumber || !formData.bags || !formData.packaging || !formData.to || !formData.outturnId || !formData.productType) {
+    if (!formData.date || !formData.billNumber || !formData.bags || !formData.packaging || !formData.to || (!formData.outturnId && !selectedVarietyData) || !formData.productType) {
       toast.error('Please fill in all required fields including product type and rice variety');
       return;
     }
@@ -418,6 +418,7 @@ const SimplePurchaseModal: React.FC<SimplePurchaseModalProps> = ({ isOpen, onClo
               <FormGroup>
                 <RiceStockVarietyDropdown
                   value={formData.outturnId}
+                  varietyName={selectedVarietyData?.standardized_variety}
                   onChange={handleVarietyChange}
                   label="Rice Variety"
                   placeholder="-- Select Rice Variety --"
