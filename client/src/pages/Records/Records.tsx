@@ -4571,6 +4571,9 @@ const Records: React.FC = () => {
 
                               return (
                                 <div key={productType}>
+                                  <pre style={{ fontSize: '8px', color: 'red', background: '#fee2e2', padding: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                    DEBUG todayPaltiItems: {JSON.stringify(todayPaltiItems.map((item: any) => ({ id: item.id, variety: item.variety, bags: item.bags, qtls: item.qtls, mvType: item.movementType })))}
+                                  </pre>
                                   <div style={{
                                     background: '#f8f9fa',
                                     borderRadius: '8px',
