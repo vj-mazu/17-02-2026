@@ -103,7 +103,7 @@ class RiceStockCalculationService {
           LEFT JOIN packagings tp ON rsm.target_packaging_id = tp.id
           WHERE rsm.status = 'approved'
             AND rsm.date <= :date
-            AND rsm.location_code = :locationCode
+            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
             AND rsm.product_type = :productType
             ${packagingInfo.brand && packagingInfo.sizeKg ? `
             AND (
