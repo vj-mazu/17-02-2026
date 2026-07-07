@@ -5113,7 +5113,7 @@ return (
                                               );
                                             })}
 
-                                            /* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */
+                                            
                                             {Object.entries(paltiSplitsMap).map(([key, splits]) => {
                                               if (!splits || splits.length === 0) return null;
                                               const firstSplit = splits[0];
@@ -5803,7 +5803,7 @@ return (
                                           );
                                         })}
 
-                                      /* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */
+                                      
                                       {Object.entries(paltiSplitsMap).map(([key, splits]) => {
                                         if (!splits || splits.length === 0) return null;
                                         const firstSplit = splits[0];
@@ -6476,7 +6476,7 @@ return (
                                         );
                                       })}
 
-                                    /* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */
+                                    
                                     {Object.entries(paltiSplitsMap).map(([key, splits]) => {
                                       if (!splits || splits.length === 0) return null;
                                       const firstSplit = splits[0];
