@@ -4508,7 +4508,8 @@ const Records: React.FC = () => {
                           <div>
                             {(() => {
                               const productType = 'Rice';
-                                                            // Build Palti splits map using today's palti movements for this product type
+
+                              // Build Palti splits map using today's palti movements for this product type
                               const todayPaltiItems = (productionGroups[productType] || []).filter((item: any) => item.movementType === 'palti');
                               const seenIds = new Set<string>();
                               const paltiItems = todayPaltiItems.filter((item: any) => {
@@ -4540,40 +4541,36 @@ const Records: React.FC = () => {
                                 const targetLocation = palti.toLocation || palti.location || 'Unknown';
                                 const shortageKg = Number(palti.shortageKg || palti.conversionShortageKg || palti.conversion_shortage_kg || 0);
 
+                                const sourceKgPerBag = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
                                 const paltiQtls = Math.abs(palti.qtls || palti.quantityQuintals || 0);
                                 const paltiShortageQtls = (shortageKg || 0) / 100;
                                 const sourceQtls = paltiQtls + paltiShortageQtls;
-                                const sourceKgPerBag = palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26;
                                 const calculatedSourceBags = Math.ceil((sourceQtls * 100) / sourceKgPerBag);
                                 const actualSourceBags = palti.sourceBags || calculatedSourceBags;
 
                                 paltiSplitsMap[sourceKey].push({
-                                  qtls: paltiQtls,
-                                  bags: palti.bags || 0,
-                                  sourceBags: actualSourceBags,
-                                  targetPackaging: targetPkg,
-                                  targetBagSizeKg,
-                                  targetLocation,
-                                  shortageKg,
-                                  variety: palti.variety || 'Unknown',
-                                  sourceVariety: palti.variety || palti.sourceVariety || 'Unknown',
-                                  sourceLocation: palti.fromLocation || palti.locationCode || 'Unknown',
-                                  sourcePackaging: palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown',
-                                  sourceBagSizeKg: palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26
+                                qtls: paltiQtls,
+                                bags: palti.bags || 0,
+                                sourceBags: actualSourceBags,
+                                targetPackaging: targetPkg,
+                                targetBagSizeKg,
+                                targetLocation,
+                                shortageKg,
+                                variety: palti.variety || 'Unknown',
+                                sourceVariety: palti.variety || palti.sourceVariety || 'Unknown',
+                                sourceLocation: palti.fromLocation || palti.locationCode || 'Unknown',
+                                sourcePackaging: palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown',
+                                sourceBagSizeKg: palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26
                                 });
                               });
-
                               const hasData = (
                                 openingGroups[productType]?.length > 0 ||
                                 productionGroups[productType]?.length > 0 ||
                                 Object.values(paltiSplitsMap).some(s => s && s.length > 0)
                               );
 
-                              return (
+return (
                                 <div key={productType}>
-                                  <pre style={{ fontSize: '8px', color: 'red', background: '#fee2e2', padding: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                                    DEBUG todayPaltiItems: {JSON.stringify(todayPaltiItems.map((item: any) => ({ id: item.id, variety: item.variety, bags: item.bags, qtls: item.qtls, mvType: item.movementType })))}
-                                  </pre>
                                   <div style={{
                                     background: '#f8f9fa',
                                     borderRadius: '8px',
@@ -5116,7 +5113,7 @@ const Records: React.FC = () => {
                                               );
                                             })}
 
-                                            {/* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */}
+                                            /* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */
                                             {Object.entries(paltiSplitsMap).map(([key, splits]) => {
                                               if (!splits || splits.length === 0) return null;
                                               const firstSplit = splits[0];
@@ -5226,227 +5223,7 @@ const Records: React.FC = () => {
                                               );
                                             })}
 
-                                            {/* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */}
-                                      {Object.entries(paltiSplitsMap).map(([key, splits]) => {
-                                        if (!splits || splits.length === 0) return null;
-                                        const firstSplit = splits[0];
-                                        const totalShortage = splits.reduce((sum, s) => sum + (s.shortageKg || 0), 0);
-                                        const totalSourceQtls = splits.reduce((sum, s) => sum + (s.qtls || 0), 0) + (totalShortage / 100);
-                                        const totalSourceBags = splits.reduce((sum, s) => sum + (s.sourceBags || 0), 0);
-
-                                        return (
-                                          <React.Fragment key={`unmatched-palti-${productType}-${key}`}>
-                                            {/* Source Row */}
-                                            <div style={{
-                                              display: 'grid',
-                                              gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
-                                              gap: '6px',
-                                              padding: '3px 0',
-                                              fontSize: '8.5pt',
-                                              background: '#fef3c7',
-                                              marginBottom: '0',
-                                              borderRadius: '3px 3px 0 0',
-                                              border: '2px solid #f59e0b',
-                                              borderBottom: '1px dashed #f59e0b',
-                                              marginTop: '4px'
-                                            }}>
-                                              <div style={{ textAlign: 'center', fontSize: '8pt', fontWeight: 'bold' }}>{totalSourceQtls.toFixed(2)}</div>
-                                              <div style={{ textAlign: 'center', fontSize: '8pt' }}>{totalSourceBags}{firstSplit.sourceBagSizeKg ? `/${firstSplit.sourceBagSizeKg}kgs` : ''}</div>
-                                              <div style={{ fontSize: '8pt', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                                <div style={{ fontWeight: 'bold', color: '#b45309' }}>
-                                                  Palti Source
-                                                </div>
-                                                {totalShortage > 0 && (
-                                                  <div style={{
-                                                    background: '#fee2e2',
-                                                    color: '#dc2626',
-                                                    fontSize: '7pt',
-                                                    padding: '1px 4px',
-                                                    borderRadius: '4px',
-                                                    fontWeight: 'bold',
-                                                    border: '1px solid #fca5a5'
-                                                  }}>
-                                                    S: {totalShortage.toFixed(1)}kg
-                                                  </div>
-                                                )}
-                                              </div>
-                                              <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: 'bold' }}>{firstSplit.sourceVariety}</div>
-                                              <div style={{ fontSize: '8pt', textAlign: 'center' }}>{firstSplit.sourcePackaging}</div>
-                                              <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: 'bold' }}>{firstSplit.sourceLocation}</div>
-                                            </div>
-
-                                            {/* Target Splits */}
-                                            <div style={{
-                                              border: '2px solid #f59e0b',
-                                              borderTop: 'none',
-                                              borderRadius: '0 0 4px 4px',
-                                              marginBottom: '6px',
-                                              overflow: 'hidden'
-                                            }}>
-                                              {splits.map((split, splitIdx) => (
-                                                <div key={`split-${splitIdx}`} style={{
-                                                  display: 'grid',
-                                                  gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
-                                                  gap: '6px',
-                                                  padding: '4px 12px',
-                                                  fontSize: '8pt',
-                                                  background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
-                                                  color: '#7c2d12',
-                                                  borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
-                                                  position: 'relative'
-                                                }}>
-                                                  <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
-                                                    {split.qtls.toFixed(2)}
-                                                  </div>
-                                                  <div style={{ textAlign: 'center', color: '#9a3412' }}>
-                                                    {split.bags}/{split.targetBagSizeKg}kg
-                                                  </div>
-                                                  <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                    <span style={{ color: '#f97316' }}>↳</span> Palti Target
-                                                  </div>
-                                                  <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
-                                                  <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
-                                                  <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
-                                                </div>
-                                              ))}
-                                              {totalShortage > 0 && (
-                                                <div style={{
-                                                  display: 'grid',
-                                                  gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
-                                                  gap: '6px',
-                                                  padding: '5px 12px',
-                                                  fontSize: '8pt',
-                                                  background: '#fee2e2',
-                                                  color: '#dc2626',
-                                                  borderTop: '1.5px solid #fca5a5',
-                                                  fontWeight: 'bold'
-                                                }}>
-                                                  <div style={{ textAlign: 'center' }}>{(totalShortage / 100).toFixed(2)}</div>
-                                                  <div style={{ textAlign: 'center' }}>-</div>
-                                                  <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                    <span style={{ fontSize: '10pt' }}>⚠️</span> Shortage From Palti
-                                                  </div>
-                                                  <div style={{ textAlign: 'center' }}>-</div>
-                                                  <div style={{ textAlign: 'center' }}>-</div>
-                                                  <div style={{ textAlign: 'center' }}>{totalShortage.toFixed(1)}kg</div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </React.Fragment>
-                                        );
-                                      })}
-
-                                      {/* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */}
-                                    {Object.entries(paltiSplitsMap).map(([key, splits]) => {
-                                      if (!splits || splits.length === 0) return null;
-                                      const firstSplit = splits[0];
-                                      const totalShortage = splits.reduce((sum, s) => sum + (s.shortageKg || 0), 0);
-                                      const totalSourceQtls = splits.reduce((sum, s) => sum + (s.qtls || 0), 0) + (totalShortage / 100);
-                                      const totalSourceBags = splits.reduce((sum, s) => sum + (s.sourceBags || 0), 0);
-
-                                      return (
-                                        <React.Fragment key={`unmatched-palti-${productType}-${key}`}>
-                                          {/* Source Row */}
-                                          <div style={{
-                                            display: 'grid',
-                                            gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
-                                            gap: '6px',
-                                            padding: '3px 0',
-                                            fontSize: '8.5pt',
-                                            background: '#fef3c7',
-                                            marginBottom: '0',
-                                            borderRadius: '3px 3px 0 0',
-                                            border: '2px solid #f59e0b',
-                                            borderBottom: '1px dashed #f59e0b',
-                                            marginTop: '4px'
-                                          }}>
-                                            <div style={{ textAlign: 'center', fontSize: '8pt', fontWeight: 'bold' }}>{totalSourceQtls.toFixed(2)}</div>
-                                            <div style={{ textAlign: 'center', fontSize: '8pt' }}>{totalSourceBags}{firstSplit.sourceBagSizeKg ? `/${firstSplit.sourceBagSizeKg}kgs` : ''}</div>
-                                            <div style={{ fontSize: '8pt', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                              <div style={{ fontWeight: 'bold', color: '#b45309' }}>
-                                                Palti Source
-                                              </div>
-                                              {totalShortage > 0 && (
-                                                <div style={{
-                                                  background: '#fee2e2',
-                                                  color: '#dc2626',
-                                                  fontSize: '7pt',
-                                                  padding: '1px 4px',
-                                                  borderRadius: '4px',
-                                                  fontWeight: 'bold',
-                                                  border: '1px solid #fca5a5'
-                                                }}>
-                                                  S: {totalShortage.toFixed(1)}kg
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: 'bold' }}>{firstSplit.sourceVariety}</div>
-                                            <div style={{ fontSize: '8pt', textAlign: 'center' }}>{firstSplit.sourcePackaging}</div>
-                                            <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: 'bold' }}>{firstSplit.sourceLocation}</div>
-                                          </div>
-
-                                          {/* Target Splits */}
-                                          <div style={{
-                                            border: '2px solid #f59e0b',
-                                            borderTop: 'none',
-                                            borderRadius: '0 0 4px 4px',
-                                            marginBottom: '6px',
-                                            overflow: 'hidden'
-                                          }}>
-                                            {splits.map((split, splitIdx) => (
-                                              <div key={`split-${splitIdx}`} style={{
-                                                display: 'grid',
-                                                gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
-                                                gap: '6px',
-                                                padding: '4px 12px',
-                                                fontSize: '8pt',
-                                                background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
-                                                color: '#7c2d12',
-                                                borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
-                                                position: 'relative'
-                                              }}>
-                                                <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
-                                                  {split.qtls.toFixed(2)}
-                                                </div>
-                                                <div style={{ textAlign: 'center', color: '#9a3412' }}>
-                                                  {split.bags}/{split.targetBagSizeKg}kg
-                                                </div>
-                                                <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                  <span style={{ color: '#f97316' }}>↳</span> Palti Target
-                                                </div>
-                                                <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
-                                                <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
-                                                <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
-                                              </div>
-                                            ))}
-                                            {totalShortage > 0 && (
-                                              <div style={{
-                                                display: 'grid',
-                                                gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
-                                                gap: '6px',
-                                                padding: '5px 12px',
-                                                fontSize: '8pt',
-                                                background: '#fee2e2',
-                                                color: '#dc2626',
-                                                borderTop: '1.5px solid #fca5a5',
-                                                fontWeight: 'bold'
-                                              }}>
-                                                <div style={{ textAlign: 'center' }}>{(totalShortage / 100).toFixed(2)}</div>
-                                                <div style={{ textAlign: 'center' }}>-</div>
-                                                <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                  <span style={{ fontSize: '10pt' }}>⚠️</span> Shortage From Palti
-                                                </div>
-                                                <div style={{ textAlign: 'center' }}>-</div>
-                                                <div style={{ textAlign: 'center' }}>-</div>
-                                                <div style={{ textAlign: 'center' }}>{totalShortage.toFixed(1)}kg</div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </React.Fragment>
-                                      );
-                                    })}
-
-                                    {/* Closing Stock */}
+                                            {/* Closing Stock */}
                                             {hasData && (
                                               <div style={{
                                                 display: 'grid',
@@ -5524,21 +5301,20 @@ const Records: React.FC = () => {
                                 const actualSourceBags2 = palti.sourceBags || calculatedSourceBags2;
 
                                 paltiSplitsMap[sourceKey].push({
-                                  qtls: paltiQtls2,
-                                  bags: palti.bags || 0,
-                                  sourceBags: actualSourceBags2,
-                                  targetPackaging: targetPkg,
-                                  targetBagSizeKg: palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || palti.sourceBagSizeKg || 26,
-                                  targetLocation: palti.toLocation || palti.location || 'Unknown',
-                                  shortageKg: shortageKg2,
-                                  variety: palti.variety || 'Unknown',
-                                  sourceVariety: palti.variety || palti.sourceVariety || 'Unknown',
-                                  sourceLocation: palti.fromLocation || palti.locationCode || 'Unknown',
-                                  sourcePackaging: palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown',
-                                  sourceBagSizeKg: palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26
+                                qtls: paltiQtls2,
+                                bags: palti.bags || 0,
+                                sourceBags: actualSourceBags2,
+                                targetPackaging: targetPkg,
+                                targetBagSizeKg: palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || palti.sourceBagSizeKg || 26,
+                                targetLocation: palti.toLocation || palti.location || 'Unknown',
+                                shortageKg: shortageKg2,
+                                variety: palti.variety || 'Unknown',
+                                sourceVariety: palti.variety || palti.sourceVariety || 'Unknown',
+                                sourceLocation: palti.fromLocation || palti.locationCode || 'Unknown',
+                                sourcePackaging: palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown',
+                                sourceBagSizeKg: palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26
                                 });
                               });
-
                               hasData = hasData || Object.values(paltiSplitsMap).some(s => s && s.length > 0);
 
 return (
@@ -6027,6 +5803,116 @@ return (
                                           );
                                         })}
 
+                                      /* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */
+                                      {Object.entries(paltiSplitsMap).map(([key, splits]) => {
+                                        if (!splits || splits.length === 0) return null;
+                                        const firstSplit = splits[0];
+                                        const totalShortage = splits.reduce((sum, s) => sum + (s.shortageKg || 0), 0);
+                                        const totalSourceQtls = splits.reduce((sum, s) => sum + (s.qtls || 0), 0) + (totalShortage / 100);
+                                        const totalSourceBags = splits.reduce((sum, s) => sum + (s.sourceBags || 0), 0);
+
+                                        return (
+                                          <React.Fragment key={`unmatched-palti-${productType}-${key}`}>
+                                            {/* Source Row */}
+                                            <div style={{
+                                              display: 'grid',
+                                              gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                              gap: '6px',
+                                              padding: '3px 0',
+                                              fontSize: '8.5pt',
+                                              background: '#fef3c7',
+                                              marginBottom: '0',
+                                              borderRadius: '3px 3px 0 0',
+                                              border: '2px solid #f59e0b',
+                                              borderBottom: '1px dashed #f59e0b',
+                                              marginTop: '4px'
+                                            }}>
+                                              <div style={{ textAlign: 'center', fontSize: '8pt', fontWeight: 'bold' }}>{totalSourceQtls.toFixed(2)}</div>
+                                              <div style={{ textAlign: 'center', fontSize: '8pt' }}>{totalSourceBags}{firstSplit.sourceBagSizeKg ? `/${firstSplit.sourceBagSizeKg}kgs` : ''}</div>
+                                              <div style={{ fontSize: '8pt', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                <div style={{ fontWeight: 'bold', color: '#b45309' }}>
+                                                  Palti Source
+                                                </div>
+                                                {totalShortage > 0 && (
+                                                  <div style={{
+                                                    background: '#fee2e2',
+                                                    color: '#dc2626',
+                                                    fontSize: '7pt',
+                                                    padding: '1px 4px',
+                                                    borderRadius: '4px',
+                                                    fontWeight: 'bold',
+                                                    border: '1px solid #fca5a5'
+                                                  }}>
+                                                    S: {totalShortage.toFixed(1)}kg
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: 'bold' }}>{firstSplit.sourceVariety}</div>
+                                              <div style={{ fontSize: '8pt', textAlign: 'center' }}>{firstSplit.sourcePackaging}</div>
+                                              <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: 'bold' }}>{firstSplit.sourceLocation}</div>
+                                            </div>
+
+                                            {/* Target Splits */}
+                                            <div style={{
+                                              border: '2px solid #f59e0b',
+                                              borderTop: 'none',
+                                              borderRadius: '0 0 4px 4px',
+                                              marginBottom: '6px',
+                                              overflow: 'hidden'
+                                            }}>
+                                              {splits.map((split, splitIdx) => (
+                                                <div key={`split-${splitIdx}`} style={{
+                                                  display: 'grid',
+                                                  gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                  gap: '6px',
+                                                  padding: '4px 12px',
+                                                  fontSize: '8pt',
+                                                  background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
+                                                  color: '#7c2d12',
+                                                  borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
+                                                  position: 'relative'
+                                                }}>
+                                                  <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
+                                                    {split.qtls.toFixed(2)}
+                                                  </div>
+                                                  <div style={{ textAlign: 'center', color: '#9a3412' }}>
+                                                    {split.bags}/{split.targetBagSizeKg}kg
+                                                  </div>
+                                                  <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                    <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                  </div>
+                                                  <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
+                                                  <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
+                                                  <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
+                                                </div>
+                                              ))}
+                                              {totalShortage > 0 && (
+                                                <div style={{
+                                                  display: 'grid',
+                                                  gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                  gap: '6px',
+                                                  padding: '5px 12px',
+                                                  fontSize: '8pt',
+                                                  background: '#fee2e2',
+                                                  color: '#dc2626',
+                                                  borderTop: '1.5px solid #fca5a5',
+                                                  fontWeight: 'bold'
+                                                }}>
+                                                  <div style={{ textAlign: 'center' }}>{(totalShortage / 100).toFixed(2)}</div>
+                                                  <div style={{ textAlign: 'center' }}>-</div>
+                                                  <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                    <span style={{ fontSize: '10pt' }}>⚠️</span> Shortage From Palti
+                                                  </div>
+                                                  <div style={{ textAlign: 'center' }}>-</div>
+                                                  <div style={{ textAlign: 'center' }}>-</div>
+                                                  <div style={{ textAlign: 'center' }}>{totalShortage.toFixed(1)}kg</div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </React.Fragment>
+                                        );
+                                      })}
+
                                       {/* Closing Stock */}
                                       {hasData && (
                                         <div style={{
@@ -6121,24 +6007,23 @@ return (
                               const actualSourceBags3 = palti.sourceBags || calculatedSourceBags3;
 
                               paltiSplitsMap[sourceKey].push({
-                                qtls: paltiQtls3,
-                                bags: palti.bags || 0,
-                                sourceBags: actualSourceBags3, // CRITICAL: Track how many source bags were used
-                                targetPackaging: targetPkg,
-                                targetBagSizeKg: palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || palti.sourceBagSizeKg || 26,
-                                targetLocation: palti.toLocation || palti.location || 'Unknown',
-                                shortageKg: shortageKg3,
-                                variety: palti.variety || 'Unknown',
-                                sourceVariety: palti.variety || palti.sourceVariety || 'Unknown',
-                                sourceLocation: palti.fromLocation || palti.locationCode || 'Unknown',
-                                sourcePackaging: palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown',
-                                sourceBagSizeKg: palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26
+                              qtls: paltiQtls3,
+                              bags: palti.bags || 0,
+                              sourceBags: actualSourceBags3,
+                              targetPackaging: targetPkg,
+                              targetBagSizeKg: palti.targetPackaging?.allottedKg || palti.target_packaging_kg || palti.bagSizeKg || palti.sourceBagSizeKg || 26,
+                              targetLocation: palti.toLocation || palti.location || 'Unknown',
+                              shortageKg: shortageKg3,
+                              variety: palti.variety || 'Unknown',
+                              sourceVariety: palti.variety || palti.sourceVariety || 'Unknown',
+                              sourceLocation: palti.fromLocation || palti.locationCode || 'Unknown',
+                              sourcePackaging: palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown',
+                              sourceBagSizeKg: palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26
                               });
                             });
-
                             hasData = hasData || Object.values(paltiSplitsMap).some(s => s && s.length > 0);
 
-                            return (
+return (
                               <div key={productType}>
                                 <div style={{
                                   background: '#f8f9fa',
@@ -6590,6 +6475,116 @@ return (
                                           </React.Fragment>
                                         );
                                       })}
+
+                                    /* Unmatched/Remaining Palti Conversions (where source variety had no opening stock) */
+                                    {Object.entries(paltiSplitsMap).map(([key, splits]) => {
+                                      if (!splits || splits.length === 0) return null;
+                                      const firstSplit = splits[0];
+                                      const totalShortage = splits.reduce((sum, s) => sum + (s.shortageKg || 0), 0);
+                                      const totalSourceQtls = splits.reduce((sum, s) => sum + (s.qtls || 0), 0) + (totalShortage / 100);
+                                      const totalSourceBags = splits.reduce((sum, s) => sum + (s.sourceBags || 0), 0);
+
+                                      return (
+                                        <React.Fragment key={`unmatched-palti-${productType}-${key}`}>
+                                          {/* Source Row */}
+                                          <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                            gap: '6px',
+                                            padding: '3px 0',
+                                            fontSize: '8.5pt',
+                                            background: '#fef3c7',
+                                            marginBottom: '0',
+                                            borderRadius: '3px 3px 0 0',
+                                            border: '2px solid #f59e0b',
+                                            borderBottom: '1px dashed #f59e0b',
+                                            marginTop: '4px'
+                                          }}>
+                                            <div style={{ textAlign: 'center', fontSize: '8pt', fontWeight: 'bold' }}>{totalSourceQtls.toFixed(2)}</div>
+                                            <div style={{ textAlign: 'center', fontSize: '8pt' }}>{totalSourceBags}{firstSplit.sourceBagSizeKg ? `/${firstSplit.sourceBagSizeKg}kgs` : ''}</div>
+                                            <div style={{ fontSize: '8pt', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                              <div style={{ fontWeight: 'bold', color: '#b45309' }}>
+                                                Palti Source
+                                              </div>
+                                              {totalShortage > 0 && (
+                                                <div style={{
+                                                  background: '#fee2e2',
+                                                  color: '#dc2626',
+                                                  fontSize: '7pt',
+                                                  padding: '1px 4px',
+                                                  borderRadius: '4px',
+                                                  fontWeight: 'bold',
+                                                  border: '1px solid #fca5a5'
+                                                }}>
+                                                  S: {totalShortage.toFixed(1)}kg
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: 'bold' }}>{firstSplit.sourceVariety}</div>
+                                            <div style={{ fontSize: '8pt', textAlign: 'center' }}>{firstSplit.sourcePackaging}</div>
+                                            <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: 'bold' }}>{firstSplit.sourceLocation}</div>
+                                          </div>
+
+                                          {/* Target Splits */}
+                                          <div style={{
+                                            border: '2px solid #f59e0b',
+                                            borderTop: 'none',
+                                            borderRadius: '0 0 4px 4px',
+                                            marginBottom: '6px',
+                                            overflow: 'hidden'
+                                          }}>
+                                            {splits.map((split, splitIdx) => (
+                                              <div key={`split-${splitIdx}`} style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                gap: '6px',
+                                                padding: '4px 12px',
+                                                fontSize: '8pt',
+                                                background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
+                                                color: '#7c2d12',
+                                                borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
+                                                position: 'relative'
+                                              }}>
+                                                <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
+                                                  {split.qtls.toFixed(2)}
+                                                </div>
+                                                <div style={{ textAlign: 'center', color: '#9a3412' }}>
+                                                  {split.bags}/{split.targetBagSizeKg}kg
+                                                </div>
+                                                <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                  <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                </div>
+                                                <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
+                                                <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
+                                                <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
+                                              </div>
+                                            ))}
+                                            {totalShortage > 0 && (
+                                              <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                gap: '6px',
+                                                padding: '5px 12px',
+                                                fontSize: '8pt',
+                                                background: '#fee2e2',
+                                                color: '#dc2626',
+                                                borderTop: '1.5px solid #fca5a5',
+                                                fontWeight: 'bold'
+                                              }}>
+                                                <div style={{ textAlign: 'center' }}>{(totalShortage / 100).toFixed(2)}</div>
+                                                <div style={{ textAlign: 'center' }}>-</div>
+                                                <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                  <span style={{ fontSize: '10pt' }}>⚠️</span> Shortage From Palti
+                                                </div>
+                                                <div style={{ textAlign: 'center' }}>-</div>
+                                                <div style={{ textAlign: 'center' }}>-</div>
+                                                <div style={{ textAlign: 'center' }}>{totalShortage.toFixed(1)}kg</div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </React.Fragment>
+                                      );
+                                    })}
 
                                     {/* Closing Stock */}
                                     {hasData && (
