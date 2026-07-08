@@ -514,8 +514,8 @@ const AddRiceSaleModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
                 <option value="">Select location...</option>
                 {locations.map(loc => (
                   <option key={loc.code} value={loc.code}>
-                    {loc.code} - {loc.name}
-                  </option>
+                                                    {loc.code}
+                                                </option>
                 ))}
               </Select>
             </FormGroup>

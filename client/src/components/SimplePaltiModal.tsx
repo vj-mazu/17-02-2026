@@ -431,8 +431,8 @@ const SimplePaltiModal: React.FC<SimplePaltiModalProps> = ({ isOpen, onClose, on
                 <option value="">Select location...</option>
                 {locations.map(loc => (
                   <option key={loc.code} value={loc.code}>
-                    {loc.name ? `${loc.code} - ${loc.name}` : loc.code}
-                  </option>
+                                                    {loc.code}
+                                                </option>
                 ))}
               </Select>
             </FormGroup>

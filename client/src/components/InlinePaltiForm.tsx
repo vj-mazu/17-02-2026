@@ -295,8 +295,8 @@ const InlinePaltiForm: React.FC<InlinePaltiFormProps> = ({ arrival, onClose, onS
                         <option value="">Select Location</option>
                         {locations.map(loc => (
                             <option key={loc.code} value={loc.code}>
-                                {loc.code} - {loc.name}
-                            </option>
+                                                    {loc.code}
+                                                </option>
                         ))}
                     </Select>
                 </FormGroup>

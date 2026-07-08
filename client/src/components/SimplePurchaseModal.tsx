@@ -478,8 +478,8 @@ const SimplePurchaseModal: React.FC<SimplePurchaseModalProps> = ({ isOpen, onClo
                   <option value="">Select location...</option>
                   {locations.map(loc => (
                     <option key={loc.code} value={loc.code}>
-                      {loc.name ? `${loc.code} - ${loc.name}` : loc.code}
-                    </option>
+                                                    {loc.code}
+                                                </option>
                   ))}
                 </Select>
               </FormGroup>

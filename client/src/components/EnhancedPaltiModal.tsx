@@ -964,8 +964,8 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                                         <option value="">Select location...</option>
                                         {locations.map(loc => (
                                             <option key={loc.code} value={loc.code}>
-                                                 {loc.name ? `${loc.code} - ${loc.name}` : loc.code}
-                                            </option>
+                                                    {loc.code}
+                                                </option>
                                         ))}
                                     </Select>
                                     {errors.location && <ErrorText>{errors.location}</ErrorText>}
@@ -1072,8 +1072,8 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                                                     <option value="">Select location...</option>
                                                     {locations.map(loc => (
                                                         <option key={loc.code} value={loc.code}>
-                                                            {loc.name ? `${loc.code} - ${loc.name}` : loc.code}
-                                                        </option>
+                                                    {loc.code}
+                                                </option>
                                                     ))}
                                                 </Select>
                                             </FormGroup>

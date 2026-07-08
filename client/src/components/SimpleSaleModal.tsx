@@ -610,8 +610,8 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
                         <option value="">Select...</option>
                         {locations.map(loc => (
                           <option key={loc.code} value={loc.code}>
-                            {loc.code} {loc.name ? `- ${loc.name}` : ''}
-                          </option>
+                                                    {loc.code}
+                                                </option>
                         ))}
                       </Select>
                     </FormGroup>
