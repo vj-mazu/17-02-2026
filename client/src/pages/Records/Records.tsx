@@ -337,8 +337,22 @@ const Records: React.FC = () => {
     // Step 2: Process data (keep individual rows for hamali matching)
     const processedData: any[] = filteredData.map(item => ({ ...item, _isGrouped: false, _groupItems: [] }));
 
-    // Sort by date descending
-    processedData.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Sort by date descending, and group sales with the same bill number together on the same date
+    processedData.sort((a: any, b: any) => {
+      const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+
+      const aIsSale = a.movementType === 'sale' && a.billNumber;
+      const bIsSale = b.movementType === 'sale' && b.billNumber;
+
+      if (aIsSale && bIsSale) {
+        return a.billNumber.localeCompare(b.billNumber);
+      }
+      if (aIsSale) return -1;
+      if (bIsSale) return 1;
+
+      return 0;
+    });
 
     // Build SL number lookup with rowspan info for grouped sales
     const billGroups: { [key: string]: any[] } = {};
