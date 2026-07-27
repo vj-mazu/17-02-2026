@@ -53,15 +53,24 @@ router.get('/arrivals', auth, async (req, res) => {
       where.outturnId = outturnId;
     }
 
-    // Filter by status if provided
+    // Filter by status if provided, otherwise filter out deleted status
     if (status) {
       where.status = status;
-    } else if (req.user.role === 'staff') {
-      // Staff sees their own entries + approved entries
-      where[Op.or] = [
-        { createdBy: req.user.userId },
-        { status: 'approved' }
-      ];
+    } else {
+      where.status = { [Op.ne]: 'deleted' };
+      if (req.user.role === 'staff') {
+        // Staff sees their own non-deleted entries + approved entries
+        where[Op.and] = [
+          { status: { [Op.ne]: 'deleted' } },
+          {
+            [Op.or]: [
+              { createdBy: req.user.id || req.user.userId },
+              { status: 'approved' }
+            ]
+          }
+        ];
+        delete where.status;
+      }
     }
 
     // OPTIMIZED: Combined date filtering logic

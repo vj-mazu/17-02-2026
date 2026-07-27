@@ -921,7 +921,8 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
-    // Invalidate dashboard cache after creating arrival
+    // Invalidate caches after creating arrival
+    await cacheService.delPattern('records_arrivals:*');
     await cacheService.delPattern('dashboard:*');
     await cacheService.delPattern('stock:*');
 
@@ -1234,6 +1235,11 @@ router.patch('/:id/approve', auth, authorize('manager', 'admin'), async (req, re
       remarks
     });
 
+    // Clear caches
+    await cacheService.delPattern('records_arrivals:*');
+    await cacheService.delPattern('dashboard:*');
+    await cacheService.delPattern('stock:*');
+
     const updatedArrival = await Arrival.findByPk(arrival.id, {
       include: [
         { model: User, as: 'creator', attributes: ['username', 'role'] },
@@ -1277,6 +1283,11 @@ router.patch('/:id/admin-approve', auth, authorize('admin'), async (req, res) =>
       adminApprovedBy: req.user.userId,
       adminApprovedAt: new Date()
     });
+
+    // Clear caches
+    await cacheService.delPattern('records_arrivals:*');
+    await cacheService.delPattern('dashboard:*');
+    await cacheService.delPattern('stock:*');
 
     const updatedArrival = await Arrival.findByPk(arrival.id, {
       include: [
@@ -1538,6 +1549,11 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       await arrival.save();
     }
 
+    // Clear caches after edit
+    await cacheService.delPattern('records_arrivals:*');
+    await cacheService.delPattern('dashboard:*');
+    await cacheService.delPattern('stock:*');
+
     // Fetch updated arrival with associations
     const updatedArrival = await Arrival.findByPk(id, {
       include: [
@@ -1601,6 +1617,16 @@ router.delete('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       deletedBy: req.user.id,
       deletedAt: new Date()
     });
+
+    // Clear related caches to ensure UI refreshes instantly
+    try {
+      await cacheService.delPattern('records_arrivals:*');
+      await cacheService.delPattern('dashboard:*');
+      await cacheService.delPattern('stock:*');
+      console.log('🧹 Evicted records_arrivals, dashboard, and stock caches on deletion');
+    } catch (cacheError) {
+      console.error('Error clearing cache on deletion:', cacheError);
+    }
 
     // If this was a production-shifting or purchase arrival with an outturn, recalculate yield
     if (outturnIdForYield && (movementTypeForYield === 'production-shifting' || movementTypeForYield === 'purchase')) {
