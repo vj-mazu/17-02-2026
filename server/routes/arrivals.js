@@ -1589,12 +1589,7 @@ router.delete('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       return res.status(403).json({ error: 'Managers can only delete manager-approved records' });
     }
 
-    // Check if this arrival is linked to any outturn records
-    if (arrival.outturnId) {
-      return res.status(400).json({
-        error: 'Cannot delete arrival that is linked to an outturn record. Please delete the outturn record first.'
-      });
-    }
+
 
     // Store outturnId before deletion for yield recalculation
     const outturnIdForYield = arrival.outturnId;
