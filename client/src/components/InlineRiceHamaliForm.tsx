@@ -534,7 +534,7 @@ const InlineRiceHamaliForm: React.FC<Props> = ({ riceProduction, onClose, onSave
 
   const handleSave = async () => {
     // Validation
-    if (selectedRiceTypes.length === 0 && otherWorkSplits.length === 0) {
+    if (selectedRiceTypes.length === 0 && selectedOtherRateIds.length === 0) {
       toast.error('Please select at least one hamali type or add other hamali work');
       return;
     }
