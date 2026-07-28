@@ -843,8 +843,10 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                                 }, 0).toFixed(2)}
                             </div>
                         </TypeItem>
-                    </TypesList>
-                </SummarySectio            {/* Other Hamali Works Section */}
+                </SummarySection>
+            )}
+
+            {/* Other Hamali Works Section */}
             <div style={{ marginTop: '2rem', borderTop: '3px solid #f59e0b', paddingTop: '1.5rem' }}>
                 <SummaryTitle style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
                     ➕ Select Other Hamali Work Type(s)
