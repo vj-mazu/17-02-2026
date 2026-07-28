@@ -206,6 +206,12 @@ const SummarySection = styled.div`
   margin-bottom: 1rem;
 `;
 
+const HelpText = styled.p`
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+`;
+
 const SummaryTitle = styled.div`
   font-weight: 600;
   color: #065f46;
