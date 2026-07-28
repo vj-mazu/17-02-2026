@@ -514,7 +514,7 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
 
     const handleSave = async () => {
         // Validation
-        if (selectedTypes.length === 0 && otherWorkSplits.length === 0) {
+        if (selectedTypes.length === 0 && selectedOtherRateIds.length === 0) {
             toast.error('Please select at least one hamali type or add other hamali work');
             return;
         }
