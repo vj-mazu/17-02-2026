@@ -843,6 +843,7 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                                 }, 0).toFixed(2)}
                             </div>
                         </TypeItem>
+                    </TypesList>
                 </SummarySection>
             )}
 
