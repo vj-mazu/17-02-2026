@@ -433,20 +433,11 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
     const [showSplitModal, setShowSplitModal] = useState<string | null>(null);
     const [workerSplits, setWorkerSplits] = useState<{ [workType: string]: WorkerSplit[] }>({});
     
-    interface OtherHamaliWorkItem {
-        id: string;
-        rateId: number;
-        bags: number;
-        details: string;
-        description: string;
-        splits: WorkerSplit[];
-    }
-
-    const [selectedOtherWork, setSelectedOtherWork] = useState<number | null>(null);
-    const [otherWorkBags, setOtherWorkBags] = useState<number>(0);
-    const [otherWorkDetails, setOtherWorkDetails] = useState<string>('');
-    const [otherWorkDescription, setOtherWorkDescription] = useState<string>('');
-    const [otherWorks, setOtherWorks] = useState<OtherHamaliWorkItem[]>([]);
+    const [selectedOtherRateIds, setSelectedOtherRateIds] = useState<number[]>([]);
+    const [otherWorkBags, setOtherWorkBags] = useState<{ [rateId: number]: number }>({});
+    const [otherWorkDetails, setOtherWorkDetails] = useState<{ [rateId: number]: string }>({});
+    const [otherWorkDescription, setOtherWorkDescription] = useState<{ [rateId: number]: string }>({});
+    const [otherWorkSplits, setOtherWorkSplits] = useState<{ [rateId: number]: WorkerSplit[] }>({});
 
     useEffect(() => {
         fetchRates();
@@ -454,11 +445,11 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
         setLooseTumbiduBags(0);
         setSelectedRateIds({});
         setWorkerSplits({});
-        setOtherWorks([]);
-        setSelectedOtherWork(null);
-        setOtherWorkBags(0);
-        setOtherWorkDetails('');
-        setOtherWorkDescription('');
+        setSelectedOtherRateIds([]);
+        setOtherWorkBags({});
+        setOtherWorkDetails({});
+        setOtherWorkDescription({});
+        setOtherWorkSplits({});
     }, [arrival.id]);
 
     const fetchRates = async () => {
@@ -590,22 +581,37 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
             }
 
             // Save other hamali entries (using Paddy Hamali rates)
-            if (otherWorks.length > 0) {
+            if (selectedOtherRateIds.length > 0) {
                 const otherEntries: any[] = [];
-                otherWorks.forEach(work => {
-                    const rate = rates.find(r => r.id === work.rateId);
+                selectedOtherRateIds.forEach(rateId => {
+                    const rate = rates.find(r => r.id === rateId);
                     if (rate) {
-                        work.splits.forEach(split => {
+                        const splits = otherWorkSplits[rateId] || [];
+                        const description = otherWorkDescription[rateId] || '';
+                        const details = otherWorkDetails[rateId] || '';
+                        const bags = otherWorkBags[rateId] || 0;
+
+                        if (splits.length > 0) {
+                            splits.forEach(split => {
+                                otherEntries.push({
+                                    workType: rate.workType,
+                                    workDetail: rate.workDetail,
+                                    description: `${details ? `Details: ${details}, ` : ''}${description}`.trim(),
+                                    rate: rate.rate,
+                                    bags: split.bags,
+                                    workerName: split.name,
+                                    batchNumber: split.batchNumber
+                                });
+                            });
+                        } else if (bags > 0) {
                             otherEntries.push({
                                 workType: rate.workType,
                                 workDetail: rate.workDetail,
-                                description: work.description.trim(),
+                                description: `${details ? `Details: ${details}, ` : ''}${description}`.trim(),
                                 rate: rate.rate,
-                                bags: split.bags,
-                                workerName: split.name,
-                                batchNumber: split.batchNumber
+                                bags: bags
                             });
-                        });
+                        }
                     }
                 });
 
@@ -838,169 +844,173 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                             </div>
                         </TypeItem>
                     </TypesList>
-                </SummarySection>
-            )}
-
-            {/* Other Hamali Works Section */}
+                </SummarySectio            {/* Other Hamali Works Section */}
             <div style={{ marginTop: '2rem', borderTop: '3px solid #f59e0b', paddingTop: '1.5rem' }}>
-                <SummaryTitle style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem' }}>
-                    ➕ Other Hamali Works
+                <SummaryTitle style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                    ➕ Select Other Hamali Work Type(s)
                 </SummaryTitle>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <FormGroup>
-                        <Label>Work Type</Label>
-                        <Select
-                            value={selectedOtherWork || ''}
-                            onChange={(e) => setSelectedOtherWork(e.target.value ? parseInt(e.target.value) : null)}
-                        >
-                            <option value="">Select work type...</option>
-                            {rates.length === 0 && <option value="">Loading...</option>}
-                            {Object.entries(groupedOtherRates).map(([workType, paddyRates]) => (
-                                <optgroup key={workType} label={workType}>
-                                    {paddyRates.map(rate => (
-                                        <option key={rate.id} value={rate.id}>
-                                            {rate.workDetail} (₹{rate.rate}/bag)
-                                        </option>
-                                    ))}
-                                </optgroup>
-                            ))}
-                        </Select>
-                    </FormGroup>
-                    
-                    <FormGroup>
-                        <Label>Bags (No Restriction)</Label>
-                        <Input
-                            type="number"
-                            min="1"
-                            value={otherWorkBags || ''}
-                            onChange={(e) => setOtherWorkBags(parseInt(e.target.value) || 0)}
-                            placeholder="Enter any number of bags"
-                        />
-                    </FormGroup>
-                </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <FormGroup>
-                        <Label>Details (Manual Entry)</Label>
-                        <Input
-                            type="text"
-                            value={otherWorkDetails || ''}
-                            onChange={(e) => setOtherWorkDetails(e.target.value)}
-                            placeholder="Enter work details..."
-                        />
-                    </FormGroup>
-                    
-                    <FormGroup>
-                        <Label>Description</Label>
-                        <Input
-                            type="text"
-                            value={otherWorkDescription || ''}
-                            onChange={(e) => setOtherWorkDescription(e.target.value)}
-                            placeholder="Enter description..."
-                        />
-                    </FormGroup>
-                </div>
+                <HelpText style={{ marginBottom: '1rem' }}>
+                    Check one or more work types below to fill their bags, details, and worker splits.
+                </HelpText>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <div style={{ 
-                        padding: '1rem', 
-                        background: '#f3f4f6', 
-                        borderRadius: '8px', 
-                        fontWeight: 'bold',
-                        color: selectedOtherWork && otherWorkBags > 0 ? '#059669' : '#6b7280'
-                    }}>
-                        Total Amount: ₹{selectedOtherWork && otherWorkBags > 0 ? 
-                            ((rates.find(r => r.id === selectedOtherWork)?.rate || 0) * otherWorkBags).toFixed(2) : 
-                            '0.00'
-                        }
-                    </div>
-                    
-                    <Button
-                        className="primary"
-                        onClick={() => {
-                            if (!selectedOtherWork || otherWorkBags <= 0) {
-                                toast.error('Please select work type and enter valid bags');
-                                return;
-                            }
-                            // No bag restriction for other hamali works
-                            if (!otherWorkDetails.trim()) {
-                                toast.error('Please enter work details');
-                                return;
-                            }
-                            setShowSplitModal('other-work');
-                        }}
-                        disabled={!selectedOtherWork || otherWorkBags <= 0 || !otherWorkDetails.trim()}
-                    >
-                        Add & Split Workers
-                    </Button>
-                </div>
-
-                {otherWorks.length > 0 && (
-                    <SummarySection style={{ background: '#fef3c7', borderColor: '#f59e0b', marginTop: '1rem' }}>
-                        <SummaryTitle style={{ color: '#92400e' }}>Other Hamali Summary</SummaryTitle>
-                        {otherWorks.map((work) => {
-                            const rate = rates.find(r => r.id === work.rateId);
-                            const workTotal = work.splits.reduce((total, split) => total + (rate ? rate.rate * split.bags : 0), 0);
-                            return (
-                                <div key={work.id} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#fff', borderRadius: '8px', border: '1px solid #f59e0b', position: 'relative' }}>
-                                    <button 
-                                        type="button"
-                                        onClick={() => setOtherWorks(prev => prev.filter(item => item.id !== work.id))}
-                                        style={{
-                                            position: 'absolute',
-                                            top: '0.5rem',
-                                            right: '0.5rem',
-                                            background: '#ef4444',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            padding: '0.25rem 0.5rem',
-                                            fontSize: '0.75rem',
-                                            cursor: 'pointer',
-                                            fontWeight: 'bold'
-                                        }}
-                                    >
-                                        ✕ Remove
-                                    </button>
-                                    <div style={{ fontWeight: 600, color: '#92400e', marginBottom: '0.25rem', paddingRight: '5rem' }}>
-                                        {rate?.workType} → {rate?.workDetail}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                    {rates.map(rate => {
+                        const isSelected = selectedOtherRateIds.includes(rate.id);
+                        return (
+                            <div 
+                                key={rate.id}
+                                onClick={() => {
+                                    if (isSelected) {
+                                        setSelectedOtherRateIds(prev => prev.filter(id => id !== rate.id));
+                                    } else {
+                                        setSelectedOtherRateIds(prev => [...prev, rate.id]);
+                                    }
+                                }}
+                                style={{
+                                    border: isSelected ? '3px solid #f59e0b' : '1px solid #e5e7eb',
+                                    background: isSelected ? '#fffbeb' : '#fff',
+                                    borderRadius: '8px',
+                                    padding: '1rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    transition: 'all 0.2s',
+                                    boxShadow: isSelected ? '0 4px 6px rgba(245, 158, 11, 0.1)' : 'none'
+                                }}
+                            >
+                                <input 
+                                    type="checkbox" 
+                                    checked={isSelected}
+                                    onChange={() => {}}
+                                    style={{ accentColor: '#f59e0b', transform: 'scale(1.2)', cursor: 'pointer' }}
+                                />
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#1f2937' }}>
+                                        {rate.workType}
                                     </div>
-                                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                                        Details: {work.details}
+                                    <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.15rem' }}>
+                                        {rate.workDetail}
                                     </div>
-                                    {work.description && (
-                                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                                            Description: {work.description}
-                                        </div>
-                                    )}
-                                    <div style={{ marginTop: '0.5rem' }}>
-                                        {work.splits.map((split, idx) => {
-                                            const amount = rate ? rate.rate * split.bags : 0;
-                                            return (
-                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#4b5563', padding: '0.25rem 0' }}>
-                                                    <span>Batch {split.batchNumber}: {split.name} ({split.bags} bags)</span>
-                                                    <span style={{ fontWeight: '600' }}>₹{amount.toFixed(2)}</span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #f59e0b', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold', color: '#92400e' }}>
-                                        <span>Work Total</span>
-                                        <span>₹{workTotal.toFixed(2)}</span>
+                                    <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#d97706', marginTop: '0.25rem' }}>
+                                        ₹{rate.rate}/bag
                                     </div>
                                 </div>
-                            );
-                        })}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #f59e0b', paddingTop: '0.75rem', fontWeight: 'bold', fontSize: '1.2rem', color: '#92400e' }}>
-                            <span>Other Hamali Grand Total</span>
-                            <span>
-                                ₹{otherWorks.reduce((grandTotal, work) => {
-                                    const rate = rates.find(r => r.id === work.rateId);
-                                    return grandTotal + work.splits.reduce((total, split) => total + (rate ? rate.rate * split.bags : 0), 0);
-                                }, 0).toFixed(2)}
-                            </span>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {selectedOtherRateIds.map(rateId => {
+                    const rate = rates.find(r => r.id === rateId);
+                    if (!rate) return null;
+                    
+                    const bags = otherWorkBags[rateId] || 0;
+                    const details = otherWorkDetails[rateId] || '';
+                    const description = otherWorkDescription[rateId] || '';
+                    const splits = otherWorkSplits[rateId] || [];
+                    const amount = rate.rate * bags;
+
+                    return (
+                        <div key={rateId} style={{ border: '2px solid #f59e0b', borderRadius: '12px', padding: '1.5rem', background: '#fff', marginBottom: '1.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
+                                <span style={{ fontWeight: 'bold', color: '#92400e', fontSize: '1.1rem' }}>
+                                    {rate.workType} → {rate.workDetail} (₹{rate.rate}/bag)
+                                </span>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setSelectedOtherRateIds(prev => prev.filter(id => id !== rateId))}
+                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}
+                                >
+                                    ✕ Deselect
+                                </button>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                <FormGroup style={{ margin: 0 }}>
+                                    <Label>Bags (No Restriction)</Label>
+                                    <Input
+                                        type="number"
+                                        min="1"
+                                        value={bags || ''}
+                                        onChange={(e) => {
+                                            const val = parseInt(e.target.value) || 0;
+                                            setOtherWorkBags(prev => ({ ...prev, [rateId]: val }));
+                                        }}
+                                        placeholder="Enter number of bags"
+                                    />
+                                </FormGroup>
+                                
+                                <FormGroup style={{ margin: 0 }}>
+                                    <Label>Details (Manual Entry)</Label>
+                                    <Input
+                                        type="text"
+                                        value={details}
+                                        onChange={(e) => setOtherWorkDetails(prev => ({ ...prev, [rateId]: e.target.value }))}
+                                        placeholder="Enter work details..."
+                                    />
+                                </FormGroup>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                <FormGroup style={{ margin: 0 }}>
+                                    <Label>Description</Label>
+                                    <Input
+                                        type="text"
+                                        value={description}
+                                        onChange={(e) => setOtherWorkDescription(prev => ({ ...prev, [rateId]: e.target.value }))}
+                                        placeholder="Enter description..."
+                                    />
+                                </FormGroup>
+                                
+                                <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
+                                    <Button
+                                        className="primary"
+                                        onClick={() => setShowSplitModal('other-' + rateId)}
+                                        disabled={bags <= 0 || !details.trim()}
+                                        style={{ height: '42px', width: '100%' }}
+                                    >
+                                        {splits.length > 0 ? '✓ Workers Split configured' : 'Split Workers'}
+                                    </Button>
+                                </div>
+                            </div>
+                            
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb', borderRadius: '8px', padding: '0.75rem 1rem', marginTop: '1rem', border: '1px solid #e5e7eb' }}>
+                                <span style={{ fontWeight: '600', color: '#374151' }}>Amount (Bags × Rate):</span>
+                                <span style={{ fontWeight: 'bold', color: '#d97706', fontSize: '1.1rem' }}>₹{amount.toFixed(2)}</span>
+                            </div>
+
+                            {splits.length > 0 && (
+                                <div style={{ background: '#fffbeb', borderRadius: '8px', padding: '1rem', border: '1px dashed #f59e0b', marginTop: '1rem' }}>
+                                    <div style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Worker Splits:</div>
+                                    {splits.map((split, idx) => (
+                                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#4b5563', padding: '0.2rem 0' }}>
+                                            <span>Batch {split.batchNumber}: {split.name} ({split.bags} bags)</span>
+                                            <span style={{ fontWeight: '600' }}>₹{(split.bags * rate.rate).toFixed(2)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
+                    );
+                })}
+
+                {selectedOtherRateIds.length > 0 && (
+                    <SummarySection style={{ background: '#fffbeb', borderColor: '#f59e0b', marginTop: '2rem' }}>
+                        <SummaryTitle style={{ color: '#92400e' }}>Other Hamali Total Summary</SummaryTitle>
+                        <TypesList>
+                            <TypeItem style={{ borderTop: 'none', paddingTop: 0 }}>
+                                <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#92400e' }}>Other Hamali Grand Total</div>
+                                <div style={{ fontWeight: 'bold', fontSize: '1.3rem', color: '#92400e' }}>
+                                    ₹{selectedOtherRateIds.reduce((grandTotal, rateId) => {
+                                        const rate = rates.find(r => r.id === rateId);
+                                        const bags = otherWorkBags[rateId] || 0;
+                                        return grandTotal + (rate ? rate.rate * bags : 0);
+                                    }, 0).toFixed(2)}
+                                </div>
+                            </TypeItem>
+                        </TypesList>
                     </SummarySection>
                 )}
             </div>
@@ -1029,35 +1039,28 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                         overflow: 'auto'
                     }}>
                         <h3 style={{ marginTop: 0, color: '#1f2937' }}>
-                            Split Workers - {showSplitModal === 'other-work' ? 
-                                rates.find(r => r.id === selectedOtherWork)?.workType : 
+                            Split Workers - {showSplitModal.startsWith('other-') ? 
+                                rates.find(r => r.id === parseInt(showSplitModal.replace('other-', '')))?.workType : 
                                 showSplitModal
                             }
                         </h3>
                         
                         <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f3f4f6', borderRadius: '8px' }}>
-                            <strong>Total Bags: {showSplitModal === 'other-work' ? otherWorkBags : getBagsForType(showSplitModal)}</strong>
+                            <strong>Total Bags: {showSplitModal.startsWith('other-') ? 
+                                (otherWorkBags[parseInt(showSplitModal.replace('other-', ''))] || 0) : 
+                                getBagsForType(showSplitModal)
+                            }</strong>
                         </div>
 
                         <SplitWorkerForm 
-                            totalBags={showSplitModal === 'other-work' ? otherWorkBags : getBagsForType(showSplitModal)}
+                            totalBags={showSplitModal.startsWith('other-') ? 
+                                (otherWorkBags[parseInt(showSplitModal.replace('other-', ''))] || 0) : 
+                                getBagsForType(showSplitModal)
+                            }
                             onSave={(splits) => {
-                                if (showSplitModal === 'other-work') {
-                                    const rate = rates.find(r => r.id === selectedOtherWork);
-                                    if (rate) {
-                                        setOtherWorks(prev => [...prev, {
-                                            id: 'other-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-                                            rateId: selectedOtherWork!,
-                                            bags: otherWorkBags,
-                                            details: otherWorkDetails,
-                                            description: otherWorkDescription,
-                                            splits
-                                        }]);
-                                    }
-                                    setSelectedOtherWork(null);
-                                    setOtherWorkBags(0);
-                                    setOtherWorkDetails('');
-                                    setOtherWorkDescription('');
+                                if (showSplitModal.startsWith('other-')) {
+                                    const rateId = parseInt(showSplitModal.replace('other-', ''));
+                                    setOtherWorkSplits(prev => ({ ...prev, [rateId]: splits }));
                                 } else {
                                     setWorkerSplits(prev => ({ ...prev, [showSplitModal]: splits }));
                                 }
@@ -1076,7 +1079,7 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                 <Button
                     className="primary"
                     onClick={handleSave}
-                    disabled={loading || (selectedTypes.length === 0 && otherWorkSplits.length === 0)}
+                    disabled={loading || (selectedTypes.length === 0 && selectedOtherRateIds.length === 0)}
                 >
                     {loading ? 'Saving...' : 'Add Hamali'}
                 </Button>

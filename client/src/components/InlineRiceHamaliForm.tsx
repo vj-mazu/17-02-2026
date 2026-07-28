@@ -442,21 +442,11 @@ const InlineRiceHamaliForm: React.FC<Props> = ({ riceProduction, onClose, onSave
   const packaging = riceProduction.packaging?.brandName || 'Unknown';
   const movementTypeDisplay = riceProduction.movementType || 'production';
 
-  interface OtherHamaliWorkItem {
-    id: string;
-    rateId: number;
-    bags: number;
-    details: string;
-    description: string;
-    splits: WorkerSplit[];
-  }
-
-  // Other hamali states (using Rice Hamali rates)
-  const [selectedOtherWork, setSelectedOtherWork] = useState<number | null>(null);
-  const [otherWorkBags, setOtherWorkBags] = useState<number>(0);
-  const [otherWorkDetails, setOtherWorkDetails] = useState<string>('');
-  const [otherWorkDescription, setOtherWorkDescription] = useState<string>('');
-  const [otherWorks, setOtherWorks] = useState<OtherHamaliWorkItem[]>([]);
+  const [selectedOtherRateIds, setSelectedOtherRateIds] = useState<number[]>([]);
+  const [otherWorkBags, setOtherWorkBags] = useState<{ [rateId: number]: number }>({});
+  const [otherWorkDetails, setOtherWorkDetails] = useState<{ [rateId: number]: string }>({});
+  const [otherWorkDescription, setOtherWorkDescription] = useState<{ [rateId: number]: string }>({});
+  const [otherWorkSplits, setOtherWorkSplits] = useState<{ [rateId: number]: WorkerSplit[] }>({});
 
   // Split modal state
   const [showSplitModal, setShowSplitModal] = useState<string | null>(null);
@@ -466,11 +456,11 @@ const InlineRiceHamaliForm: React.FC<Props> = ({ riceProduction, onClose, onSave
     setSelectedRiceTypes([]);
     setSelectedRateIds({});
     setWorkerSplits({});
-    setOtherWorks([]);
-    setSelectedOtherWork(null);
-    setOtherWorkBags(0);
-    setOtherWorkDetails('');
-    setOtherWorkDescription('');
+    setSelectedOtherRateIds([]);
+    setOtherWorkBags({});
+    setOtherWorkDetails({});
+    setOtherWorkDescription({});
+    setOtherWorkSplits({});
   }, [riceProduction.id]);
 
   const fetchRiceRates = async () => {
@@ -613,22 +603,37 @@ const InlineRiceHamaliForm: React.FC<Props> = ({ riceProduction, onClose, onSave
       }
 
       // Save other hamali entries (using Rice Hamali rates)
-      if (otherWorks.length > 0) {
+      if (selectedOtherRateIds.length > 0) {
         const otherEntries: any[] = [];
-        otherWorks.forEach(work => {
-          const rate = riceRates.find(r => r.id === work.rateId);
+        selectedOtherRateIds.forEach(rateId => {
+          const rate = riceRates.find(r => r.id === rateId);
           if (rate) {
-            work.splits.forEach(split => {
+            const splits = otherWorkSplits[rateId] || [];
+            const description = otherWorkDescription[rateId] || '';
+            const details = otherWorkDetails[rateId] || '';
+            const bags = otherWorkBags[rateId] || 0;
+
+            if (splits.length > 0) {
+              splits.forEach(split => {
+                otherEntries.push({
+                  workType: rate.work_type,
+                  workDetail: rate.work_detail,
+                  description: `${details ? `Details: ${details}, ` : ''}${description}`.trim(),
+                  rate: rate.rate_24_27,
+                  bags: split.bags,
+                  workerName: split.name,
+                  batchNumber: split.batchNumber
+                });
+              });
+            } else if (bags > 0) {
               otherEntries.push({
                 workType: rate.work_type,
                 workDetail: rate.work_detail,
-                description: work.description.trim(),
+                description: `${details ? `Details: ${details}, ` : ''}${description}`.trim(),
                 rate: rate.rate_24_27,
-                bags: split.bags,
-                workerName: split.name,
-                batchNumber: split.batchNumber
+                bags: bags
               });
-            });
+            }
           }
         });
 
@@ -965,71 +970,173 @@ const InlineRiceHamaliForm: React.FC<Props> = ({ riceProduction, onClose, onSave
             </Button>
           </div>
 
-          {otherWorks.length > 0 && (
-            <SummarySection style={{ background: '#fef3c7', borderColor: '#10b981', marginTop: '1rem' }}>
-              <SummaryTitle style={{ color: '#92400e' }}>Other Hamali Summary</SummaryTitle>
-              {otherWorks.map((work) => {
-                const rate = riceRates.find(r => r.id === work.rateId);
-                const workTotal = work.splits.reduce((total, split) => total + (rate ? Number(rate.rate_24_27) * split.bags : 0), 0);
-                return (
-                  <div key={work.id} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#fff', borderRadius: '8px', border: '1px solid #10b981', position: 'relative' }}>
-                    <button 
-                      type="button"
-                      onClick={() => setOtherWorks(prev => prev.filter(item => item.id !== work.id))}
-                      style={{
-                        position: 'absolute',
-                        top: '0.5rem',
-                        right: '0.5rem',
-                        background: '#ef4444',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.75rem',
-                        cursor: 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      ✕ Remove
-                    </button>
-                    <div style={{ fontWeight: 600, color: '#92400e', marginBottom: '0.25rem', paddingRight: '5rem' }}>
-                      {rate?.work_type} → {rate?.work_detail}
+          /* Other Hamali Tab - Checkbox grid and input card list */
+        <div style={{ marginTop: '2rem', borderTop: '3px solid #10b981', paddingTop: '1.5rem' }}>
+          <SummaryTitle style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+            ➕ Select Other Hamali Work Type(s)
+          </SummaryTitle>
+
+          <HelpText style={{ marginBottom: '1rem' }}>
+            Check one or more work types below to fill their bags, details, and worker splits.
+          </HelpText>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+            {riceRates.map(rate => {
+              const isSelected = selectedOtherRateIds.includes(rate.id);
+              return (
+                <div 
+                  key={rate.id}
+                  onClick={() => {
+                    if (isSelected) {
+                      setSelectedOtherRateIds(prev => prev.filter(id => id !== rate.id));
+                    } else {
+                      setSelectedOtherRateIds(prev => [...prev, rate.id]);
+                    }
+                  }}
+                  style={{
+                    border: isSelected ? '3px solid #10b981' : '1px solid #e5e7eb',
+                    background: isSelected ? '#e6f4ea' : '#fff',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    transition: 'all 0.2s',
+                    boxShadow: isSelected ? '0 4px 6px rgba(16, 185, 129, 0.1)' : 'none'
+                  }}
+                >
+                  <input 
+                    type="checkbox" 
+                    checked={isSelected}
+                    onChange={() => {}}
+                    style={{ accentColor: '#10b981', transform: 'scale(1.2)', cursor: 'pointer' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#1f2937' }}>
+                      {rate.work_type}
                     </div>
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                      Details: {work.details}
+                    <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.15rem' }}>
+                      {rate.work_detail}
                     </div>
-                    {work.description && (
-                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                        Description: {work.description}
-                      </div>
-                    )}
-                    <div style={{ marginTop: '0.5rem' }}>
-                      {work.splits.map((split, idx) => {
-                        const amount = rate ? Number(rate.rate_24_27) * split.bags : 0;
-                        return (
-                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#4b5563', padding: '0.25rem 0' }}>
-                            <span>Batch {split.batchNumber}: {split.name} ({split.bags} bags)</span>
-                            <span style={{ fontWeight: '600' }}>₹{amount.toFixed(2)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #10b981', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold', color: '#92400e' }}>
-                      <span>Work Total</span>
-                      <span>₹{workTotal.toFixed(2)}</span>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#059669', marginTop: '0.25rem' }}>
+                      ₹{(Number(rate.rate_24_27) || 0).toFixed(2)}/bag
                     </div>
                   </div>
-                );
-              })}
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #10b981', paddingTop: '0.75rem', fontWeight: 'bold', fontSize: '1.2rem', color: '#92400e' }}>
-                <span>Other Hamali Grand Total</span>
-                <span>
-                  ₹{otherWorks.reduce((grandTotal, work) => {
-                    const rate = riceRates.find(r => r.id === work.rateId);
-                    return grandTotal + work.splits.reduce((total, split) => total + (rate ? Number(rate.rate_24_27) * split.bags : 0), 0);
-                  }, 0).toFixed(2)}
-                </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {selectedOtherRateIds.map(rateId => {
+            const rate = riceRates.find(r => r.id === rateId);
+            if (!rate) return null;
+            
+            const bags = otherWorkBags[rateId] || 0;
+            const details = otherWorkDetails[rateId] || '';
+            const description = otherWorkDescription[rateId] || '';
+            const splits = otherWorkSplits[rateId] || [];
+            const amount = (Number(rate.rate_24_27) || 0) * bags;
+
+            return (
+              <div key={rateId} style={{ border: '2px solid #10b981', borderRadius: '12px', padding: '1.5rem', background: '#fff', marginBottom: '1.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: 'bold', color: '#065f46', fontSize: '1.1rem' }}>
+                    {rate.work_type} → {rate.work_detail} (₹{(Number(rate.rate_24_27) || 0).toFixed(2)}/bag)
+                  </span>
+                  <button 
+                    type="button" 
+                    onClick={() => setSelectedOtherRateIds(prev => prev.filter(id => id !== rateId))}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}
+                  >
+                    ✕ Deselect
+                  </button>
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <FormGroup style={{ margin: 0 }}>
+                    <Label>Bags (No Restriction)</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={bags || ''}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setOtherWorkBags(prev => ({ ...prev, [rateId]: val }));
+                      }}
+                      placeholder="Enter number of bags"
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup style={{ margin: 0 }}>
+                    <Label>Details (Manual Entry)</Label>
+                    <Input
+                      type="text"
+                      value={details}
+                      onChange={(e) => setOtherWorkDetails(prev => ({ ...prev, [rateId]: e.target.value }))}
+                      placeholder="Enter work details..."
+                    />
+                  </FormGroup>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <FormGroup style={{ margin: 0 }}>
+                    <Label>Description</Label>
+                    <Input
+                      type="text"
+                      value={description}
+                      onChange={(e) => setOtherWorkDescription(prev => ({ ...prev, [rateId]: e.target.value }))}
+                      placeholder="Enter description..."
+                    />
+                  </FormGroup>
+                  
+                  <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
+                    <Button
+                      className="primary"
+                      onClick={() => setShowSplitModal('other-' + rateId)}
+                      disabled={bags <= 0 || !details.trim()}
+                      style={{ height: '42px', width: '100%' }}
+                    >
+                      {splits.length > 0 ? '✓ Workers Split configured' : 'Split Workers'}
+                    </Button>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb', borderRadius: '8px', padding: '0.75rem 1rem', marginTop: '1rem', border: '1px solid #e5e7eb' }}>
+                  <span style={{ fontWeight: '600', color: '#374151' }}>Amount (Bags × Rate):</span>
+                  <span style={{ fontWeight: 'bold', color: '#059669', fontSize: '1.1rem' }}>₹{amount.toFixed(2)}</span>
+                </div>
+
+                {splits.length > 0 && (
+                  <div style={{ background: '#fffbeb', borderRadius: '8px', padding: '1rem', border: '1px dashed #10b981', marginTop: '1rem' }}>
+                    <div style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Worker Splits:</div>
+                    {splits.map((split, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#4b5563', padding: '0.2' }}>
+                        <span>Batch {split.batchNumber}: {split.name} ({split.bags} bags)</span>
+                        <span style={{ fontWeight: '600' }}>₹{(split.bags * (Number(rate.rate_24_27) || 0)).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+            );
+          })}
+
+          {selectedOtherRateIds.length > 0 && (
+            <SummarySection style={{ background: '#e6f4ea', borderColor: '#10b981', marginTop: '2rem' }}>
+              <SummaryTitle style={{ color: '#065f46' }}>Other Hamali Total Summary</SummaryTitle>
+              <TypesList>
+                <TypeItem style={{ borderTop: 'none', paddingTop: 0 }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#065f46' }}>Other Hamali Grand Total</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '1.3rem', color: '#065f46' }}>
+                    ₹{selectedOtherRateIds.reduce((grandTotal, rateId) => {
+                      const rate = riceRates.find(r => r.id === rateId);
+                      const bags = otherWorkBags[rateId] || 0;
+                      return grandTotal + (rate ? (Number(rate.rate_24_27) || 0) * bags : 0);
+                    }, 0).toFixed(2)}
+                  </div>
+                </TypeItem>
+              </TypesList>
             </SummarySection>
           )}
         </div>
@@ -1059,35 +1166,28 @@ const InlineRiceHamaliForm: React.FC<Props> = ({ riceProduction, onClose, onSave
             overflow: 'auto'
           }}>
             <h3 style={{ marginTop: 0, color: '#1f2937' }}>
-              Split Workers - {showSplitModal === 'other-work' ?
-                riceRates.find(r => r.id === selectedOtherWork)?.work_type :
+              Split Workers - {showSplitModal.startsWith('other-') ?
+                riceRates.find(r => r.id === parseInt(showSplitModal.replace('other-', '')))?.work_type :
                 showSplitModal
               }
             </h3>
 
             <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f3f4f6', borderRadius: '8px' }}>
-              <strong>Total Bags: {showSplitModal === 'other-work' ? otherWorkBags : riceProduction.bags}</strong>
+              <strong>Total Bags: {showSplitModal.startsWith('other-') ? 
+                (otherWorkBags[parseInt(showSplitModal.replace('other-', ''))] || 0) : 
+                riceProduction.bags
+              }</strong>
             </div>
 
             <SplitWorkerForm
-              totalBags={showSplitModal === 'other-work' ? otherWorkBags : riceProduction.bags}
+              totalBags={showSplitModal.startsWith('other-') ? 
+                (otherWorkBags[parseInt(showSplitModal.replace('other-', ''))] || 0) : 
+                riceProduction.bags
+              }
               onSave={(splits) => {
-                if (showSplitModal === 'other-work') {
-                  const rate = riceRates.find(r => r.id === selectedOtherWork);
-                  if (rate) {
-                    setOtherWorks(prev => [...prev, {
-                      id: 'other-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-                      rateId: selectedOtherWork!,
-                      bags: otherWorkBags,
-                      details: otherWorkDetails,
-                      description: otherWorkDescription,
-                      splits
-                    }]);
-                  }
-                  setSelectedOtherWork(null);
-                  setOtherWorkBags(0);
-                  setOtherWorkDetails('');
-                  setOtherWorkDescription('');
+                if (showSplitModal.startsWith('other-')) {
+                  const rateId = parseInt(showSplitModal.replace('other-', ''));
+                  setOtherWorkSplits(prev => ({ ...prev, [rateId]: splits }));
                 } else {
                   setWorkerSplits(prev => ({ ...prev, [showSplitModal]: splits }));
                 }
@@ -1106,7 +1206,7 @@ const InlineRiceHamaliForm: React.FC<Props> = ({ riceProduction, onClose, onSave
         <Button
           className="primary"
           onClick={handleSave}
-          disabled={saving || saved || (selectedRiceTypes.length === 0 && otherWorks.length === 0)}
+          disabled={saving || saved || (selectedRiceTypes.length === 0 && selectedOtherRateIds.length === 0)}
           style={{
             background: saved ? '#10b981' : undefined,
             color: saved ? 'white' : undefined
