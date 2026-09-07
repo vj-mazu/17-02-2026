@@ -1972,14 +1972,50 @@ router.put('/movements/:id', auth, async (req, res) => {
 
         const currentMovement = existing[0];
         const currentStatus = currentMovement.status;
-        const finalMovementType = movementType || currentMovement.movement_type;
+        const finalMovementType = (movementType || currentMovement.movement_type || '').toLowerCase();
         const finalProductType = productType || currentMovement.product_type;
         const finalLocationCode = locationCode || currentMovement.location_code;
         const finalBags = bags !== undefined ? parseInt(bags) : currentMovement.bags;
         const finalVariety = variety || currentMovement.variety;
-        const finalPackagingId = packagingId || currentMovement.packaging_id;
         const finalSourcePackagingId = sourcePackagingId || currentMovement.source_packaging_id;
         const finalTargetPackagingId = targetPackagingId || currentMovement.target_packaging_id;
+
+        // Early resolution of packaging ID and packaging kg
+        let resolvedPackagingId = packagingId || currentMovement.packaging_id || null;
+        let resolvedPackagingKg = bagSizeKg || packagingKg || currentMovement.bag_size_kg || null;
+
+        if (packagingBrand && !resolvedPackagingId) {
+            try {
+                const packagingResult = await sequelize.query(`
+                    SELECT id, "allottedKg" FROM packagings WHERE LOWER(TRIM("brandName")) = LOWER(TRIM(:brandName)) LIMIT 1
+                `, {
+                    replacements: { brandName: packagingBrand },
+                    type: sequelize.QueryTypes.SELECT
+                });
+                if (packagingResult.length > 0) {
+                    resolvedPackagingId = packagingResult[0].id;
+                    if (!resolvedPackagingKg) {
+                        resolvedPackagingKg = packagingResult[0].allottedKg;
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not resolve packaging brand:', packagingBrand, error.message);
+            }
+        } else if (resolvedPackagingId && !resolvedPackagingKg) {
+            try {
+                const [pkg] = await sequelize.query(`
+                    SELECT "allottedKg" FROM packagings WHERE id = :id LIMIT 1
+                `, { replacements: { id: resolvedPackagingId }, type: sequelize.QueryTypes.SELECT });
+                if (pkg) resolvedPackagingKg = pkg.allottedKg;
+            } catch (error) {
+                console.warn('Could not fetch packaging kg:', error.message);
+            }
+        }
+        if (!resolvedPackagingKg) {
+            resolvedPackagingKg = 26;
+        }
+
+        const finalPackagingId = resolvedPackagingId;
 
         // Status check - Admins can bypass the 'approved' block
         if (currentStatus === 'approved' && req.user.role !== 'admin') {
@@ -2037,28 +2073,28 @@ router.put('/movements/:id', auth, async (req, res) => {
                 });
             }
 
-            // Stock availability check for sale (skip if only status change)
-            if (bags || productType || locationCode || variety || packagingId) {
+            // Safe edit check: if not increasing stock demand and keeping same type/location/packaging, skip validation
+            const isStockDecreasingOrSame = (
+                finalLocationCode === currentMovement.location_code &&
+                finalProductType === currentMovement.product_type &&
+                finalVariety === currentMovement.variety &&
+                String(finalPackagingId || '') === String(currentMovement.packaging_id || '') &&
+                finalBags <= currentMovement.bags
+            );
+
+            // Stock availability check for sale
+            if (!isStockDecreasingOrSame && (bags || productType || locationCode || variety || packagingId || packagingBrand)) {
                 try {
                     console.log('🔍 Validating sale stock availability during edit...');
-
-                    // Resolve packaging ID if only brand name provided
-                    let salePackagingId = finalPackagingId;
-                    if (!salePackagingId && packagingBrand) {
-                        const [pkgResult] = await sequelize.query(`
-                            SELECT id FROM packagings WHERE "brandName" = :brandName LIMIT 1
-                        `, { replacements: { brandName: packagingBrand }, type: sequelize.QueryTypes.SELECT });
-                        if (pkgResult) salePackagingId = pkgResult.id;
-                    }
 
                     const LocationBifurcationService = require('../services/LocationBifurcationService');
                     const validation = await LocationBifurcationService.validateSaleAfterPalti({
                         locationCode: finalLocationCode,
                         variety: finalVariety,
                         productType: finalProductType,
-                        packagingId: salePackagingId ? Number.parseInt(salePackagingId) : null,
+                        packagingId: finalPackagingId ? Number.parseInt(finalPackagingId) : null,
                         packagingBrand: packagingBrand || null,
-                        bagSizeKg: bagSizeKg ? Number.parseFloat(bagSizeKg) : null,
+                        bagSizeKg: resolvedPackagingKg ? Number.parseFloat(resolvedPackagingKg) : 26,
                         requestedBags: Number.parseInt(finalBags),
                         saleDate: date || currentMovement.date,
                         excludeMovementId: parseInt(id), // Exclude current movement from calculation
@@ -2239,30 +2275,12 @@ router.put('/movements/:id', auth, async (req, res) => {
             }
         }
 
-        // =====================================================
-        // RESOLVE PACKAGING ID FROM BRAND NAME
-        // =====================================================
-        let resolvedPackagingId = packagingId || null;
-        let resolvedPackagingKg = bagSizeKg || packagingKg || null;
-
-        if (packagingBrand && !packagingId) {
-            try {
-                const packagingResult = await sequelize.query(`
-                    SELECT id, "allottedKg" FROM packagings WHERE "brandName" = :brandName LIMIT 1
-                `, {
-                    replacements: { brandName: packagingBrand },
-                    type: sequelize.QueryTypes.SELECT
-                });
-                if (packagingResult.length > 0) {
-                    resolvedPackagingId = packagingResult[0].id;
-                    if (!resolvedPackagingKg) {
-                        resolvedPackagingKg = packagingResult[0].allottedKg;
-                    }
-                }
-            } catch (error) {
-                console.warn('Could not resolve packaging brand:', packagingBrand, error.message);
-            }
-        }
+        // Calculate quintals based on bags and resolved packaging size
+        const effectiveBagsForQtls = bags !== undefined ? parseInt(bags) : currentMovement.bags;
+        const effectiveKgForQtls = resolvedPackagingKg ? parseFloat(resolvedPackagingKg) : (currentMovement.bag_size_kg || 26);
+        const calculatedQuantityQuintals = quantityQuintals !== undefined && quantityQuintals !== null
+            ? parseFloat(quantityQuintals)
+            : parseFloat(((effectiveBagsForQtls * effectiveKgForQtls) / 100).toFixed(2));
 
         // =====================================================
         // UPDATE MOVEMENT
@@ -2300,7 +2318,7 @@ router.put('/movements/:id', auth, async (req, res) => {
                 bags: bags ? parseInt(bags) : null,
                 sourceBags: sourceBags ? parseInt(sourceBags) : null,
                 bagSizeKg: resolvedPackagingKg ? parseFloat(resolvedPackagingKg) : null,
-                quantityQuintals: quantityQuintals ? parseFloat(quantityQuintals) : null,
+                quantityQuintals: calculatedQuantityQuintals,
                 packagingId: resolvedPackagingId ? parseInt(resolvedPackagingId) : null,
                 locationCode: locationCode || null,
                 fromLocation: fromLocation || null,

@@ -13,6 +13,7 @@ import AddPaddyHamaliModal from '../../components/AddPaddyHamaliModal';
 import EnhancedPaltiModal from '../../components/EnhancedPaltiModal';
 import SimplePurchaseModal from '../../components/SimplePurchaseModal';
 import SimpleSaleModal from '../../components/SimpleSaleModal';
+import { PaddySaleModal } from '../../components/PaddySaleModal';
 import {
   generateArrivalsPDF,
   generatePurchasePDF,
@@ -262,6 +263,7 @@ const Records: React.FC = () => {
   const [hierarchicalRefreshTrigger, setHierarchicalRefreshTrigger] = useState(0); // Trigger to refresh hierarchical component
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
+  const [showPaddySaleModal, setShowPaddySaleModal] = useState(false);
   const [pendingMovements, setPendingMovements] = useState<any[]>([]);
   const [showPendingMovements, setShowPendingMovements] = useState(false);
   const [selectedMovementIds, setSelectedMovementIds] = useState<Set<number>>(new Set());
@@ -1088,23 +1090,26 @@ const Records: React.FC = () => {
       let response;
       if (isStockMovement) {
         // Purchase, Sale, Palti - use rice-stock-management
+        const finalBagKg = updatedData.bagSizeKg || updatedData.bag_size_kg || updatedData.packagingKg || 26;
         response = await axios.put<{ success: boolean; error?: string; message?: string }>(`/rice-stock-management/movements/${editingRiceMovement.id}`, {
           date: updatedData.date,
           movementType: editingRiceMovement.movementType,
           productType: updatedData.productType || updatedData.product_type,
           variety: updatedData.variety,
           bags: updatedData.bags,
+          packagingId: updatedData.packagingId || updatedData.packaging_id || editingRiceMovement.packagingId || editingRiceMovement.packaging_id,
           packagingBrand: updatedData.packagingBrand || updatedData.packaging_brand,
-          packagingKg: updatedData.bagSizeKg || updatedData.bag_size_kg,
+          bagSizeKg: finalBagKg,
+          packagingKg: finalBagKg,
           locationCode: updatedData.locationCode || updatedData.location_code,
           billNumber: updatedData.billNumber || updatedData.bill_number,
           lorryNumber: updatedData.lorryNumber || updatedData.lorry_number,
-          quantityQuintals: (updatedData.bags || 0) * ((updatedData.bagSizeKg || updatedData.bag_size_kg || 26) / 100),
+          quantityQuintals: (updatedData.bags || 0) * (finalBagKg / 100),
           // Palti specific fields
           sourceBags: updatedData.sourceBags || updatedData.source_bags,
           fromLocation: updatedData.fromLocation || updatedData.from_location,
           toLocation: updatedData.toLocation || updatedData.to_location || updatedData.locationCode || updatedData.location_code,
-          sourcePackagingId: updatedData.sourcePackagingId || updatedData.source_packaging_id,
+          sourcePackagingId: updatedData.sourcePackagingId || updatedData.source_packaging_id || editingRiceMovement.sourcePackagingId,
           targetPackagingId: updatedData.targetPackagingId || updatedData.target_packaging_id || updatedData.packagingId || updatedData.packaging_id,
           shortageKg: updatedData.shortageKg || updatedData.shortage_kg,
           shortageBags: updatedData.shortageBags || updatedData.shortage_bags
@@ -1683,9 +1688,19 @@ const Records: React.FC = () => {
               bags: bags,
               sourceBags: mvtType === 'palti' ? parseInt(movement.sourceBags || movement.source_bags || 0) || 0 : null,
               bagSizeKg: bagSize,
-              packagingId: movement.packagingId || movement.targetPackagingId, // Include packagingId if available
+              bag_size_kg: bagSize,
+              packagingId: movement.packagingId || movement.targetPackagingId || movement.packaging_id || movement.target_packaging_id,
+              packaging_id: movement.packagingId || movement.targetPackagingId || movement.packaging_id || movement.target_packaging_id,
+              sourcePackagingId: movement.sourcePackagingId || movement.source_packaging_id,
+              source_packaging_id: movement.sourcePackagingId || movement.source_packaging_id,
+              targetPackagingId: movement.targetPackagingId || movement.target_packaging_id,
+              target_packaging_id: movement.targetPackagingId || movement.target_packaging_id,
               packagingBrand: movement.packagingBrand || movement.packaging_brand || movement.packagingbrand || movement.targetPackagingBrand || movement.target_packaging_brand || 'A1',
+              packaging_brand: movement.packagingBrand || movement.packaging_brand || movement.packagingbrand || movement.targetPackagingBrand || movement.target_packaging_brand || 'A1',
+              source_packaging_brand: movement.sourcePackagingBrand || movement.source_packaging_brand || movement.sourcepackagingbrand || 'A1',
+              target_packaging_brand: movement.targetPackagingBrand || movement.target_packaging_brand || movement.targetpackagingbrand || 'A1',
               packagingKg: movement.packagingKg || movement.packaging_kg || movement.packagingkg || bagSize,
+              packaging_kg: movement.packagingKg || movement.packaging_kg || movement.packagingkg || bagSize,
               quantityQuintals: qtls,
               packaging: {
                 brandName: movement.packagingBrand || movement.packaging_brand || movement.packagingbrand || movement.targetPackagingBrand || movement.target_packaging_brand || 'A1',
@@ -2826,173 +2841,165 @@ const Records: React.FC = () => {
                       ? 'none'
                       : '1px solid #e5e7eb';
 
+                    const isEditingThisRow = Boolean(editingRiceMovement && (
+                      String(editingRiceMovement.id) === String(item.id).replace('movement-', '') ||
+                      String(editingRiceMovement.id) === String(item.id)
+                    ));
+
                     return (
-                      <tr
-                        key={item.id}
-                        style={{
-                          backgroundColor: rowColor,
-                          borderTop: borderStyle
-                        }}
-                      >
-                        {/* Only render SL cell for first row of group (with rowspan) */}
-                        {item._isFirstOfGroup && (
-                          <td className="hide-mobile" rowSpan={item._rowspan} style={{
-                            verticalAlign: 'middle',
-                            textAlign: 'center',
-                            fontWeight: 'bold',
-                            borderBottom: item._isPartOfGroup ? '1px solid #e5e7eb' : 'none'
-                          }}>
-                            {item._slNumber}
-                          </td>
-                        )}
-                        {/* Only render Date cell for first row of group (with rowspan) */}
-                        {item._isFirstOfGroup && (
-                          <td rowSpan={item._rowspan} style={{
-                            verticalAlign: 'middle',
-                            textAlign: 'center',
-                            borderBottom: item._isPartOfGroup ? '1px solid #e5e7eb' : 'none'
-                          }}>
-                            {new Date(item.date).toLocaleDateString('en-GB')}
-                          </td>
-                        )}
-                        <td style={{
-                          textTransform: 'capitalize',
-                          fontWeight: item.movementType !== 'production' ? 'bold' : 'normal',
-                          color: item.movementType === 'purchase' ? '#059669' :
-                            item.movementType === 'sale' ? '#dc2626' :
-                              item.movementType === 'palti' ? '#f59e0b' : 'inherit'
-                        }}>
-                          {item.movementType === 'production' ? '🏭 Production' :
-                            item.movementType === 'purchase' ? '📦 Purchase' :
-                              item.movementType === 'sale' ? '💰 Sale' :
-                                item.movementType === 'palti' ? '🔄 Palti' :
-                                  item.movementType === 'unknown' ? '❓ Unknown' : item.movementType || '❓ Unknown'}
-                          {/* Show grouped item count badge for sales */}
-                          {item._isGrouped && item._groupCount > 1 && (
-                            <span style={{
-                              marginLeft: '4px',
-                              padding: '2px 6px',
-                              backgroundColor: '#dc2626',
-                              color: 'white',
-                              borderRadius: '10px',
-                              fontSize: '0.7rem',
-                              fontWeight: 'bold'
+                      <React.Fragment key={item.id}>
+                        <tr
+                          style={{
+                            backgroundColor: isEditingThisRow ? '#eff6ff' : rowColor,
+                            borderTop: borderStyle,
+                            borderBottom: isEditingThisRow ? 'none' : undefined
+                          }}
+                        >
+                          {/* Only render SL cell for first row of group (with rowspan) */}
+                          {item._isFirstOfGroup && (
+                            <td className="hide-mobile" rowSpan={item._rowspan} style={{
+                              verticalAlign: 'middle',
+                              textAlign: 'center',
+                              fontWeight: 'bold',
+                              borderBottom: item._isPartOfGroup ? '1px solid #e5e7eb' : 'none'
                             }}>
-                              {item._groupCount} items
-                            </span>
+                              {item._slNumber}
+                            </td>
                           )}
-                          {/* Compact Palti Details */}
-                          {item.movementType === 'palti' && (
-                            <div style={{ fontSize: '0.7rem', color: '#92400e', marginTop: '2px', lineHeight: '1.2' }}>
-                              <div>📍 {item.from || 'Source'} → {item.to || item.locationCode || 'Target'}</div>
-                              <div>📦 {item.sourceBags || 0}b ({((item.sourceBags || 0) * (item.sourcePackaging?.allottedKg || 26) / 100).toFixed(2)}Q) → {item.bags}b ({Number(item.quantityQuintals || 0).toFixed(2)}Q)</div>
-                              {item.lorryNumber && (
-                                <div>🚛 {item.lorryNumber}</div>
-                              )}
-                            </div>
+                          {/* Only render Date cell for first row of group (with rowspan) */}
+                          {item._isFirstOfGroup && (
+                            <td rowSpan={item._rowspan} style={{
+                              verticalAlign: 'middle',
+                              textAlign: 'center',
+                              borderBottom: item._isPartOfGroup ? '1px solid #e5e7eb' : 'none'
+                            }}>
+                              {new Date(item.date).toLocaleDateString('en-GB')}
+                            </td>
                           )}
-                          {item.movementType === 'palti' && (Number(item.shortageKg) > 0 || Number(item.conversion_shortage_kg) > 0) && (
-                            <div style={{ fontSize: '0.75rem', color: '#d97706', fontWeight: 'bold' }}>
-                              ⚠️ Shortage: {Number(item.shortageKg || item.conversion_shortage_kg || 0).toFixed(2)}kg
-                            </div>
-                          )}
-                        </td>
-                        <td className="hide-mobile" style={{ fontWeight: 'bold' }}>
-                          {item.movementType === 'palti' ? '-' : (item.billNumber || '-')}
-                        </td>
-                        <td>{item.variety || 'Sum25 RNR Raw'}</td>
-                        <td className="hide-mobile">{(() => {
-                          // For grouped sales, show all product types
-                          if (item._isGrouped && item._groupedProductTypes) {
-                            return item._groupedProductTypes;
-                          }
-                          // Determine product type from the item data
-                          const productType = item.productType || item.product || '';
-                          const productLower = productType.toLowerCase();
-
-                          if (productLower.includes('rejection rice')) return 'Rejection Rice';
-                          if (productLower.includes('unpolish')) return 'Unpolished';
-                          if (productLower.includes('faram')) return 'Faram';
-                          if (productLower.includes('zero broken') || productLower.includes('0 broken')) return 'Zero Broken';
-                          if (productLower.includes('sizer broken')) return 'Sizer Broken';
-                          if (productLower.includes('rejection broken') || productLower.includes('rj broken')) return 'RJ Broken';
-                          if (productLower.includes('rj rice 1')) return 'RJ Rice 1';
-                          if (productLower.includes('rj rice 2') || productLower.includes('rj rice (2)')) return 'RJ Rice 2';
-                          if (productLower.includes('rj broken')) return 'RJ Broken';
-                          if (productLower.includes('broken')) return 'Broken';
-                          if (productLower.includes('rice')) return 'Rice';
-                          if (productLower.includes('bran')) return 'Bran';
-
-                          return productType || 'Rice'; // Default to Rice if no product type
-                        })()}</td>
-                        <td>{item.bags}</td>
-                        <td className="hide-mobile">{item.bagSizeKg || item.packaging?.allottedKg || 26}</td>
-                        <td>{isNaN(Number(item.quantityQuintals)) ? '0.00' : Number(item.quantityQuintals).toFixed(2)}</td>
-                        <td className="hide-mobile">{(() => {
-                          // Handle Palti packaging display: show "source → target"
-                          if (item.movementType === 'palti') {
-                            // FIXED: Use server-provided packaging data with proper fallbacks
-                            const sourcePackaging = item.source_packaging_brand || item.sourcePackaging?.brandName || 'A1';
-                            const targetPackaging = item.target_packaging_brand || item.targetPackaging?.brandName || 'A1';
-
-                            console.log('🔍 DEBUG - Palti packaging data:', {
-                              'item.source_packaging_brand': item.source_packaging_brand,
-                              'item.target_packaging_brand': item.target_packaging_brand,
-                              'item.sourcePackaging': item.sourcePackaging,
-                              'item.targetPackaging': item.targetPackaging,
-                              'FINAL_RESULT': `${sourcePackaging} → ${targetPackaging}`
-                            });
-
-                            return `${sourcePackaging} → ${targetPackaging}`;
-                          }
-
-                          // For other movement types, show regular packaging
-                          const packaging = item.packaging_brand || item.packaging?.brandName || 'A1';
-
-                          return packaging;
-                        })()}</td>
-                        <td className="hide-mobile">
-                          {item.outturn?.code ? (
-                            <span
-                              style={{
-                                color: '#7c3aed',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                textDecoration: 'underline'
-                              }}
-                              onClick={() => navigateToOutturn(item.outturn.code)}
-                              title={`Click to view outturn ${item.outturn.code}`}
-                            >
-                              {item.from || item.outturn.code}
-                            </span>
-                          ) : (
-                            item.from || '-'
-                          )}
-                        </td>
-                        <td className="hide-mobile">{item.to || item.locationCode || '-'}</td>
-                        <td className="hide-mobile" style={{ textTransform: 'uppercase' }}>{item.movementType === 'palti' ? (item.lorryNumber || '-') : (item.lorryNumber || item.billNumber || '-')}</td>
-                        <td>
-                          <div style={{
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            fontSize: '0.85rem',
-                            fontWeight: '500',
-                            backgroundColor: item.status === 'approved' ? '#dcfce7' : '#fef3c7',
-                            color: item.status === 'approved' ? '#16a34a' : '#ca8a04',
-                            display: 'inline-block',
-                            marginBottom: '4px'
+                          <td style={{
+                            textTransform: 'capitalize',
+                            fontWeight: item.movementType !== 'production' ? 'bold' : 'normal',
+                            color: item.movementType === 'purchase' ? '#059669' :
+                              item.movementType === 'sale' ? '#dc2626' :
+                                item.movementType === 'palti' ? '#f59e0b' : 'inherit'
                           }}>
-                            {item.status?.toUpperCase() || 'PENDING'}
-                          </div>
-                          {item.creator?.username && (
-                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                              By: {item.creator.username}
+                            {item.movementType === 'production' ? '🏭 Production' :
+                              item.movementType === 'purchase' ? '📦 Purchase' :
+                                item.movementType === 'sale' ? '💰 Sale' :
+                                  item.movementType === 'palti' ? '🔄 Palti' :
+                                    item.movementType === 'unknown' ? '❓ Unknown' : item.movementType || '❓ Unknown'}
+                            {/* Show grouped item count badge for sales */}
+                            {item._isGrouped && item._groupCount > 1 && (
+                              <span style={{
+                                marginLeft: '4px',
+                                padding: '2px 6px',
+                                backgroundColor: '#dc2626',
+                                color: 'white',
+                                borderRadius: '10px',
+                                fontSize: '0.7rem',
+                                fontWeight: 'bold'
+                              }}>
+                                {item._groupCount} items
+                              </span>
+                            )}
+                            {/* Compact Palti Details */}
+                            {item.movementType === 'palti' && (
+                              <div style={{ fontSize: '0.7rem', color: '#92400e', marginTop: '2px', lineHeight: '1.2' }}>
+                                <div>📍 {item.from || 'Source'} → {item.to || item.locationCode || 'Target'}</div>
+                                <div>📦 {item.sourceBags || 0}b ({((item.sourceBags || 0) * (item.sourcePackaging?.allottedKg || 26) / 100).toFixed(2)}Q) → {item.bags}b ({Number(item.quantityQuintals || 0).toFixed(2)}Q)</div>
+                                {item.lorryNumber && (
+                                  <div>🚛 {item.lorryNumber}</div>
+                                )}
+                              </div>
+                            )}
+                            {item.movementType === 'palti' && (Number(item.shortageKg) > 0 || Number(item.conversion_shortage_kg) > 0) && (
+                              <div style={{ fontSize: '0.75rem', color: '#d97706', fontWeight: 'bold' }}>
+                                ⚠️ Shortage: {Number(item.shortageKg || item.conversion_shortage_kg || 0).toFixed(2)}kg
+                              </div>
+                            )}
+                          </td>
+                          <td className="hide-mobile" style={{ fontWeight: 'bold' }}>
+                            {item.movementType === 'palti' ? '-' : (item.billNumber || '-')}
+                          </td>
+                          <td>{item.variety || 'Sum25 RNR Raw'}</td>
+                          <td className="hide-mobile">{(() => {
+                            // For grouped sales, show all product types
+                            if (item._isGrouped && item._groupedProductTypes) {
+                              return item._groupedProductTypes;
+                            }
+                            // Determine product type from the item data
+                            const productType = item.productType || item.product || '';
+                            const productLower = productType.toLowerCase();
+
+                            if (productLower.includes('rejection rice')) return 'Rejection Rice';
+                            if (productLower.includes('unpolish')) return 'Unpolished';
+                            if (productLower.includes('faram')) return 'Faram';
+                            if (productLower.includes('zero broken') || productLower.includes('0 broken')) return 'Zero Broken';
+                            if (productLower.includes('sizer broken')) return 'Sizer Broken';
+                            if (productLower.includes('rejection broken') || productLower.includes('rj broken')) return 'RJ Broken';
+                            if (productLower.includes('rj rice 1')) return 'RJ Rice 1';
+                            if (productLower.includes('rj rice 2') || productLower.includes('rj rice (2)')) return 'RJ Rice 2';
+                            if (productLower.includes('rj broken')) return 'RJ Broken';
+                            if (productLower.includes('broken')) return 'Broken';
+                            if (productLower.includes('rice')) return 'Rice';
+                            if (productLower.includes('bran')) return 'Bran';
+
+                            return productType || 'Rice'; // Default to Rice if no product type
+                          })()}</td>
+                          <td>{item.bags}</td>
+                          <td className="hide-mobile">{item.bagSizeKg || item.packaging?.allottedKg || 26}</td>
+                          <td>{isNaN(Number(item.quantityQuintals)) ? '0.00' : Number(item.quantityQuintals).toFixed(2)}</td>
+                          <td className="hide-mobile">{(() => {
+                            // Handle Palti packaging display: show "source → target"
+                            if (item.movementType === 'palti') {
+                              const sourcePackaging = item.source_packaging_brand || item.sourcePackaging?.brandName || 'A1';
+                              const targetPackaging = item.target_packaging_brand || item.targetPackaging?.brandName || 'A1';
+                              return `${sourcePackaging} → ${targetPackaging}`;
+                            }
+                            const packaging = item.packaging_brand || item.packaging?.brandName || 'A1';
+                            return packaging;
+                          })()}</td>
+                          <td className="hide-mobile">
+                            {item.outturn?.code ? (
+                              <span
+                                style={{
+                                  color: '#7c3aed',
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline'
+                                }}
+                                onClick={() => navigateToOutturn(item.outturn.code)}
+                                title={`Click to view outturn ${item.outturn.code}`}
+                              >
+                                {item.from || item.outturn.code}
+                              </span>
+                            ) : (
+                              item.from || '-'
+                            )}
+                          </td>
+                          <td className="hide-mobile">{item.to || item.locationCode || '-'}</td>
+                          <td className="hide-mobile" style={{ textTransform: 'uppercase' }}>{item.movementType === 'palti' ? (item.lorryNumber || '-') : (item.lorryNumber || item.billNumber || '-')}</td>
+                          <td>
+                            <div style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.85rem',
+                              fontWeight: '500',
+                              backgroundColor: item.status === 'approved' ? '#dcfce7' : '#fef3c7',
+                              color: item.status === 'approved' ? '#16a34a' : '#ca8a04',
+                              display: 'inline-block',
+                              marginBottom: '4px'
+                            }}>
+                              {item.status?.toUpperCase() || 'PENDING'}
                             </div>
-                          )}
-                        </td>
-                        {/* Only render Actions cell for first row of group (with rowspan) */}
-                        {item._isFirstOfGroup && (
-                          <td rowSpan={item._rowspan} style={{ verticalAlign: 'middle' }}>
+                            {item.creator?.username && (
+                              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                By: {item.creator.username}
+                              </div>
+                            )}
+                          </td>
+                          {/* Individual Actions cell for every row */}
+                          <td style={{ verticalAlign: 'middle' }}>
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                               {/* Approve Button for Pending Items */}
                               {item.status === 'pending' && user?.role !== 'staff' && (
@@ -3007,19 +3014,14 @@ const Records: React.FC = () => {
                                         isStockMovement: String(item.id).includes('movement-')
                                       });
 
-                                      // Check if this is a stock movement (Purchase/Sale/Palti)
-                                      // Stock movements have IDs like "movement-123"
                                       const isStockMovement = String(item.id).includes('movement-') ||
                                         ['purchase', 'sale', 'palti'].includes(item.movementType?.toLowerCase());
 
                                       if (!isStockMovement) {
-                                        // Production entries
                                         await axios.post(`/rice-productions/${item.id}/approve`);
                                         toast.success('Rice production approved successfully!');
                                       } else {
-                                        // Purchase, Sale, Palti use rice-stock-management
                                         const token = localStorage.getItem('token');
-                                        // Extract numeric ID from movement-{id} format if needed
                                         const movementId = String(item.id).replace('movement-', '');
                                         console.log('🔄 Calling rice-stock-management approval for ID:', movementId);
                                         await axios.patch(`/rice-stock-management/movements/${movementId}/status`, {
@@ -3054,17 +3056,21 @@ const Records: React.FC = () => {
                               {(item.status === 'pending' || user?.role === 'admin' || user?.role === 'manager') && (
                                 <button
                                   onClick={() => {
-                                    // Set the item for editing
                                     const movementId = String(item.id).replace('movement-', '');
-                                    setEditingRiceMovement({
-                                      ...item,
-                                      id: movementId // Store clean ID for API call
-                                    });
+                                    if (isEditingThisRow) {
+                                      setEditingRiceMovement(null);
+                                    } else {
+                                      setEditingRiceMovement({
+                                        ...item,
+                                        id: movementId,
+                                        originalId: item.id
+                                      });
+                                    }
                                     setEditError(null);
                                   }}
                                   style={{
                                     padding: '4px 12px',
-                                    backgroundColor: '#3b82f6',
+                                    backgroundColor: isEditingThisRow ? '#64748b' : '#3b82f6',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '4px',
@@ -3076,7 +3082,7 @@ const Records: React.FC = () => {
                                   }}
                                   title={item.status === 'approved' ? "Admin Edit: Approved Record" : "Edit this entry"}
                                 >
-                                  ✏️ Edit
+                                  {isEditingThisRow ? '✕ Close' : '✏️ Edit'}
                                 </button>
                               )}
 
@@ -3101,12 +3107,364 @@ const Records: React.FC = () => {
                                   🗑️ Delete
                                 </button>
                               )}
-
-                              {/* Rice Hamali button removed as per user request */}
                             </div>
                           </td>
+                        </tr>
+
+                        {/* Solution 2: Inline Row Edit expanded underneath this row */}
+                        {isEditingThisRow && editingRiceMovement && (
+                          <tr key={`inline-edit-${item.id}`} style={{ backgroundColor: '#f8fafc' }}>
+                            <td colSpan={15} style={{ padding: '0', borderBottom: '3px solid #3b82f6', borderTop: 'none' }}>
+                              <div style={{
+                                backgroundColor: '#ffffff',
+                                border: '2px solid #3b82f6',
+                                borderRadius: '10px',
+                                margin: '10px 14px',
+                                padding: '16px 20px',
+                                boxShadow: '0 6px 20px rgba(59, 130, 246, 0.12)'
+                              }}>
+                                <div style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  borderBottom: '1.5px solid #e2e8f0',
+                                  paddingBottom: '10px',
+                                  marginBottom: '14px'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ fontSize: '1.25rem' }}>✏️</span>
+                                    <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#1e293b' }}>
+                                      Inline Edit — Movement #{editingRiceMovement.id}
+                                    </span>
+                                    <span style={{
+                                      padding: '3px 10px',
+                                      borderRadius: '6px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold',
+                                      textTransform: 'uppercase',
+                                      background: editingRiceMovement.movementType === 'sale' ? '#fee2e2' :
+                                        editingRiceMovement.movementType === 'purchase' ? '#dcfce7' :
+                                          editingRiceMovement.movementType === 'palti' ? '#ede9fe' : '#f3f4f6',
+                                      color: editingRiceMovement.movementType === 'sale' ? '#dc2626' :
+                                        editingRiceMovement.movementType === 'purchase' ? '#16a34a' :
+                                          editingRiceMovement.movementType === 'palti' ? '#7c3aed' : '#374151'
+                                    }}>
+                                      {editingRiceMovement.movementType || 'production'}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => setEditingRiceMovement(null)}
+                                    style={{
+                                      background: '#f1f5f9',
+                                      border: 'none',
+                                      borderRadius: '50%',
+                                      width: '28px',
+                                      height: '28px',
+                                      cursor: 'pointer',
+                                      fontWeight: 'bold',
+                                      color: '#64748b'
+                                    }}
+                                    title="Close inline edit"
+                                  >✕</button>
+                                </div>
+
+                                {editError && (
+                                  <div style={{
+                                    background: '#fef2f2',
+                                    border: '1.5px solid #f87171',
+                                    color: '#991b1b',
+                                    padding: '8px 14px',
+                                    borderRadius: '6px',
+                                    marginBottom: '12px',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    ❌ {editError}
+                                  </div>
+                                )}
+
+                                {/* Responsive Fields Grid */}
+                                <div style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                                  gap: '12px',
+                                  marginBottom: '14px'
+                                }}>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Date</label>
+                                    <input
+                                      type="date"
+                                      value={editingRiceMovement.date?.split('T')[0] || ''}
+                                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, date: e.target.value })}
+                                      style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Product Type</label>
+                                    <select
+                                      value={editingRiceMovement.product_type || editingRiceMovement.productType || ''}
+                                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, productType: e.target.value, product_type: e.target.value })}
+                                      style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem', backgroundColor: 'white' }}
+                                    >
+                                      <option value="">Select Product Type</option>
+                                      <option value="Rice">Rice</option>
+                                      <option value="Bran">Bran</option>
+                                      <option value="Broken">Broken</option>
+                                      <option value="Faram">Faram</option>
+                                      <option value="0 Broken">0 Broken</option>
+                                      <option value="Zero Broken">Zero Broken</option>
+                                      <option value="Sizer Broken">Sizer Broken</option>
+                                      <option value="RJ Rice 1">RJ Rice 1</option>
+                                      <option value="RJ Rice (2)">RJ Rice (2)</option>
+                                      <option value="RJ Broken">RJ Broken</option>
+                                      <option value="Unpolish">Unpolish</option>
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Variety</label>
+                                    <input
+                                      type="text"
+                                      value={editingRiceMovement.variety || ''}
+                                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, variety: e.target.value })}
+                                      placeholder="Variety"
+                                      style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Bags</label>
+                                    <input
+                                      type="number"
+                                      value={editingRiceMovement.bags || 0}
+                                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, bags: parseInt(e.target.value) || 0 })}
+                                      style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Packaging Brand</label>
+                                    <select
+                                      value={editingRiceMovement.packaging_brand || editingRiceMovement.packagingBrand || ''}
+                                      onChange={(e) => {
+                                        const selectedPkg = packagings.find((pkg: any) => pkg.brandName === e.target.value);
+                                        setEditingRiceMovement({
+                                          ...editingRiceMovement,
+                                          packagingBrand: e.target.value,
+                                          packaging_brand: e.target.value,
+                                          packagingId: selectedPkg?.id || editingRiceMovement.packagingId,
+                                          bagSizeKg: selectedPkg?.allottedKg || editingRiceMovement.bagSizeKg,
+                                          bag_size_kg: selectedPkg?.allottedKg || editingRiceMovement.bagSizeKg,
+                                          packagingKg: selectedPkg?.allottedKg || editingRiceMovement.bagSizeKg
+                                        });
+                                      }}
+                                      style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem', backgroundColor: 'white' }}
+                                    >
+                                      <option value="">Select Packaging</option>
+                                      {packagings.map((pkg: any) => (
+                                        <option key={pkg.id} value={pkg.brandName}>{pkg.brandName} ({pkg.allottedKg}kg)</option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Bag Size (kg)</label>
+                                    <input
+                                      type="number"
+                                      value={editingRiceMovement.bag_size_kg || editingRiceMovement.bagSizeKg || 26}
+                                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, bagSizeKg: parseFloat(e.target.value) || 26, bag_size_kg: parseFloat(e.target.value) || 26 })}
+                                      style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Location Code</label>
+                                    <select
+                                      value={editingRiceMovement.location_code || editingRiceMovement.locationCode || ''}
+                                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, locationCode: e.target.value, location_code: e.target.value })}
+                                      style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem', backgroundColor: 'white' }}
+                                    >
+                                      <option value="">Select Location</option>
+                                      {riceStockLocations.map((loc: any) => (
+                                        <option key={loc.code} value={loc.code}>{loc.code} - {loc.name}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {(editingRiceMovement.movementType === 'sale' || editingRiceMovement.movementType === 'purchase') && (
+                                    <>
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Bill Number</label>
+                                        <input
+                                          type="text"
+                                          value={editingRiceMovement.bill_number || editingRiceMovement.billNumber || ''}
+                                          onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, billNumber: e.target.value, bill_number: e.target.value })}
+                                          placeholder="Bill #"
+                                          style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Lorry Number</label>
+                                        <input
+                                          type="text"
+                                          value={editingRiceMovement.lorry_number || editingRiceMovement.lorryNumber || ''}
+                                          onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, lorryNumber: e.target.value, lorry_number: e.target.value })}
+                                          placeholder="Lorry #"
+                                          style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+
+                                {/* Palti Specific Configuration */}
+                                {editingRiceMovement.movementType === 'palti' && (
+                                  <div style={{
+                                    background: '#f5f3ff',
+                                    padding: '12px 14px',
+                                    borderRadius: '8px',
+                                    marginBottom: '14px',
+                                    border: '1px solid #c4b5fd'
+                                  }}>
+                                    <div style={{ fontWeight: 600, color: '#6d28d9', fontSize: '0.85rem', marginBottom: '8px' }}>
+                                      🔄 Palti Configuration Details
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '3px' }}>From Location</label>
+                                        <select
+                                          value={editingRiceMovement.fromLocation || editingRiceMovement.from_location || ''}
+                                          onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, fromLocation: e.target.value, from_location: e.target.value })}
+                                          style={{ width: '100%', padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', backgroundColor: 'white' }}
+                                        >
+                                          <option value="">Select Location</option>
+                                          {riceStockLocations.map((loc: any) => (
+                                            <option key={loc.code} value={loc.code}>{loc.code} - {loc.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '3px' }}>To Location</label>
+                                        <select
+                                          value={editingRiceMovement.toLocation || editingRiceMovement.to_location || editingRiceMovement.locationCode || editingRiceMovement.location_code || ''}
+                                          onChange={(e) => setEditingRiceMovement({
+                                            ...editingRiceMovement,
+                                            toLocation: e.target.value,
+                                            to_location: e.target.value,
+                                            locationCode: e.target.value,
+                                            location_code: e.target.value
+                                          })}
+                                          style={{ width: '100%', padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', backgroundColor: 'white' }}
+                                        >
+                                          <option value="">Select Location</option>
+                                          {riceStockLocations.map((loc: any) => (
+                                            <option key={loc.code} value={loc.code}>{loc.code} - {loc.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '3px' }}>Source Bags</label>
+                                        <input
+                                          type="number"
+                                          value={editingRiceMovement.sourceBags || editingRiceMovement.source_bags || 0}
+                                          onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, sourceBags: parseInt(e.target.value) || 0, source_bags: parseInt(e.target.value) || 0 })}
+                                          style={{ width: '100%', padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '3px' }}>Source Packaging</label>
+                                        <select
+                                          value={editingRiceMovement.source_packaging_brand || editingRiceMovement.sourcePackaging?.brandName || ''}
+                                          onChange={(e) => {
+                                            const selectedPkg = packagings.find((pkg: any) => pkg.brandName === e.target.value);
+                                            setEditingRiceMovement({
+                                              ...editingRiceMovement,
+                                              source_packaging_brand: e.target.value,
+                                              sourcePackagingId: selectedPkg?.id || editingRiceMovement.sourcePackagingId,
+                                              source_packaging_id: selectedPkg?.id || editingRiceMovement.sourcePackagingId
+                                            });
+                                          }}
+                                          style={{ width: '100%', padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', backgroundColor: 'white' }}
+                                        >
+                                          <option value="">Select Packaging</option>
+                                          {packagings.map((pkg: any) => (
+                                            <option key={pkg.id} value={pkg.brandName}>{pkg.brandName} ({pkg.allottedKg}kg)</option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', marginBottom: '3px' }}>Shortage (kg)</label>
+                                        <input
+                                          type="number"
+                                          step="any"
+                                          value={editingRiceMovement.shortageKg || editingRiceMovement.shortage_kg || 0}
+                                          onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, shortageKg: parseFloat(e.target.value) || 0, shortage_kg: parseFloat(e.target.value) || 0 })}
+                                          style={{ width: '100%', padding: '5px 8px', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '0.85rem', color: '#dc2626', backgroundColor: '#fef2f2' }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Footer */}
+                                <div style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  flexWrap: 'wrap',
+                                  gap: '12px',
+                                  borderTop: '1px solid #e2e8f0',
+                                  paddingTop: '12px'
+                                }}>
+                                  <div style={{ fontSize: '0.85rem', color: '#166534', background: '#dcfce7', padding: '6px 12px', borderRadius: '6px', fontWeight: 600 }}>
+                                    📊 Quantity: {((editingRiceMovement.bags || 0) * ((editingRiceMovement.bag_size_kg || editingRiceMovement.bagSizeKg || 26) / 100)).toFixed(2)} Qtls ({editingRiceMovement.bags || 0} bags × {editingRiceMovement.bag_size_kg || editingRiceMovement.bagSizeKg || 26}kg)
+                                  </div>
+
+                                  <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                      onClick={() => setEditingRiceMovement(null)}
+                                      style={{
+                                        padding: '6px 16px',
+                                        background: '#f1f5f9',
+                                        color: '#475569',
+                                        border: '1px solid #cbd5e1',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontWeight: 600,
+                                        fontSize: '0.85rem'
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={() => handleUpdateRiceMovement(editingRiceMovement)}
+                                      style={{
+                                        padding: '6px 20px',
+                                        background: '#10b981',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontWeight: 600,
+                                        fontSize: '0.85rem',
+                                        boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)'
+                                      }}
+                                    >
+                                      💾 Save Changes
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </tr>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -7484,6 +7842,54 @@ return (
           </EmptyState>
         ) : (
           <div style={{ width: '100%' }}>
+            <div style={{
+              position: 'sticky',
+              top: '0',
+              backgroundColor: '#ffffff',
+              zIndex: 100,
+              padding: '1rem 1.25rem',
+              borderBottom: '2px solid #e5e7eb',
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderRadius: '0 0 12px 12px'
+            }}>
+              <div>
+                <h2 style={{ margin: 0, fontWeight: 'bold', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span>🌾 Paddy Stock</span>
+                </h2>
+                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '4px', fontWeight: '500' }}>
+                  {showAllRecords ? "📋 All Records" : `📅 ${(() => {
+                    const bDate = getBusinessDate();
+                    return new Date(bDate + 'T00:00:00').toLocaleDateString('en-GB', {
+                      day: '2-digit', month: 'short', year: 'numeric'
+                    });
+                  })()}`}
+                  {selectedMonth && ` • 🌙 ${availableMonths.find(m => m.month === selectedMonth)?.month_label || selectedMonth}`}
+                  {(dateFrom || dateTo) && ` • 🗓️ ${dateFrom || '...'} to ${dateTo || '...'}`}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <Button
+                  className="danger"
+                  onClick={() => setShowPaddySaleModal(true)}
+                  style={{
+                    fontWeight: 'bold',
+                    padding: '0.5rem 1.25rem',
+                    fontSize: '0.9rem',
+                    backgroundColor: '#ef4444',
+                    color: 'white'
+                  }}
+                >
+                  ➕ Paddy Sale
+                </Button>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
+                  {Object.keys(records).length} Days
+                </div>
+              </div>
+            </div>
             {/* Date-wise stock with variety summary on right */}
             <RecordsContainer>
               {(() => {
@@ -7703,6 +8109,12 @@ return (
                       const key = `${variety}|${location}`;
                       safeUpdateStock(closingWarehouse, key, rec.bags || 0, { variety, location });
                       console.log(`  🟤 [${d}] LOOSE: +${rec.bags} ${variety} → Warehouse (${location})`);
+                    } else if (rec.movementType === 'sale') {
+                      // PADDY SALE - Subtract bags from warehouse stock (outward)
+                      const location = `${rec.fromKunchinittu?.code || ''} - ${rec.fromWarehouse?.name || ''}`;
+                      const key = `${variety}|${location}`;
+                      safeUpdateStock(closingWarehouse, key, -(rec.bags || 0), { variety, location });
+                      console.log(`  🔴 [${d}] PADDY SALE: -${rec.bags} ${variety} from Warehouse (${location})`);
                     } else {
                       console.log(`  ⚪ [${d}] UNKNOWN: ${rec.movementType} - ${rec.bags} ${variety}`);
                     }
@@ -8191,6 +8603,7 @@ return (
                                   const shiftingGroups: { [key: string]: { bags: number; variety: string; date: string; from: string; to: string; highlight: boolean } } = {};
                                   const productionGroups: { [key: string]: { bags: number; variety: string; date: string; from: string; to: string; highlight: boolean } } = {};
                                   const looseGroups: { [key: string]: { bags: number; variety: string; date: string; to: string; highlight: boolean } } = {};
+                                  const saleGroups: { [key: string]: { bags: number; variety: string; date: string; from: string; to: string; highlight: boolean } } = {};
 
                                   dateRecords.forEach((record: Arrival) => {
                                     if (record.movementType === 'purchase') {
@@ -8319,6 +8732,23 @@ return (
                                         };
                                       }
                                       looseGroups[key].bags += record.bags || 0;
+                                    } else if (record.movementType === 'sale') {
+                                      const fromKunchinittu = record.fromKunchinittu?.name || record.fromKunchinittu?.code || '';
+                                      const key = `sale-${record.variety}|${fromKunchinittu}|${record.id}`;
+                                      const highlightKey = `${record.variety}|${record.fromKunchinittu?.code || fromKunchinittu}`;
+                                      const shouldHighlight = openingStockKeys.has(highlightKey);
+
+                                      if (!saleGroups[key]) {
+                                        saleGroups[key] = {
+                                          bags: 0,
+                                          variety: record.variety || '-',
+                                          date: record.date || '',
+                                          from: `${fromKunchinittu} - ${record.fromWarehouse?.name || ''}`,
+                                          to: `Sale: ${record.fromLocation || record.broker || '-'}`,
+                                          highlight: shouldHighlight
+                                        };
+                                      }
+                                      saleGroups[key].bags += record.bags || 0;
                                     }
                                   });
 
@@ -8589,6 +9019,90 @@ return (
                                           ))}
                                         </tbody>
                                       </table>
+
+                                      {/* Sale entries - RED */}
+                                      {Object.keys(saleGroups).length > 0 && (
+                                        <table style={{
+                                          width: '100%',
+                                          borderCollapse: 'collapse',
+                                          fontFamily: 'Calibri, sans-serif',
+                                          fontSize: '11pt',
+                                          marginBottom: '5px',
+                                          border: 'none'
+                                        }}>
+                                          <tbody>
+                                            {Object.values(saleGroups).map((group, idx) => (
+                                              <tr key={`sale-${idx}`}>
+                                                <td style={{
+                                                  backgroundColor: '#fee2e2',
+                                                  padding: '4px 8px',
+                                                  border: 'none',
+                                                  fontFamily: 'Calibri, sans-serif',
+                                                  fontSize: '11pt',
+                                                  fontWeight: 'bold',
+                                                  width: '10%',
+                                                  textAlign: 'right',
+                                                  color: '#991b1b'
+                                                }}>
+                                                  (-) {group.bags}
+                                                </td>
+                                                <td style={{
+                                                  backgroundColor: 'transparent',
+                                                  padding: '4px 8px',
+                                                  border: 'none',
+                                                  fontFamily: 'Calibri, sans-serif',
+                                                  fontSize: '11pt',
+                                                  fontWeight: 'bold',
+                                                  width: '15%',
+                                                  textAlign: 'left',
+                                                  color: '#991b1b'
+                                                }}>
+                                                  {group.variety}
+                                                </td>
+                                                <td style={{
+                                                  backgroundColor: 'transparent',
+                                                  padding: '4px 8px',
+                                                  border: 'none',
+                                                  fontFamily: 'Calibri, sans-serif',
+                                                  fontSize: '11pt',
+                                                  fontWeight: 'bold',
+                                                  width: '18%',
+                                                  textAlign: 'left',
+                                                  color: '#991b1b'
+                                                }}>
+                                                  {group.from}
+                                                </td>
+                                                <td style={{
+                                                  backgroundColor: 'transparent',
+                                                  padding: '4px 2px',
+                                                  border: 'none',
+                                                  fontFamily: 'Calibri, sans-serif',
+                                                  fontSize: '11pt',
+                                                  fontWeight: 'bold',
+                                                  width: '3%',
+                                                  textAlign: 'center',
+                                                  color: '#000'
+                                                }}>
+                                                  to
+                                                </td>
+                                                <td style={{
+                                                  backgroundColor: 'transparent',
+                                                  padding: '4px 8px',
+                                                  border: 'none',
+                                                  fontFamily: 'Calibri, sans-serif',
+                                                  fontSize: '11pt',
+                                                  fontWeight: 'bold',
+                                                  width: '54%',
+                                                  textAlign: 'left',
+                                                  color: '#991b1b'
+                                                }}>
+                                                  {group.to}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      )}
 
                                       {/* Production-Shifting entries - ORANGE - Show each entry individually */}
                                       <table style={{
@@ -9148,8 +9662,25 @@ return (
                 {search && ` • 🔍 "${search}"`}
               </div>
             </div>
-            <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
-              {Object.keys(records).length} Days • {Object.values(records).flat().length} Records
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {(activeTab as any) === 'stock' && (
+                <Button
+                  className="success"
+                  onClick={() => setShowPaddySaleModal(true)}
+                  style={{
+                    fontWeight: 'bold',
+                    padding: '0.5rem 1.25rem',
+                    fontSize: '0.9rem',
+                    backgroundColor: '#10b981',
+                    color: 'white'
+                  }}
+                >
+                  ➕ Paddy Sale
+                </Button>
+              )}
+              <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
+                {Object.keys(records).length} Days • {Object.values(records).flat().length} Records
+              </div>
             </div>
           </div>
 
@@ -10218,6 +10749,15 @@ return (
         }}
       />
 
+      {/* Paddy Sale Modal */}
+      <PaddySaleModal
+        isOpen={showPaddySaleModal}
+        onClose={() => setShowPaddySaleModal(false)}
+        onSuccess={() => {
+          fetchRecords();
+        }}
+      />
+
       {/* Enhanced Palti Modal - Multi-Target Support */}
       <EnhancedPaltiModal
         isOpen={showPaltiModal}
@@ -10321,448 +10861,6 @@ return (
               </button>
             </div>
           </div>
-        </div>,
-        document.body
-      )}
-
-      {editingRiceMovement && createPortal(
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.4)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 10000,
-          animation: 'fadeIn 0.2s ease'
-        }} onClick={() => setEditingRiceMovement(null)}>
-          <div style={{
-            background: 'white',
-            width: '90%',
-            maxWidth: '550px',
-            maxHeight: '90vh',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            borderRadius: '16px',
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            animation: 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
-          }} onClick={(e) => e.stopPropagation()}>
-            <div style={{
-              background: '#f8fafc',
-              padding: '1.5rem 2rem',
-              borderBottom: '1px solid #e2e8f0',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.25rem', fontWeight: 700 }}>
-                ✏️ Edit Rice Movement
-              </h3>
-              <button
-                onClick={() => setEditingRiceMovement(null)}
-                style={{
-                  background: '#f1f5f9',
-                  border: 'none',
-                  fontSize: '1.5rem',
-                  cursor: 'pointer',
-                  color: '#64748b',
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >×</button>
-            </div>
-
-            <div style={{ padding: '1.5rem 2rem', flex: 1, overflowY: 'auto' }}>
-              {editError && (
-                <div style={{
-                  background: '#fef2f2',
-                  border: '1.5px solid #f87171',
-                  color: '#991b1b',
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  marginBottom: '16px',
-                  fontSize: '0.9rem',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <span>❌</span> {editError}
-                </div>
-              )}
-
-              {/* Movement Type Badge (Read-only) */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Movement Type</label>
-                <div style={{
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  fontSize: '1rem',
-                  fontWeight: 'bold',
-                  textTransform: 'uppercase',
-                  background: editingRiceMovement.movementType === 'sale' ? '#fee2e2' :
-                    editingRiceMovement.movementType === 'purchase' ? '#dcfce7' :
-                      editingRiceMovement.movementType === 'palti' ? '#ede9fe' : '#f3f4f6',
-                  color: editingRiceMovement.movementType === 'sale' ? '#dc2626' :
-                    editingRiceMovement.movementType === 'purchase' ? '#16a34a' :
-                      editingRiceMovement.movementType === 'palti' ? '#7c3aed' : '#374151'
-                }}>
-                  {editingRiceMovement.movementType || editingRiceMovement.movement_type || 'production'}
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Date</label>
-                <input
-                  type="date"
-                  value={editingRiceMovement.date?.split('T')[0] || ''}
-                  onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, date: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1.5px solid #d1d5db',
-                    borderRadius: '8px',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Product Type</label>
-                <select
-                  value={editingRiceMovement.product_type || editingRiceMovement.productType || ''}
-                  onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, productType: e.target.value, product_type: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1.5px solid #d1d5db',
-                    borderRadius: '8px',
-                    backgroundColor: 'white',
-                    fontSize: '1rem'
-                  }}
-                >
-                  <option value="">Select Product Type</option>
-                  <option value="Rice">Rice</option>
-                  <option value="Bran">Bran</option>
-                  <option value="Broken">Broken</option>
-                  <option value="Faram">Faram</option>
-                  <option value="0 Broken">0 Broken</option>
-                  <option value="Zero Broken">Zero Broken</option>
-                  <option value="Sizer Broken">Sizer Broken</option>
-                  <option value="RJ Rice 1">RJ Rice 1</option>
-                  <option value="RJ Rice (2)">RJ Rice (2)</option>
-                  <option value="RJ Broken">RJ Broken</option>
-                  <option value="Unpolish">Unpolish</option>
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Variety</label>
-                <input
-                  type="text"
-                  value={editingRiceMovement.variety || ''}
-                  onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, variety: e.target.value })}
-                  placeholder="e.g., DEC25 KNM"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1.5px solid #d1d5db',
-                    borderRadius: '8px',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Bags</label>
-                  <input
-                    type="number"
-                    value={editingRiceMovement.bags || 0}
-                    onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, bags: parseInt(e.target.value) || 0 })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1.5px solid #d1d5db',
-                      borderRadius: '8px',
-                      fontSize: '1rem'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Bag Size (kg)</label>
-                  <input
-                    type="number"
-                    value={editingRiceMovement.bag_size_kg || editingRiceMovement.bagSizeKg || 26}
-                    onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, bagSizeKg: parseFloat(e.target.value) || 26, bag_size_kg: parseFloat(e.target.value) || 26 })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1.5px solid #d1d5db',
-                      borderRadius: '8px',
-                      fontSize: '1rem'
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Packaging Brand</label>
-                <select
-                  value={editingRiceMovement.packaging_brand || editingRiceMovement.packagingBrand || ''}
-                  onChange={(e) => {
-                    const selectedPkg = packagings.find(pkg => pkg.brandName === e.target.value);
-                    setEditingRiceMovement({
-                      ...editingRiceMovement,
-                      packagingBrand: e.target.value,
-                      packaging_brand: e.target.value,
-                      packagingId: selectedPkg?.id || editingRiceMovement.packagingId,
-                      bagSizeKg: selectedPkg?.allottedKg || editingRiceMovement.bagSizeKg,
-                      bag_size_kg: selectedPkg?.allottedKg || editingRiceMovement.bagSizeKg,
-                      packagingKg: selectedPkg?.allottedKg || editingRiceMovement.bagSizeKg
-                    });
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1.5px solid #d1d5db',
-                    borderRadius: '8px',
-                    backgroundColor: 'white',
-                    fontSize: '1rem'
-                  }}
-                >
-                  <option value="">Select Packaging</option>
-                  {packagings.map((pkg: any) => (
-                    <option key={pkg.id} value={pkg.brandName}>{pkg.brandName} ({pkg.allottedKg}kg)</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Location Code</label>
-                <select
-                  value={editingRiceMovement.location_code || editingRiceMovement.locationCode || ''}
-                  onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, locationCode: e.target.value, location_code: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1.5px solid #d1d5db',
-                    borderRadius: '8px',
-                    backgroundColor: 'white',
-                    fontSize: '1rem'
-                  }}
-                >
-                  <option value="">Select Location</option>
-                  {riceStockLocations.map((loc: any) => (
-                    <option key={loc.code} value={loc.code}>{loc.code} - {loc.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Bill/Lorry Numbers - Only for Sale/Purchase */}
-              {(editingRiceMovement.movementType === 'sale' || editingRiceMovement.movementType === 'purchase') && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Bill Number</label>
-                    <input
-                      type="text"
-                      value={editingRiceMovement.bill_number || editingRiceMovement.billNumber || ''}
-                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, billNumber: e.target.value, bill_number: e.target.value })}
-                      placeholder="Bill #"
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        border: '1.5px solid #d1d5db',
-                        borderRadius: '8px',
-                        fontSize: '1rem'
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600' }}>Lorry Number</label>
-                    <input
-                      type="text"
-                      value={editingRiceMovement.lorry_number || editingRiceMovement.lorryNumber || ''}
-                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, lorryNumber: e.target.value, lorry_number: e.target.value })}
-                      placeholder="MH-12-XX-1234"
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        border: '1.5px solid #d1d5db',
-                        borderRadius: '8px',
-                        fontSize: '1rem'
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Palti-specific fields */}
-              {editingRiceMovement.movementType === 'palti' && (
-                <div style={{
-                  background: '#f5f3ff',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  marginBottom: '16px',
-                  border: '1.5px solid #c4b5fd'
-                }}>
-                  <div style={{ fontWeight: '700', color: '#7c3aed', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>🔄</span> Palti Configuration Details
-                  </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    {/* From Location */}
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#4b5563' }}>From Location (Source)</label>
-                      <select
-                        value={editingRiceMovement.fromLocation || editingRiceMovement.from_location || ''}
-                        onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, fromLocation: e.target.value, from_location: e.target.value })}
-                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', backgroundColor: 'white' }}
-                      >
-                        <option value="">Select Location</option>
-                        {riceStockLocations.map((loc: any) => (
-                          <option key={loc.code} value={loc.code}>{loc.code} - {loc.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* To Location */}
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#4b5563' }}>To Location (Target)</label>
-                      <select
-                        value={editingRiceMovement.toLocation || editingRiceMovement.to_location || editingRiceMovement.locationCode || editingRiceMovement.location_code || ''}
-                        onChange={(e) => setEditingRiceMovement({
-                          ...editingRiceMovement,
-                          toLocation: e.target.value,
-                          to_location: e.target.value,
-                          locationCode: e.target.value,
-                          location_code: e.target.value
-                        })}
-                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', backgroundColor: 'white' }}
-                      >
-                        <option value="">Select Location</option>
-                        {riceStockLocations.map((loc: any) => (
-                          <option key={loc.code} value={loc.code}>{loc.code} - {loc.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Source Bags */}
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#4b5563' }}>Source Bags</label>
-                      <input
-                        type="number"
-                        value={editingRiceMovement.sourceBags || editingRiceMovement.source_bags || 0}
-                        onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, sourceBags: parseInt(e.target.value) || 0, source_bags: parseInt(e.target.value) || 0 })}
-                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem' }}
-                      />
-                    </div>
-
-                    {/* Source Packaging */}
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#4b5563' }}>Source Packaging</label>
-                      <select
-                        value={editingRiceMovement.source_packaging_brand || editingRiceMovement.sourcePackaging?.brandName || ''}
-                        onChange={(e) => {
-                          const selectedPkg = packagings.find(pkg => pkg.brandName === e.target.value);
-                          setEditingRiceMovement({
-                            ...editingRiceMovement,
-                            source_packaging_brand: e.target.value,
-                            sourcePackagingId: selectedPkg?.id || editingRiceMovement.sourcePackagingId,
-                            source_packaging_id: selectedPkg?.id || editingRiceMovement.sourcePackagingId
-                          });
-                        }}
-                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: '8px', fontSize: '0.9rem', backgroundColor: 'white' }}
-                      >
-                        <option value="">Select Packaging</option>
-                        {packagings.map((pkg: any) => (
-                          <option key={pkg.id} value={pkg.brandName}>{pkg.brandName} ({pkg.allottedKg}kg)</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Shortage kg */}
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', fontSize: '0.85rem', color: '#dc2626' }}>Shortage (kg)</label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={editingRiceMovement.shortageKg || editingRiceMovement.shortage_kg || 0}
-                        onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, shortageKg: parseFloat(e.target.value) || 0, shortage_kg: parseFloat(e.target.value) || 0 })}
-                        style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #fca5a5', borderRadius: '8px', fontSize: '0.9rem', color: '#dc2626', backgroundColor: '#fef2f2' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Quantity Display */}
-              <div style={{
-                background: '#f0fdf4',
-                padding: '12px',
-                borderRadius: '8px',
-                marginBottom: '24px',
-                border: '1px solid #86efac'
-              }}>
-                <div style={{ fontWeight: '600', color: '#16a34a', marginBottom: '4px' }}>📊 Calculated Quantity</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#15803d' }}>
-                  {((editingRiceMovement.bags || 0) * ((editingRiceMovement.bag_size_kg || editingRiceMovement.bagSizeKg || 26) / 100)).toFixed(2)} Qtls
-                </div>
-                <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                  ({editingRiceMovement.bags || 0} bags × {editingRiceMovement.bag_size_kg || editingRiceMovement.bagSizeKg || 26}kg)
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setEditingRiceMovement(null)}
-                  style={{
-                    padding: '10px 20px',
-                    background: '#f3f4f6',
-                    color: '#4b5563',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                    transition: 'background 0.2s'
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleUpdateRiceMovement(editingRiceMovement)}
-                  style={{
-                    padding: '10px 24px',
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)',
-                    transition: 'transform 0.2s'
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
-                >
-                  💾 Save Changes
-                </button>
-              </div>
-            </div>
-          </div>
-          <style>{`
-            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-          `}</style>
         </div>,
         document.body
       )}

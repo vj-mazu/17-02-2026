@@ -334,6 +334,7 @@ class LocationBifurcationService {
       bagSizeKg,
       requestedBags,
       saleDate,
+      excludeMovementId,
       debugMode = false
     } = params;
 
@@ -346,7 +347,8 @@ class LocationBifurcationService {
         packagingBrand,
         bagSizeKg,
         requestedBags,
-        saleDate
+        saleDate,
+        excludeMovementId
       });
     }
 
@@ -367,6 +369,7 @@ class LocationBifurcationService {
           LEFT JOIN packagings p ON rsm.packaging_id = p.id
           WHERE rsm.status = 'approved'
             AND rsm.date <= :saleDate
+            ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'purchase'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
             AND rsm.product_type = :productType
@@ -382,6 +385,7 @@ class LocationBifurcationService {
           LEFT JOIN packagings p ON rsm.packaging_id = p.id
           WHERE rsm.status = 'approved'
             AND rsm.date < :saleDate
+            ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'sale'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
             AND rsm.product_type = :productType
@@ -397,6 +401,7 @@ class LocationBifurcationService {
           LEFT JOIN packagings sp ON rsm.source_packaging_id = sp.id
           WHERE rsm.status = 'approved'
             AND rsm.date < :saleDate
+            ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
             AND rsm.product_type = :productType
@@ -413,6 +418,7 @@ class LocationBifurcationService {
           LEFT JOIN packagings tp ON rsm.target_packaging_id = tp.id
           WHERE rsm.status = 'approved'
             AND rsm.date <= :saleDate
+            ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
             AND (COALESCE(rsm.to_location, rsm.location_code) = :locationCode OR (:locationCode = 'NULL' AND COALESCE(rsm.to_location, rsm.location_code) IS NULL))
             AND rsm.product_type = :productType
@@ -447,6 +453,7 @@ class LocationBifurcationService {
         WHERE rsm.status = 'approved'
           AND rsm.date = :saleDate
           AND rsm.movement_type = 'palti'
+          ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
           AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
           AND rsm.product_type = :productType
           AND sp."brandName" = :packagingBrand
@@ -461,6 +468,7 @@ class LocationBifurcationService {
         productType,
         packagingBrand: packagingInfo.brand,
         bagSizeKg: packagingInfo.sizeKg,
+        excludeMovementId: excludeMovementId ? parseInt(excludeMovementId) : null,
         ...varietyConditions.replacements
       };
       
@@ -1083,39 +1091,38 @@ class LocationBifurcationService {
     let resolvedInfo = {
       id: packagingId,
       brand: packagingBrand,
-      sizeKg: bagSizeKg
+      sizeKg: bagSizeKg ? parseFloat(bagSizeKg) : null
     };
 
-    // Resolve packaging ID if only brand provided
-    if (!packagingId && packagingBrand) {
+    if (packagingId) {
       const result = await sequelize.query(
-        'SELECT id, "allottedKg" FROM packagings WHERE LOWER("brandName") = LOWER(:brand) LIMIT 1',
-        {
-          replacements: { brand: packagingBrand },
-          type: sequelize.QueryTypes.SELECT
-        }
-      );
-
-      if (result.length > 0) {
-        resolvedInfo.id = result[0].id;
-        resolvedInfo.sizeKg = parseFloat(result[0].allottedKg) || bagSizeKg;
-      }
-    }
-
-    // Resolve packaging brand if only ID provided
-    if (packagingId && !packagingBrand) {
-      const result = await sequelize.query(
-        'SELECT "brandName", "allottedKg" FROM packagings WHERE id = :id LIMIT 1',
+        'SELECT id, "brandName", "allottedKg" FROM packagings WHERE id = :id LIMIT 1',
         {
           replacements: { id: packagingId },
           type: sequelize.QueryTypes.SELECT
         }
       );
-
       if (result.length > 0) {
-        resolvedInfo.brand = result[0].brandName;
-        resolvedInfo.sizeKg = parseFloat(result[0].allottedKg) || bagSizeKg;
+        if (!resolvedInfo.brand) resolvedInfo.brand = result[0].brandName;
+        if (!resolvedInfo.sizeKg) resolvedInfo.sizeKg = parseFloat(result[0].allottedKg);
       }
+    } else if (packagingBrand) {
+      const result = await sequelize.query(
+        'SELECT id, "brandName", "allottedKg" FROM packagings WHERE LOWER("brandName") = LOWER(:brand) LIMIT 1',
+        {
+          replacements: { brand: packagingBrand },
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
+      if (result.length > 0) {
+        resolvedInfo.id = result[0].id;
+        if (!resolvedInfo.brand) resolvedInfo.brand = result[0].brandName;
+        if (!resolvedInfo.sizeKg) resolvedInfo.sizeKg = parseFloat(result[0].allottedKg);
+      }
+    }
+
+    if (!resolvedInfo.sizeKg) {
+      resolvedInfo.sizeKg = 26; // Default standard fallback
     }
 
     return resolvedInfo;
