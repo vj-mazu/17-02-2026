@@ -983,15 +983,18 @@ const HamaliBook: React.FC = () => {
               {Object.entries(summary.otherHamaliEntries).map(([workName, entries]: [string, any]) => (
                 <div key={workName} style={{ marginBottom: '1rem' }}>
                   <h4 style={{ color: '#d97706', marginBottom: '0.5rem' }}>{workName}</h4>
-                  {entries.map((entry: any, index: number) => (
-                    <EntryRow key={index}>
-                      <Amount>₹{entry.totalAmount.toFixed(0)}</Amount>
-                      <Details>
-                        {entry.workDetail} - {entry.quantity} units × ₹{entry.rate}
-                        {entry.workerName && <span style={{ color: '#6b7280' }}> | Worker: {entry.workerName}</span>}
-                      </Details>
-                    </EntryRow>
-                  ))}
+                  {entries.map((entry: any, index: number) => {
+                    const isFood = (workName || '').toLowerCase() === 'food' || (entry.workDetail || '').toLowerCase().includes('food');
+                    return (
+                      <EntryRow key={index}>
+                        <Amount>₹{entry.totalAmount.toFixed(0)}</Amount>
+                        <Details>
+                          {entry.workDetail} - {entry.quantity} {isFood ? 'persons' : 'units'} × ₹{entry.rate}{isFood ? '/person' : ''}
+                          {entry.workerName && <span style={{ color: '#6b7280' }}> | Worker: {entry.workerName}</span>}
+                        </Details>
+                      </EntryRow>
+                    );
+                  })}
                 </div>
               ))}
             </Section>

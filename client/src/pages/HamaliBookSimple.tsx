@@ -523,7 +523,7 @@ const HamaliBookSimple: React.FC = () => {
     return `${arrival.bags || 0} Bags from ${broker} to ${arrival.toKunchinittu?.name || 'Unknown Location'}`;
   };
 
-  const renderSplitsInfo = (splits: any[]) => {
+  const renderSplitsInfo = (splits: any[], isFood: boolean = false) => {
     if (!splits || splits.length === 0) return null;
 
     // Group splits by worker name (sum both bags and amounts, calculate rate)
@@ -551,7 +551,7 @@ const HamaliBookSimple: React.FC = () => {
             <SplitItem key={index}>
               <WorkerName>{worker}:</WorkerName>
               <WorkerDetails>
-                🎯 {data.bags} bags × ₹{parseFloat(rate.toString()).toFixed(2)} = ₹{data.amount.toFixed(0)} 🎯
+                🎯 {data.bags} {isFood ? 'persons' : 'bags'} × ₹{parseFloat(rate.toString()).toFixed(2)} = ₹{data.amount.toFixed(0)} 🎯
               </WorkerDetails>
             </SplitItem>
           );
@@ -561,7 +561,7 @@ const HamaliBookSimple: React.FC = () => {
   };
 
   // Keep the old function for PDF generation
-  const formatSplitsInfo = (splits: any[]) => {
+  const formatSplitsInfo = (splits: any[], isFood: boolean = false) => {
     if (!splits || splits.length === 0) return '';
 
     // Group splits by worker name (sum both bags and amounts, calculate rate)
@@ -582,7 +582,7 @@ const HamaliBookSimple: React.FC = () => {
     return Object.entries(groupedSplits)
       .map(([worker, data]: [string, any]) => {
         const rate = data.rate || (data.amount && data.bags ? data.amount / data.bags : 0);
-        return `${worker}: ${data.bags} bags × ₹${parseFloat(rate.toString()).toFixed(2)} = ₹${data.amount.toFixed(0)}`;
+        return `${worker}: ${data.bags} ${isFood ? 'persons' : 'bags'} × ₹${parseFloat(rate.toString()).toFixed(2)} = ₹${data.amount.toFixed(0)}`;
       })
       .join(', ');
   };
@@ -829,12 +829,17 @@ const HamaliBookSimple: React.FC = () => {
         `;
 
         Object.entries(summary.otherHamaliEntries).forEach(([key, entry]: [string, any]) => {
+          const isFood = (entry.workType || '').toLowerCase() === 'food';
           const description = entry.description ? ` - ${entry.description}` : '';
+          const label = isFood
+            ? `${entry.totalBags} Persons @ ₹${parseFloat(entry.rate || 0).toFixed(2)}/person - Food`
+            : `${entry.totalBags} Bags - ${entry.workType} (${entry.workDetail})`;
+
           contentHTML += `
             <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #ddd; font-size: 11px;">
               <div style="font-weight: bold; width: 80px;">₹${entry.totalAmount.toFixed(0)}</div>
-              <div style="flex: 1; padding: 0 10px;">${entry.totalBags} Bags - ${entry.workType} (${entry.workDetail})${description}</div>
-              <div style="width: 250px; text-align: right; font-size: 10px; color: #666;">${formatSplitsInfo(entry.splits)}</div>
+              <div style="flex: 1; padding: 0 10px;">${label}${description}</div>
+              <div style="width: 250px; text-align: right; font-size: 10px; color: #666;">${formatSplitsInfo(entry.splits, isFood)}</div>
             </div>
           `;
         });
@@ -1088,18 +1093,24 @@ const HamaliBookSimple: React.FC = () => {
     return (
       <Section>
         <SectionTitle>Other Hamali Works:</SectionTitle>
-        {Object.entries(summary.otherHamaliEntries).map(([entryKey, entry]: [string, any]) => (
-          <EntryRow key={entryKey}>
-            <Amount>₹{entry.totalAmount.toFixed(0)}</Amount>
-            <Details>
-              {entry.totalBags} Bags - {entry.workType} ({entry.workDetail})
-              {entry.description && ` - ${entry.description}`}
-            </Details>
-            <SplitsInfo>
-              {renderSplitsInfo(entry.splits)}
-            </SplitsInfo>
-          </EntryRow>
-        ))}
+        {Object.entries(summary.otherHamaliEntries).map(([entryKey, entry]: [string, any]) => {
+          const isFood = (entry.workType || '').toLowerCase() === 'food';
+          return (
+            <EntryRow key={entryKey}>
+              <Amount>₹{entry.totalAmount.toFixed(0)}</Amount>
+              <Details>
+                {isFood
+                  ? `${entry.totalBags} Persons (@ ₹${parseFloat(entry.rate || 0).toFixed(2)}/person) - Food`
+                  : `${entry.totalBags} Bags - ${entry.workType} (${entry.workDetail})`
+                }
+                {entry.description && ` - ${entry.description}`}
+              </Details>
+              <SplitsInfo>
+                {renderSplitsInfo(entry.splits, isFood)}
+              </SplitsInfo>
+            </EntryRow>
+          );
+        })}
       </Section>
     );
   };

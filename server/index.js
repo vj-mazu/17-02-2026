@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { sequelize } = require('./config/database');
+const { sequelize, ensureDatabaseExists } = require('./config/database');
 const authRoutes = require('./routes/auth');
 const arrivalsRoutes = require('./routes/arrivals');
 const recordsRoutes = require('./routes/records');
@@ -68,6 +68,7 @@ app.use(helmet());
 // CORS Configuration - Support multiple origins
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://localhost:3005',
   'http://localhost:5173',
   'https://complete-paddy-rice-management-syst.vercel.app',
   'https://complete-paddy-rice-management-system.vercel.app',
@@ -219,9 +220,29 @@ app.use('*', (req, res) => {
 // Database connection and server start
 const startServer = async () => {
   try {
+    // Ensure the Postgres database exists before connecting via Sequelize
+    await ensureDatabaseExists();
+
     // Test database connection
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully.');
+
+    // Ensure PostgreSQL ENUM types are fully updated with new enum values
+    const enumQueries = [
+      'ALTER TYPE "enum_arrivals_movementType" ADD VALUE IF NOT EXISTS \'sale\'',
+      'ALTER TYPE "enum_arrivals_movement_type" ADD VALUE IF NOT EXISTS \'sale\'',
+      'ALTER TYPE "enum_Arrivals_movementType" ADD VALUE IF NOT EXISTS \'sale\'',
+      'ALTER TYPE "enum_arrivals_status" ADD VALUE IF NOT EXISTS \'admin-approved\'',
+      'ALTER TYPE "enum_Arrivals_status" ADD VALUE IF NOT EXISTS \'admin-approved\''
+    ];
+    for (const q of enumQueries) {
+      try {
+        await sequelize.query(q);
+        console.log(`✅ Executed DB enum sync query: ${q}`);
+      } catch (e) {
+        // Safe to ignore if type doesn't exist or value is already present
+      }
+    }
 
     // Check if tables exist, if not create them
     try {
@@ -1233,6 +1254,15 @@ const startServer = async () => {
         console.log('⚠️ Product types auto-fix warning:', error.message);
       }
 
+      // Migration 52: Add is_direct_load column to rice_stock_locations table
+      try {
+        const addIsDirectLoad = require('./migrations/52_add_is_direct_load_to_rice_stock_locations');
+        await addIsDirectLoad.up();
+        console.log('✅ Migration 52: is_direct_load added to rice_stock_locations');
+      } catch (error) {
+        console.log('⚠️ Migration 52 warning:', error.message);
+      }
+
       // Migration 88: Add kunchinittu_id and outturn_id to inventory_data
       try {
         const addKunchinittuOutturnToInventoryData = require('./migrations/88_add_kunchinittu_outturn_to_inventory_data');
@@ -1316,7 +1346,77 @@ const startServer = async () => {
         console.log('⚠️ Migration 94 warning:', error.message);
       }
 
+      // Migration 95: Add sale to arrivals movementType enum
+      try {
+        const addSaleMovementType = require('./migrations/95_add_sale_to_arrivals_movement_type');
+        await addSaleMovementType.up();
+        console.log('✅ Migration 95: sale movementType added');
+      } catch (error) {
+        console.log('⚠️ Migration 95 warning:', error.message);
+      }
+
+      // Auto-migration: Add bill_no column to arrivals table
+      try {
+        const { sequelize: seq } = require('./config/database');
+        const [results] = await seq.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'arrivals' 
+          AND column_name = 'bill_no'
+        `);
+        if (results.length === 0) {
+          await seq.query(`
+            ALTER TABLE arrivals 
+            ADD COLUMN bill_no VARCHAR(50)
+          `);
+          console.log('✅ Auto-migration: bill_no column added to arrivals');
+        } else {
+          console.log('✅ Auto-migration: bill_no column already exists');
+        }
+      } catch (error) {
+        console.log('⚠️ Auto-migration bill_no warning:', error.message);
+      }
+
+      // Auto-migration: Ensure Food rate exists in paddy_hamali_rates
+      try {
+        const PaddyHamaliRate = require('./models/PaddyHamaliRate');
+        const existingFoodRate = await PaddyHamaliRate.findOne({
+          where: { workType: 'Food' }
+        });
+        if (!existingFoodRate) {
+          await PaddyHamaliRate.create({
+            workType: 'Food',
+            workDetail: 'Per Person',
+            rate: 50.00,
+            isPerLorry: false,
+            hasMultipleOptions: false,
+            parentWorkType: null,
+            displayOrder: 13
+          });
+          console.log('✅ Auto-migration: Food rate added to paddy_hamali_rates');
+        } else {
+          console.log('✅ Food rate already exists in paddy_hamali_rates');
+        }
+      } catch (error) {
+        console.log('⚠️ Auto-migration Food hamali rate warning:', error.message);
+      }
+
       console.log('✅ Migrations completed.');
+
+      // DIAGNOSTIC CHECK FOR ARRIVALS COLUMNS
+      try {
+        const fs = require('fs');
+        const { sequelize: seq } = require('./config/database');
+        const [columns] = await seq.query(`
+          SELECT column_name, data_type 
+          FROM information_schema.columns 
+          WHERE table_name = 'arrivals'
+        `);
+        fs.writeFileSync('./arrivals_columns_log.txt', 'Arrivals Columns:\n' + JSON.stringify(columns, null, 2));
+        console.log('📝 Diagnostic Arrivals columns written to ./arrivals_columns_log.txt');
+      } catch (diagError) {
+        console.error('Arrivals Diagnostic error:', diagError);
+      }
     }
 
     // Default warehouses removed - users should create their own warehouses

@@ -74,7 +74,8 @@ module.exports = {
       { work_type: 'Paddy Shifting', work_detail: 'KN (0 to 18 height)', rate: 4.31, is_per_lorry: false, has_multiple_options: true, parent_work_type: 'Paddy Shifting', display_order: 9, created_at: new Date(), updated_at: new Date() },
       { work_type: 'Paddy Filling with Stitching', work_detail: 'From Rashi/ Bunker', rate: 3.7, is_per_lorry: false, has_multiple_options: false, parent_work_type: null, display_order: 10, created_at: new Date(), updated_at: new Date() },
       { work_type: 'Per Lorry', work_detail: 'Association Rate', rate: 62, is_per_lorry: true, has_multiple_options: true, parent_work_type: null, display_order: 11, created_at: new Date(), updated_at: new Date() },
-      { work_type: 'Per Lorry', work_detail: 'Lorry Nitt Jama & Rope pulling', rate: 120, is_per_lorry: true, has_multiple_options: true, parent_work_type: 'Per Lorry', display_order: 12, created_at: new Date(), updated_at: new Date() }
+      { work_type: 'Per Lorry', work_detail: 'Lorry Nitt Jama & Rope pulling', rate: 120, is_per_lorry: true, has_multiple_options: true, parent_work_type: 'Per Lorry', display_order: 12, created_at: new Date(), updated_at: new Date() },
+      { work_type: 'Food', work_detail: 'Per Person', rate: 50.00, is_per_lorry: false, has_multiple_options: false, parent_work_type: null, display_order: 13, created_at: new Date(), updated_at: new Date() }
     ]);
   },
 

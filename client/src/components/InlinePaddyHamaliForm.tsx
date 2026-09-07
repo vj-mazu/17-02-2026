@@ -264,9 +264,10 @@ interface WorkerSplit {
 // Split Worker Form Component
 const SplitWorkerForm: React.FC<{
     totalBags: number;
+    unitName?: string;
     onSave: (splits: WorkerSplit[]) => void;
     onCancel: () => void;
-}> = ({ totalBags, onSave, onCancel }) => {
+}> = ({ totalBags, unitName = 'bags', onSave, onCancel }) => {
     const [splits, setSplits] = useState<WorkerSplit[]>([
         { name: 'Batch 1', bags: 0, batchNumber: 1 }
     ]);
@@ -297,19 +298,19 @@ const SplitWorkerForm: React.FC<{
     const remainingBags = totalBags - totalSplitBags;
 
     const handleSave = () => {
-        // Validation - only check bags, names are auto-generated
+        // Validation - check units, names are auto-generated
         if (splits.some(split => split.bags <= 0)) {
-            toast.error('Please enter valid bag counts for all batches');
+            toast.error(`Please enter valid ${unitName} counts for all batches`);
             return;
         }
         
         if (splits.some(split => split.bags <= 0)) {
-            toast.error('All workers must have bags > 0');
+            toast.error(`All batches must have ${unitName} > 0`);
             return;
         }
 
         if (totalSplitBags !== totalBags) {
-            toast.error(`Total split bags (${totalSplitBags}) must equal total bags (${totalBags})`);
+            toast.error(`Total split ${unitName} (${totalSplitBags}) must equal total ${unitName} (${totalBags})`);
             return;
         }
 
@@ -340,7 +341,7 @@ const SplitWorkerForm: React.FC<{
                         {split.name}
                     </div>
                     <div>
-                        <Label>Bags</Label>
+                        <Label>{unitName === 'persons' ? 'Persons' : 'Bags'}</Label>
                         <Input
                             type="number"
                             min="1"
@@ -379,10 +380,10 @@ const SplitWorkerForm: React.FC<{
                 borderRadius: '8px'
             }}>
                 <div>
-                    <strong>Total: {totalSplitBags} / {totalBags} bags</strong>
+                    <strong>Total: {totalSplitBags} / {totalBags} {unitName}</strong>
                     {remainingBags !== 0 && (
                         <div style={{ color: '#dc2626', fontSize: '0.875rem' }}>
-                            {remainingBags > 0 ? `${remainingBags} bags remaining` : `${Math.abs(remainingBags)} bags over limit`}
+                            {remainingBags > 0 ? `${remainingBags} ${unitName} remaining` : `${Math.abs(remainingBags)} ${unitName} over limit`}
                         </div>
                     )}
                 </div>
@@ -435,9 +436,11 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
     
     const [selectedOtherRateIds, setSelectedOtherRateIds] = useState<number[]>([]);
     const [otherWorkBags, setOtherWorkBags] = useState<{ [rateId: number]: number }>({});
+    const [otherWorkRates, setOtherWorkRates] = useState<{ [rateId: number]: number }>({});
     const [otherWorkDetails, setOtherWorkDetails] = useState<{ [rateId: number]: string }>({});
     const [otherWorkDescription, setOtherWorkDescription] = useState<{ [rateId: number]: string }>({});
     const [otherWorkSplits, setOtherWorkSplits] = useState<{ [rateId: number]: WorkerSplit[] }>({});
+    const [isEditMode, setIsEditMode] = useState(false);
 
     useEffect(() => {
         fetchRates();
@@ -447,18 +450,123 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
         setWorkerSplits({});
         setSelectedOtherRateIds([]);
         setOtherWorkBags({});
+        setOtherWorkRates({});
         setOtherWorkDetails({});
         setOtherWorkDescription({});
         setOtherWorkSplits({});
+        setIsEditMode(false);
     }, [arrival.id]);
 
     const fetchRates = async () => {
         try {
             const response = await axios.get<{ rates: PaddyHamaliRate[] }>('/paddy-hamali-rates');
-            setRates(response.data.rates);
+            const fetchedRates = response.data.rates;
+            setRates(fetchedRates);
+            await fetchExistingHamali(fetchedRates);
         } catch (error) {
             console.error('Error fetching rates:', error);
             toast.error('Failed to fetch hamali rates');
+        }
+    };
+
+    const fetchExistingHamali = async (currentRates: PaddyHamaliRate[]) => {
+        try {
+            const token = localStorage.getItem('token');
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+            // 1. Fetch other hamali entries for this arrival
+            const otherRes = await axios.get<{ entries: any[] }>(`/other-hamali-entries/arrival/${arrival.id}`, { headers });
+            const otherEntries = otherRes.data.entries || [];
+
+            if (otherEntries.length > 0) {
+                setIsEditMode(true);
+                const preSelectedOtherRateIds: number[] = [];
+                const preOtherBags: { [rateId: number]: number } = {};
+                const preOtherRates: { [rateId: number]: number } = {};
+                const preOtherDetails: { [rateId: number]: string } = {};
+                const preOtherDesc: { [rateId: number]: string } = {};
+                const preOtherSplits: { [rateId: number]: WorkerSplit[] } = {};
+
+                otherEntries.forEach(entry => {
+                    const matchedRate = currentRates.find(r => 
+                        r.workType?.toLowerCase() === entry.workType?.toLowerCase()
+                    );
+                    if (matchedRate) {
+                        if (!preSelectedOtherRateIds.includes(matchedRate.id)) {
+                            preSelectedOtherRateIds.push(matchedRate.id);
+                            preOtherBags[matchedRate.id] = 0;
+                            preOtherRates[matchedRate.id] = parseFloat(entry.rate) || matchedRate.rate;
+                            preOtherDetails[matchedRate.id] = entry.workDetail || '';
+                            preOtherDesc[matchedRate.id] = entry.description || '';
+                        }
+                        preOtherBags[matchedRate.id] += (parseInt(entry.bags) || 0);
+
+                        if (entry.workerName) {
+                            if (!preOtherSplits[matchedRate.id]) {
+                                preOtherSplits[matchedRate.id] = [];
+                            }
+                            preOtherSplits[matchedRate.id].push({
+                                name: entry.workerName,
+                                bags: parseInt(entry.bags) || 0,
+                                batchNumber: entry.batchNumber || 1
+                            });
+                        }
+                    }
+                });
+
+                if (preSelectedOtherRateIds.length > 0) {
+                    setSelectedOtherRateIds(preSelectedOtherRateIds);
+                    setOtherWorkBags(preOtherBags);
+                    setOtherWorkRates(preOtherRates);
+                    setOtherWorkDetails(preOtherDetails);
+                    setOtherWorkDescription(preOtherDesc);
+                    setOtherWorkSplits(preOtherSplits);
+                }
+            }
+
+            // 2. Fetch paddy hamali entries for this arrival
+            const paddyRes = await axios.get<{ entries: any[] }>(`/paddy-hamali-entries/arrival/${arrival.id}`, { headers });
+            const paddyEntries = paddyRes.data.entries || [];
+            if (paddyEntries.length > 0) {
+                setIsEditMode(true);
+                const preSelectedTypes: string[] = [];
+                const preSelectedRateIds: { [workType: string]: number } = {};
+                const preSplits: { [workType: string]: WorkerSplit[] } = {};
+                let looseBags = 0;
+
+                paddyEntries.forEach(entry => {
+                    if (!preSelectedTypes.includes(entry.workType)) {
+                        preSelectedTypes.push(entry.workType);
+                    }
+                    const matchedRate = currentRates.find(r => 
+                        r.workType === entry.workType && r.workDetail === entry.workDetail
+                    );
+                    if (matchedRate) {
+                        preSelectedRateIds[entry.workType] = matchedRate.id;
+                    }
+                    const isLoose = entry.workType.toLowerCase().includes('loose') && entry.workType.toLowerCase().includes('tumb');
+                    if (isLoose) {
+                        looseBags += (parseInt(entry.bags) || 0);
+                    }
+                    if (entry.workerName) {
+                        if (!preSplits[entry.workType]) {
+                            preSplits[entry.workType] = [];
+                        }
+                        preSplits[entry.workType].push({
+                            name: entry.workerName,
+                            bags: parseInt(entry.bags) || 0,
+                            batchNumber: entry.batchNumber || 1
+                        });
+                    }
+                });
+
+                setSelectedTypes(preSelectedTypes);
+                setSelectedRateIds(preSelectedRateIds);
+                if (looseBags > 0) setLooseTumbiduBags(looseBags);
+                setWorkerSplits(preSplits);
+            }
+        } catch (err) {
+            console.error('Error pre-loading existing hamali entries:', err);
         }
     };
 
@@ -586,18 +694,24 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                 selectedOtherRateIds.forEach(rateId => {
                     const rate = rates.find(r => r.id === rateId);
                     if (rate) {
+                        const isFood = rate.workType?.toLowerCase() === 'food';
+                        const effectiveRate = otherWorkRates[rateId] !== undefined ? otherWorkRates[rateId] : rate.rate;
                         const splits = otherWorkSplits[rateId] || [];
                         const description = otherWorkDescription[rateId] || '';
-                        const details = otherWorkDetails[rateId] || '';
+                        const details = otherWorkDetails[rateId] || (isFood ? 'Per Person' : '');
                         const bags = otherWorkBags[rateId] || 0;
+
+                        const entryDesc = isFood
+                            ? `${description ? `${description} ` : ''}(Food: ${bags} persons @ ₹${effectiveRate}/person)`.trim()
+                            : `${details ? `Details: ${details}, ` : ''}${description}`.trim();
 
                         if (splits.length > 0) {
                             splits.forEach(split => {
                                 otherEntries.push({
                                     workType: rate.workType,
                                     workDetail: rate.workDetail,
-                                    description: `${details ? `Details: ${details}, ` : ''}${description}`.trim(),
-                                    rate: rate.rate,
+                                    description: entryDesc,
+                                    rate: effectiveRate,
                                     bags: split.bags,
                                     workerName: split.name,
                                     batchNumber: split.batchNumber
@@ -607,8 +721,8 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                             otherEntries.push({
                                 workType: rate.workType,
                                 workDetail: rate.workDetail,
-                                description: `${details ? `Details: ${details}, ` : ''}${description}`.trim(),
-                                rate: rate.rate,
+                                description: entryDesc,
+                                rate: effectiveRate,
                                 bags: bags
                             });
                         }
@@ -860,6 +974,7 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                     {rates.map(rate => {
                         const isSelected = selectedOtherRateIds.includes(rate.id);
+                        const isFood = rate.workType?.toLowerCase() === 'food';
                         return (
                             <div 
                                 key={rate.id}
@@ -868,6 +983,9 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                                         setSelectedOtherRateIds(prev => prev.filter(id => id !== rate.id));
                                     } else {
                                         setSelectedOtherRateIds(prev => [...prev, rate.id]);
+                                        if (isFood && otherWorkRates[rate.id] === undefined) {
+                                            setOtherWorkRates(prev => ({ ...prev, [rate.id]: rate.rate }));
+                                        }
                                     }
                                 }}
                                 style={{
@@ -891,13 +1009,13 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                                 />
                                 <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#1f2937' }}>
-                                        {rate.workType}
+                                        {rate.workType} {isFood ? '🍽️' : ''}
                                     </div>
                                     <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.15rem' }}>
                                         {rate.workDetail}
                                     </div>
                                     <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#d97706', marginTop: '0.25rem' }}>
-                                        ₹{rate.rate}/bag
+                                        ₹{rate.rate}/{isFood ? 'person' : 'bag'}
                                     </div>
                                 </div>
                             </div>
@@ -909,17 +1027,19 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                     const rate = rates.find(r => r.id === rateId);
                     if (!rate) return null;
                     
+                    const isFood = rate.workType?.toLowerCase() === 'food';
+                    const currentRate = otherWorkRates[rateId] !== undefined ? otherWorkRates[rateId] : rate.rate;
                     const bags = otherWorkBags[rateId] || 0;
                     const details = otherWorkDetails[rateId] || '';
                     const description = otherWorkDescription[rateId] || '';
                     const splits = otherWorkSplits[rateId] || [];
-                    const amount = rate.rate * bags;
+                    const amount = currentRate * bags;
 
                     return (
                         <div key={rateId} style={{ border: '2px solid #f59e0b', borderRadius: '12px', padding: '1.5rem', background: '#fff', marginBottom: '1.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
                                 <span style={{ fontWeight: 'bold', color: '#92400e', fontSize: '1.1rem' }}>
-                                    {rate.workType} → {rate.workDetail} (₹{rate.rate}/bag)
+                                    {isFood ? `🍽️ ${rate.workType}` : `${rate.workType} → ${rate.workDetail}`} (₹{currentRate}/{isFood ? 'person' : 'bag'})
                                 </span>
                                 <button 
                                     type="button" 
@@ -930,67 +1050,138 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                                 </button>
                             </div>
                             
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                                <FormGroup style={{ margin: 0 }}>
-                                    <Label>Bags (No Restriction)</Label>
-                                    <Input
-                                        type="number"
-                                        min="1"
-                                        value={bags || ''}
-                                        onChange={(e) => {
-                                            const val = parseInt(e.target.value) || 0;
-                                            setOtherWorkBags(prev => ({ ...prev, [rateId]: val }));
-                                        }}
-                                        placeholder="Enter number of bags"
-                                    />
-                                </FormGroup>
-                                
-                                <FormGroup style={{ margin: 0 }}>
-                                    <Label>Details (Manual Entry)</Label>
-                                    <Input
-                                        type="text"
-                                        value={details}
-                                        onChange={(e) => setOtherWorkDetails(prev => ({ ...prev, [rateId]: e.target.value }))}
-                                        placeholder="Enter work details..."
-                                    />
-                                </FormGroup>
-                            </div>
+                            {isFood ? (
+                                /* Food Work Type: Two specific inputs (Person & Per Person Rate) */
+                                <div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                        <FormGroup style={{ margin: 0 }}>
+                                            <Label>Person (No. of Persons) *</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={bags || ''}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || 0;
+                                                    setOtherWorkBags(prev => ({ ...prev, [rateId]: val }));
+                                                }}
+                                                placeholder="Enter number of persons"
+                                            />
+                                        </FormGroup>
+                                        
+                                        <FormGroup style={{ margin: 0 }}>
+                                            <Label>Per Person Rate (₹) *</Label>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={currentRate !== undefined ? currentRate : ''}
+                                                onChange={(e) => {
+                                                    const val = parseFloat(e.target.value) || 0;
+                                                    setOtherWorkRates(prev => ({ ...prev, [rateId]: val }));
+                                                }}
+                                                placeholder="Enter rate per person"
+                                            />
+                                        </FormGroup>
+                                    </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                                <FormGroup style={{ margin: 0 }}>
-                                    <Label>Description</Label>
-                                    <Input
-                                        type="text"
-                                        value={description}
-                                        onChange={(e) => setOtherWorkDescription(prev => ({ ...prev, [rateId]: e.target.value }))}
-                                        placeholder="Enter description..."
-                                    />
-                                </FormGroup>
-                                
-                                <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
-                                    <Button
-                                        className="primary"
-                                        onClick={() => setShowSplitModal('other-' + rateId)}
-                                        disabled={bags <= 0 || !details.trim()}
-                                        style={{ height: '42px', width: '100%' }}
-                                    >
-                                        {splits.length > 0 ? '✓ Workers Split configured' : 'Split Workers'}
-                                    </Button>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                        <FormGroup style={{ margin: 0 }}>
+                                            <Label>Description (Optional Note)</Label>
+                                            <Input
+                                                type="text"
+                                                value={description}
+                                                onChange={(e) => setOtherWorkDescription(prev => ({ ...prev, [rateId]: e.target.value }))}
+                                                placeholder="e.g. Lunch for loaders..."
+                                            />
+                                        </FormGroup>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
+                                            <Button
+                                                className="primary"
+                                                onClick={() => setShowSplitModal('other-' + rateId)}
+                                                disabled={bags <= 0}
+                                                style={{ height: '42px', width: '100%' }}
+                                            >
+                                                {splits.length > 0 ? '✓ Worker Persons Split' : 'Split Across Batches (Persons)'}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fef3c7', borderRadius: '8px', padding: '0.75rem 1rem', marginTop: '1rem', border: '1px solid #f59e0b' }}>
+                                        <span style={{ fontWeight: '600', color: '#92400e' }}>🍽️ Total Food Amount (Persons × Rate):</span>
+                                        <span style={{ fontWeight: 'bold', color: '#b45309', fontSize: '1.1rem' }}>
+                                            {bags} Persons × ₹{currentRate} = ₹{amount.toFixed(2)}
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                            
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb', borderRadius: '8px', padding: '0.75rem 1rem', marginTop: '1rem', border: '1px solid #e5e7eb' }}>
-                                <span style={{ fontWeight: '600', color: '#374151' }}>Amount (Bags × Rate):</span>
-                                <span style={{ fontWeight: 'bold', color: '#d97706', fontSize: '1.1rem' }}>₹{amount.toFixed(2)}</span>
-                            </div>
+                            ) : (
+                                /* Standard Bag-based Other Hamali Works */
+                                <div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                        <FormGroup style={{ margin: 0 }}>
+                                            <Label>Bags (No Restriction)</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={bags || ''}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || 0;
+                                                    setOtherWorkBags(prev => ({ ...prev, [rateId]: val }));
+                                                }}
+                                                placeholder="Enter number of bags"
+                                            />
+                                        </FormGroup>
+                                        
+                                        <FormGroup style={{ margin: 0 }}>
+                                            <Label>Details (Manual Entry)</Label>
+                                            <Input
+                                                type="text"
+                                                value={details}
+                                                onChange={(e) => setOtherWorkDetails(prev => ({ ...prev, [rateId]: e.target.value }))}
+                                                placeholder="Enter work details..."
+                                            />
+                                        </FormGroup>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                        <FormGroup style={{ margin: 0 }}>
+                                            <Label>Description</Label>
+                                            <Input
+                                                type="text"
+                                                value={description}
+                                                onChange={(e) => setOtherWorkDescription(prev => ({ ...prev, [rateId]: e.target.value }))}
+                                                placeholder="Enter description..."
+                                            />
+                                        </FormGroup>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'flex-end' }}>
+                                            <Button
+                                                className="primary"
+                                                onClick={() => setShowSplitModal('other-' + rateId)}
+                                                disabled={bags <= 0 || !details.trim()}
+                                                style={{ height: '42px', width: '100%' }}
+                                            >
+                                                {splits.length > 0 ? '✓ Workers Split configured' : 'Split Workers'}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb', borderRadius: '8px', padding: '0.75rem 1rem', marginTop: '1rem', border: '1px solid #e5e7eb' }}>
+                                        <span style={{ fontWeight: '600', color: '#374151' }}>Amount (Bags × Rate):</span>
+                                        <span style={{ fontWeight: 'bold', color: '#d97706', fontSize: '1.1rem' }}>₹{amount.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
 
                             {splits.length > 0 && (
                                 <div style={{ background: '#fffbeb', borderRadius: '8px', padding: '1rem', border: '1px dashed #f59e0b', marginTop: '1rem' }}>
-                                    <div style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Worker Splits:</div>
+                                    <div style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                                        Worker Splits ({isFood ? 'Persons' : 'Bags'}):
+                                    </div>
                                     {splits.map((split, idx) => (
                                         <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#4b5563', padding: '0.2rem 0' }}>
-                                            <span>Batch {split.batchNumber}: {split.name} ({split.bags} bags)</span>
-                                            <span style={{ fontWeight: '600' }}>₹{(split.bags * rate.rate).toFixed(2)}</span>
+                                            <span>Batch {split.batchNumber}: {split.name} ({split.bags} {isFood ? 'persons' : 'bags'})</span>
+                                            <span style={{ fontWeight: '600' }}>₹{(split.bags * currentRate).toFixed(2)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -1008,8 +1199,9 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                                 <div style={{ fontWeight: 'bold', fontSize: '1.3rem', color: '#92400e' }}>
                                     ₹{selectedOtherRateIds.reduce((grandTotal, rateId) => {
                                         const rate = rates.find(r => r.id === rateId);
+                                        const effectiveRate = otherWorkRates[rateId] !== undefined ? otherWorkRates[rateId] : (rate ? rate.rate : 0);
                                         const bags = otherWorkBags[rateId] || 0;
-                                        return grandTotal + (rate ? rate.rate * bags : 0);
+                                        return grandTotal + (effectiveRate * bags);
                                     }, 0).toFixed(2)}
                                 </div>
                             </TypeItem>
@@ -1019,61 +1211,61 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
             </div>
 
             {/* Split Modal */}
-            {showSplitModal && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'rgba(0,0,0,0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 1000
-                }}>
-                    <div style={{
-                        background: 'white',
-                        borderRadius: '12px',
-                        padding: '2rem',
-                        maxWidth: '600px',
-                        width: '90%',
-                        maxHeight: '80vh',
-                        overflow: 'auto'
-                    }}>
-                        <h3 style={{ marginTop: 0, color: '#1f2937' }}>
-                            Split Workers - {showSplitModal.startsWith('other-') ? 
-                                rates.find(r => r.id === parseInt(showSplitModal.replace('other-', '')))?.workType : 
-                                showSplitModal
-                            }
-                        </h3>
-                        
-                        <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f3f4f6', borderRadius: '8px' }}>
-                            <strong>Total Bags: {showSplitModal.startsWith('other-') ? 
-                                (otherWorkBags[parseInt(showSplitModal.replace('other-', ''))] || 0) : 
-                                getBagsForType(showSplitModal)
-                            }</strong>
-                        </div>
+            {showSplitModal && (() => {
+                const isOtherModal = showSplitModal.startsWith('other-');
+                const modalRateId = isOtherModal ? parseInt(showSplitModal.replace('other-', '')) : null;
+                const modalRate = modalRateId ? rates.find(r => r.id === modalRateId) : null;
+                const isModalFood = modalRate?.workType?.toLowerCase() === 'food';
+                const modalTotal = isOtherModal ? (otherWorkBags[modalRateId!] || 0) : getBagsForType(showSplitModal);
+                const modalUnit = isModalFood ? 'persons' : 'bags';
 
-                        <SplitWorkerForm 
-                            totalBags={showSplitModal.startsWith('other-') ? 
-                                (otherWorkBags[parseInt(showSplitModal.replace('other-', ''))] || 0) : 
-                                getBagsForType(showSplitModal)
-                            }
-                            onSave={(splits) => {
-                                if (showSplitModal.startsWith('other-')) {
-                                    const rateId = parseInt(showSplitModal.replace('other-', ''));
-                                    setOtherWorkSplits(prev => ({ ...prev, [rateId]: splits }));
-                                } else {
-                                    setWorkerSplits(prev => ({ ...prev, [showSplitModal]: splits }));
-                                }
-                                setShowSplitModal(null);
-                            }}
-                            onCancel={() => setShowSplitModal(null)}
-                        />
+                return (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0,0,0,0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
+                    }}>
+                        <div style={{
+                            background: 'white',
+                            borderRadius: '12px',
+                            padding: '2rem',
+                            maxWidth: '600px',
+                            width: '90%',
+                            maxHeight: '80vh',
+                            overflow: 'auto'
+                        }}>
+                            <h3 style={{ marginTop: 0, color: '#1f2937' }}>
+                                Split {isModalFood ? 'Persons' : 'Workers'} - {isOtherModal ? modalRate?.workType : showSplitModal}
+                            </h3>
+                            
+                            <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f3f4f6', borderRadius: '8px' }}>
+                                <strong>Total {isModalFood ? 'Persons' : 'Bags'}: {modalTotal}</strong>
+                            </div>
+
+                            <SplitWorkerForm 
+                                totalBags={modalTotal}
+                                unitName={modalUnit}
+                                onSave={(splits) => {
+                                    if (isOtherModal && modalRateId) {
+                                        setOtherWorkSplits(prev => ({ ...prev, [modalRateId]: splits }));
+                                    } else {
+                                        setWorkerSplits(prev => ({ ...prev, [showSplitModal]: splits }));
+                                    }
+                                    setShowSplitModal(null);
+                                }}
+                                onCancel={() => setShowSplitModal(null)}
+                            />
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             <ButtonGroup>
                 <Button className="secondary" onClick={onClose} disabled={loading}>
@@ -1084,7 +1276,7 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                     onClick={handleSave}
                     disabled={loading || (selectedTypes.length === 0 && selectedOtherRateIds.length === 0)}
                 >
-                    {loading ? 'Saving...' : 'Add Hamali'}
+                    {loading ? 'Saving...' : (isEditMode ? 'Update Hamali' : 'Add Hamali')}
                 </Button>
             </ButtonGroup>
         </FormContainer>

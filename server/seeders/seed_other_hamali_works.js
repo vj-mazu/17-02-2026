@@ -30,6 +30,12 @@ const defaultOtherHamaliWorks = [
     workDetail: 'Moving goods within premises',
     rate: 3.5,
     unit: 'per_bag'
+  },
+  {
+    workType: 'Food',
+    workDetail: 'Per Person',
+    rate: 50.0,
+    unit: 'per_person'
   }
 ];
 
