@@ -373,7 +373,7 @@ class LocationBifurcationService {
             AND rsm.movement_type = 'purchase'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
             AND rsm.product_type = :productType
-            AND p."brandName" = :packagingBrand
+            AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
             AND p."allottedKg" = :bagSizeKg
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
@@ -389,7 +389,7 @@ class LocationBifurcationService {
             AND rsm.movement_type = 'sale'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
             AND rsm.product_type = :productType
-            AND p."brandName" = :packagingBrand
+            AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
             AND p."allottedKg" = :bagSizeKg
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
@@ -405,7 +405,7 @@ class LocationBifurcationService {
             AND rsm.movement_type = 'palti'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
             AND rsm.product_type = :productType
-            AND sp."brandName" = :packagingBrand
+            AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand))
             AND sp."allottedKg" = :bagSizeKg
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
@@ -422,7 +422,7 @@ class LocationBifurcationService {
             AND rsm.movement_type = 'palti'
             AND (COALESCE(rsm.to_location, rsm.location_code) = :locationCode OR (:locationCode = 'NULL' AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = '' OR UPPER(COALESCE(rsm.to_location, rsm.location_code)) = 'NULL')))
             AND rsm.product_type = :productType
-            AND tp."brandName" = :packagingBrand
+            AND LOWER(TRIM(tp."brandName")) = LOWER(TRIM(:packagingBrand))
             AND tp."allottedKg" = :bagSizeKg
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
@@ -438,7 +438,7 @@ class LocationBifurcationService {
             AND rp.date <= :saleDate
             AND (rp."locationCode" = :locationCode OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL')))
             AND rp."productType" = :productType
-            AND p."brandName" = :packagingBrand
+            AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
             AND p."allottedKg" = :bagSizeKg
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
             ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])' : ''}
@@ -458,7 +458,7 @@ class LocationBifurcationService {
           ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
           AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
           AND rsm.product_type = :productType
-          AND sp."brandName" = :packagingBrand
+          AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand))
           AND sp."allottedKg" = :bagSizeKg
           ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
       `;
@@ -1027,12 +1027,14 @@ class LocationBifurcationService {
     }
 
     // Generate comprehensive variety aliases
-    const aliases = this._generateVarietyAliases(variety);
+    const rawAliases = this._generateVarietyAliases(variety);
+    const aliases = rawAliases.map(a => a.toLowerCase().trim().replace(/[_\s-]+/g, ' '));
+    const uniqueAliases = Array.from(new Set(aliases));
 
     return {
       type: 'string',
       condition: 'LOWER(TRIM(REGEXP_REPLACE(rsm.variety, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])',
-      replacements: { varietyAliases: aliases }
+      replacements: { varietyAliases: uniqueAliases }
     };
   }
 
