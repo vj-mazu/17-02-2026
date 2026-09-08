@@ -1596,11 +1596,14 @@ const Records: React.FC = () => {
           }
         }
 
-        // Combine and format all movements
+        // Combine and format all movements (Exclude CLEARING location entries as they are internal outturn write-offs, not stock)
         console.log('🔄 Processing and combining data...');
         let allMovements = [
           // Production entries - include status field (productions are typically auto-approved)
-          ...(productionsResponse.data.productions || []).map((prod: any) => ({
+          // Exclude CLEARING entries - they represent waste/loss from cleared outturns, not real stock
+          ...(productionsResponse.data.productions || [])
+            .filter((prod: any) => prod.locationCode !== 'CLEARING')
+            .map((prod: any) => ({
             ...prod,
             movementType: 'production',
             // CRITICAL FIX: Include processing type (RAW/STEAM) in variety display
@@ -3844,6 +3847,10 @@ const Records: React.FC = () => {
               // Sort data by date first (oldest first for proper stock calculation)
               const sortedData = rawData
                 .filter(item => {
+                  // Exclude CLEARING entries - they represent outturn waste write-offs, not physical stock
+                  const loc = (item.locationCode || item.location || '').toString().toUpperCase();
+                  if (loc === 'CLEARING') return false;
+
                   // Only include approved entries in stock calculation
                   // Also include entries created by admin as they are auto-approved for stock
                   const isApproved = (item.status || item.approvalStatus) === 'approved';

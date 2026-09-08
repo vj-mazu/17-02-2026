@@ -7,9 +7,28 @@ const router = express.Router();
 // GET all paddy hamali rates
 router.get('/', auth, async (req, res) => {
   try {
-    const rates = await PaddyHamaliRate.findAll({
+    let rates = await PaddyHamaliRate.findAll({
       order: [['displayOrder', 'ASC']]
     });
+
+    // Ensure 'Food' rate exists in database (especially on serverless/Vercel)
+    const hasFood = rates.some(r => (r.workType || '').toLowerCase() === 'food');
+    if (!hasFood) {
+      try {
+        const newFood = await PaddyHamaliRate.create({
+          workType: 'Food',
+          workDetail: 'Per Person',
+          rate: 50.00,
+          isPerLorry: false,
+          hasMultipleOptions: false,
+          parentWorkType: null,
+          displayOrder: 13
+        });
+        rates.push(newFood);
+      } catch (createErr) {
+        console.warn('Could not auto-create Food rate:', createErr.message);
+      }
+    }
 
     res.json({ rates });
   } catch (error) {
