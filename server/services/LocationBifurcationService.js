@@ -371,7 +371,7 @@ class LocationBifurcationService {
             AND rsm.date <= :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'purchase'
-            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
+            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
             AND rsm.product_type = :productType
             AND p."brandName" = :packagingBrand
             AND p."allottedKg" = :bagSizeKg
@@ -387,7 +387,7 @@ class LocationBifurcationService {
             AND rsm.date < :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'sale'
-            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
+            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
             AND rsm.product_type = :productType
             AND p."brandName" = :packagingBrand
             AND p."allottedKg" = :bagSizeKg
@@ -403,7 +403,7 @@ class LocationBifurcationService {
             AND rsm.date < :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
-            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
+            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
             AND rsm.product_type = :productType
             AND sp."brandName" = :packagingBrand
             AND sp."allottedKg" = :bagSizeKg
@@ -420,7 +420,7 @@ class LocationBifurcationService {
             AND rsm.date <= :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
-            AND (COALESCE(rsm.to_location, rsm.location_code) = :locationCode OR (:locationCode = 'NULL' AND COALESCE(rsm.to_location, rsm.location_code) IS NULL))
+            AND (COALESCE(rsm.to_location, rsm.location_code) = :locationCode OR (:locationCode = 'NULL' AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = '' OR UPPER(COALESCE(rsm.to_location, rsm.location_code)) = 'NULL')))
             AND rsm.product_type = :productType
             AND tp."brandName" = :packagingBrand
             AND tp."allottedKg" = :bagSizeKg
@@ -436,10 +436,12 @@ class LocationBifurcationService {
           LEFT JOIN packagings p ON rp."packagingId" = p.id
           WHERE rp.status = 'approved'
             AND rp.date <= :saleDate
-            AND (rp."locationCode" = :locationCode OR (:locationCode = 'NULL' AND rp."locationCode" IS NULL))
+            AND (rp."locationCode" = :locationCode OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL')))
             AND rp."productType" = :productType
             AND p."brandName" = :packagingBrand
             AND p."allottedKg" = :bagSizeKg
+            ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
+            ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])' : ''}
         )
         SELECT COALESCE(SUM(movement_bags), 0) as opening_stock
         FROM stock_calculation
@@ -454,7 +456,7 @@ class LocationBifurcationService {
           AND rsm.date = :saleDate
           AND rsm.movement_type = 'palti'
           ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
-          AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
+          AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
           AND rsm.product_type = :productType
           AND sp."brandName" = :packagingBrand
           AND sp."allottedKg" = :bagSizeKg
