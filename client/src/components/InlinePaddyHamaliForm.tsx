@@ -475,8 +475,7 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
                         rate: 50.00,
                         isPerLorry: false,
                         hasMultipleOptions: false,
-                        parentWorkType: null,
-                        displayOrder: 99
+                        parentWorkType: null
                     }
                 ];
             }
