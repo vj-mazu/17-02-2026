@@ -1046,46 +1046,60 @@ class LocationBifurcationService {
     const normalized = this._normalize(variety);
     const aliases = new Set([variety, normalized]);
 
-    // Add case variations ONLY (preserve RAW/STEAM distinction)
+    // Add case variations
     aliases.add(variety.toLowerCase());
     aliases.add(variety.toUpperCase());
     aliases.add(this._toTitleCase(variety));
 
-    // CRITICAL: RAW and STEAM are SEPARATE varieties
-    // Only add exact variations with the SAME processing type
+    // CRITICAL FIX: Handle Raw/Steam variations WITHOUT cross-contamination
     const lowerVariety = normalized.toLowerCase();
 
     if (lowerVariety.includes('raw')) {
-      // Only add RAW variations - NEVER add without RAW
-      aliases.add(variety.replace(/raw/gi, 'RAW'));
-      aliases.add(variety.replace(/raw/gi, 'Raw'));
-      aliases.add(variety.replace(/raw/gi, 'raw'));
+      // If it contains 'raw', ONLY add raw variations
+      const withoutRaw = lowerVariety.replace(/\s*raw\s*/gi, ' ').trim();
+      aliases.add(withoutRaw);
+      aliases.add(withoutRaw.toUpperCase());
+      aliases.add(this._toTitleCase(withoutRaw));
+      aliases.add(withoutRaw + ' raw');
+      aliases.add(withoutRaw.toUpperCase() + ' RAW');
+      aliases.add(`${withoutRaw} Raw`);
     } else if (lowerVariety.includes('steam')) {
-      // Only add STEAM variations - NEVER add without STEAM
-      aliases.add(variety.replace(/steam/gi, 'STEAM'));
-      aliases.add(variety.replace(/steam/gi, 'Steam'));
-      aliases.add(variety.replace(/steam/gi, 'steam'));
+      // If it contains 'steam', ONLY add steam variations
+      const withoutSteam = lowerVariety.replace(/\s*steam\s*/gi, ' ').trim();
+      aliases.add(withoutSteam);
+      aliases.add(withoutSteam.toUpperCase());
+      aliases.add(this._toTitleCase(withoutSteam));
+      aliases.add(withoutSteam + ' steam');
+      aliases.add(withoutSteam.toUpperCase() + ' STEAM');
+      aliases.add(`${withoutSteam} Steam`);
+    } else {
+      aliases.add(lowerVariety);
+      aliases.add(normalized);
+      aliases.add(lowerVariety + ' raw');
+      aliases.add(lowerVariety + ' steam');
+      aliases.add(normalized + ' RAW');
+      aliases.add(normalized + ' STEAM');
     }
 
-    // CRITICAL: Filter out any aliases that don't preserve the processing type
-    const hasRaw = lowerVariety.includes('raw');
-    const hasSteam = lowerVariety.includes('steam');
-    
-    return Array.from(aliases).filter(alias => {
-      if (!alias || !alias.trim()) return false;
-      const aliasLower = alias.toLowerCase();
-      
-      // If original has RAW, alias MUST have RAW
-      if (hasRaw && !aliasLower.includes('raw')) return false;
-      
-      // If original has STEAM, alias MUST have STEAM
-      if (hasSteam && !aliasLower.includes('steam')) return false;
-      
-      // If original has neither, alias must also have neither
-      if (!hasRaw && !hasSteam && (aliasLower.includes('raw') || aliasLower.includes('steam'))) return false;
-      
-      return true;
-    });
+    // Handle common abbreviations while preserving Raw/Steam distinction
+    const abbreviations = {
+      'rnr': ['rnr', 'r n r', 'r.n.r'],
+      'knm': ['knm', 'k n m', 'k.n.m'],
+      'sum25': ['sum25', 'sum 25', 'sum-25'],
+      'dec25': ['dec25', 'dec 25', 'dec-25']
+    };
+
+    for (const [key, variations] of Object.entries(abbreviations)) {
+      if (lowerVariety.includes(key)) {
+        variations.forEach(variation => {
+          const newAlias = lowerVariety.replace(key, variation);
+          aliases.add(newAlias);
+          aliases.add(newAlias.toUpperCase());
+        });
+      }
+    }
+
+    return Array.from(aliases).filter(alias => alias && alias.trim());
   }
 
   /**
