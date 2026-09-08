@@ -4258,8 +4258,8 @@ const Records: React.FC = () => {
 
                   runningStockDetailed[stockKey] += qtlsChange;
 
-                  // Cleanup epsilon for regular movements too
-                  if (Math.abs(runningStockDetailed[stockKey]) < 0.001) {
+                  // Only delete key if exactly 0 or negative without remaining tracking
+                  if (Math.abs(runningStockDetailed[stockKey]) < 0.0001) {
                     delete runningStockDetailed[stockKey];
                   }
 
