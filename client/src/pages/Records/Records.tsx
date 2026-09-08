@@ -1506,8 +1506,8 @@ const Records: React.FC = () => {
         // CRITICAL FIX: Fetch ALL productions for correct opening stock calculation
         console.log('📊 Fetching rice productions...');
         const productionsParams: any = {
-          limit: 100,  // OPTIMIZED: Fetch only 100 records per page for fast loading
-          page: riceStockPage  // Use actual pagination state
+          limit: 10000,  // Fetch all records so entire stock calculation has complete historical data
+          page: 1
         };
 
         // OPTIMIZED: Support combined month and date range filters
@@ -1531,13 +1531,12 @@ const Records: React.FC = () => {
         }
 
         // Fetch rice stock movements (Purchase/Sale/Palti)
-        // OPTIMIZED: Use proper pagination for fast loading (50 records per page instead of 5000)
         console.log('📦 Fetching rice stock movements...');
         let stockMovements: any[] = [];
         try {
           const movementsParams: any = {
-            limit: 100,  // OPTIMIZED: Fetch only 100 records per page for fast loading
-            page: riceStockPage,  // Use actual pagination state
+            limit: 10000,  // Fetch all movements so entire stock calculation has complete historical data
+            page: 1,
             _t: Date.now() // Cache buster
           };
 
