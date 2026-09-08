@@ -460,7 +460,27 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
     const fetchRates = async () => {
         try {
             const response = await axios.get<{ rates: PaddyHamaliRate[] }>('/paddy-hamali-rates');
-            const fetchedRates = response.data.rates;
+            let fetchedRates = response.data.rates || [];
+            
+            // Client-side guarantee: Ensure Food rate is always present in rates array
+            const hasFood = fetchedRates.some(r => (r.workType || '').toLowerCase() === 'food');
+            if (!hasFood) {
+                const maxId = fetchedRates.reduce((max, r) => Math.max(max, r.id || 0), 0);
+                fetchedRates = [
+                    ...fetchedRates,
+                    {
+                        id: maxId + 999,
+                        workType: 'Food',
+                        workDetail: 'Per Person',
+                        rate: 50.00,
+                        isPerLorry: false,
+                        hasMultipleOptions: false,
+                        parentWorkType: null,
+                        displayOrder: 99
+                    }
+                ];
+            }
+
             setRates(fetchedRates);
             await fetchExistingHamali(fetchedRates);
         } catch (error) {
