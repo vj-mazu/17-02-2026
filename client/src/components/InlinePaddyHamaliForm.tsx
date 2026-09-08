@@ -591,7 +591,19 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
 
     // Remove fetchOtherHamaliWorks - we'll use rates for Other Hamali too
 
-    const groupedRates = rates.reduce((acc, rate) => {
+    const groupedRates = rates
+        .filter(rate => rate.workType.toLowerCase() !== 'food' && (rate.parentWorkType || '').toLowerCase() !== 'food')
+        .reduce((acc, rate) => {
+            const key = rate.parentWorkType || rate.workType;
+            if (!acc[key]) {
+                acc[key] = [];
+            }
+            acc[key].push(rate);
+            return acc;
+        }, {} as { [key: string]: PaddyHamaliRate[] });
+
+    // Use Paddy Hamali rates for Other Hamali section too
+    const groupedOtherRates = rates.reduce((acc, rate) => {
         const key = rate.parentWorkType || rate.workType;
         if (!acc[key]) {
             acc[key] = [];
@@ -599,9 +611,6 @@ const InlinePaddyHamaliForm: React.FC<Props> = ({ arrival, onClose, onSave }) =>
         acc[key].push(rate);
         return acc;
     }, {} as { [key: string]: PaddyHamaliRate[] });
-
-    // Use Paddy Hamali rates for Other Hamali section too
-    const groupedOtherRates = groupedRates;
 
     const getBagsForType = (type: string): number => {
         const isLoose = type.toLowerCase().includes('loose') && type.toLowerCase().includes('tumb');
