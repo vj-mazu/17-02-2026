@@ -221,7 +221,13 @@ app.use('*', (req, res) => {
 const startServer = async () => {
   try {
     // Ensure the Postgres database exists before connecting via Sequelize
-    await ensureDatabaseExists();
+    if (typeof ensureDatabaseExists === 'function') {
+      try {
+        await ensureDatabaseExists();
+      } catch (dbExErr) {
+        console.warn('⚠️ ensureDatabaseExists warning:', dbExErr.message);
+      }
+    }
 
     // Test database connection
     await sequelize.authenticate();

@@ -105,4 +105,60 @@ const sequelize = dbUrl
     }
   });
 
-module.exports = { sequelize };
+const { Client } = require('pg');
+
+async function ensureDatabaseExists() {
+  const dbName = process.env.DB_NAME || 'mother_india';
+  let clientConfig = {};
+  let dbToCreate = dbName;
+  
+  if (process.env.DATABASE_URL) {
+    let url = process.env.DATABASE_URL.trim();
+    if ((url.startsWith('"') && url.endsWith('"')) || (url.startsWith("'") && url.endsWith("'"))) {
+      url = url.slice(1, -1);
+    }
+    try {
+      const parsedUrl = new URL(url);
+      dbToCreate = parsedUrl.pathname.substring(1);
+      parsedUrl.pathname = '/postgres';
+      clientConfig = {
+        connectionString: parsedUrl.toString(),
+        ssl: { rejectUnauthorized: false }
+      };
+    } catch (e) {
+      console.error('Failed to parse DATABASE_URL for auto-creation check:', e.message);
+      return;
+    }
+  } else {
+    clientConfig = {
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || '12345',
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 5432,
+      database: 'postgres',
+    };
+    dbToCreate = process.env.DB_NAME || 'mother_india';
+  }
+
+  console.log(`Checking if database "${dbToCreate}" exists...`);
+  const client = new Client(clientConfig);
+  try {
+    await client.connect();
+    const res = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbToCreate]);
+    if (res.rowCount === 0) {
+      console.log(`Database "${dbToCreate}" does not exist. Creating it automatically...`);
+      await client.query(`CREATE DATABASE "${dbToCreate}"`);
+      console.log(`Database "${dbToCreate}" created successfully.`);
+    } else {
+      console.log(`Database "${dbToCreate}" already exists.`);
+    }
+  } catch (err) {
+    console.error('ensureDatabaseExists warning:', err.message);
+  } finally {
+    try {
+      await client.end();
+    } catch (e) {}
+  }
+}
+
+module.exports = { sequelize, ensureDatabaseExists };
