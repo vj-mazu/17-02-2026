@@ -3149,7 +3149,7 @@ const Records: React.FC = () => {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <span style={{ fontSize: '1.25rem' }}>⚠️</span>
                                     <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#991b1b' }}>
-                                      Confirm Deletion — {(item.movementType || 'production').toUpperCase()} #{String(item.id).replace('movement-', '')}
+                                      Confirm Deletion — {(item.movementType || 'production').toUpperCase()}
                                     </span>
                                   </div>
                                   <button
@@ -3239,7 +3239,7 @@ const Records: React.FC = () => {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <span style={{ fontSize: '1.25rem' }}>✏️</span>
                                     <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#1e293b' }}>
-                                      Inline Edit — Movement #{editingRiceMovement.id}
+                                      Inline Edit — {(editingRiceMovement.movementType || 'production').toUpperCase()}
                                     </span>
                                     <span style={{
                                       padding: '3px 10px',
