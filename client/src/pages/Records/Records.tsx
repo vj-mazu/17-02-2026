@@ -2848,13 +2848,18 @@ const Records: React.FC = () => {
                       String(editingRiceMovement.id) === String(item.id)
                     ));
 
+                    const isDeletingThisRow = Boolean(deleteConfirmation.show && deleteConfirmation.item && (
+                      String(deleteConfirmation.item.id) === String(item.id) ||
+                      String(deleteConfirmation.item.id).replace('movement-', '') === String(item.id).replace('movement-', '')
+                    ));
+
                     return (
                       <React.Fragment key={item.id}>
                         <tr
                           style={{
-                            backgroundColor: isEditingThisRow ? '#eff6ff' : rowColor,
+                            backgroundColor: isEditingThisRow ? '#eff6ff' : isDeletingThisRow ? '#fff1f2' : rowColor,
                             borderTop: borderStyle,
-                            borderBottom: isEditingThisRow ? 'none' : undefined
+                            borderBottom: (isEditingThisRow || isDeletingThisRow) ? 'none' : undefined
                           }}
                         >
                           {/* Only render SL cell for first row of group (with rowspan) */}
@@ -3062,6 +3067,7 @@ const Records: React.FC = () => {
                                     if (isEditingThisRow) {
                                       setEditingRiceMovement(null);
                                     } else {
+                                      setDeleteConfirmation({ show: false, item: null });
                                       setEditingRiceMovement({
                                         ...item,
                                         id: movementId,
@@ -3091,10 +3097,17 @@ const Records: React.FC = () => {
                               {/* Delete Button - only for Manager/Admin */}
                               {(user?.role === 'admin' || user?.role === 'manager') && (
                                 <button
-                                  onClick={() => handleDeleteRiceMovement(item)}
+                                  onClick={() => {
+                                    if (isDeletingThisRow) {
+                                      setDeleteConfirmation({ show: false, item: null });
+                                    } else {
+                                      setEditingRiceMovement(null);
+                                      setDeleteConfirmation({ show: true, item });
+                                    }
+                                  }}
                                   style={{
                                     padding: '4px 12px',
-                                    backgroundColor: '#ef4444',
+                                    backgroundColor: isDeletingThisRow ? '#64748b' : '#ef4444',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '4px',
@@ -3106,12 +3119,102 @@ const Records: React.FC = () => {
                                   }}
                                   title="Delete this entry"
                                 >
-                                  🗑️ Delete
+                                  {isDeletingThisRow ? '✕ Cancel' : '🗑️ Delete'}
                                 </button>
                               )}
                             </div>
                           </td>
                         </tr>
+
+                        {/* Inline Delete Confirmation underneath this row */}
+                        {isDeletingThisRow && deleteConfirmation.item && (
+                          <tr key={`inline-delete-${item.id}`} style={{ backgroundColor: '#fff1f2' }}>
+                            <td colSpan={15} style={{ padding: '0', borderBottom: '3px solid #ef4444', borderTop: 'none' }}>
+                              <div style={{
+                                backgroundColor: '#ffffff',
+                                border: '2px solid #ef4444',
+                                borderRadius: '10px',
+                                margin: '10px 14px',
+                                padding: '16px 20px',
+                                boxShadow: '0 6px 20px rgba(239, 68, 68, 0.12)'
+                              }}>
+                                <div style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  borderBottom: '1.5px solid #fee2e2',
+                                  paddingBottom: '10px',
+                                  marginBottom: '12px'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+                                    <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#991b1b' }}>
+                                      Confirm Deletion — {(item.movementType || 'production').toUpperCase()} #{String(item.id).replace('movement-', '')}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => setDeleteConfirmation({ show: false, item: null })}
+                                    style={{
+                                      background: '#f1f5f9',
+                                      border: 'none',
+                                      borderRadius: '50%',
+                                      width: '28px',
+                                      height: '28px',
+                                      cursor: 'pointer',
+                                      fontWeight: 'bold',
+                                      color: '#64748b'
+                                    }}
+                                    title="Cancel"
+                                  >✕</button>
+                                </div>
+
+                                <p style={{ margin: '0 0 14px 0', color: '#475569', fontSize: '0.92rem', lineHeight: '1.5' }}>
+                                  Are you sure you want to delete this <strong>{item.movementType || 'production'}</strong> entry for <strong>{item.variety || 'Rice'} ({item.bags || 0} bags)</strong>? This action is permanent and cannot be undone.
+                                </p>
+
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                                  <button
+                                    onClick={() => setDeleteConfirmation({ show: false, item: null })}
+                                    style={{
+                                      padding: '6px 16px',
+                                      backgroundColor: '#f1f5f9',
+                                      color: '#475569',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '6px',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      fontSize: '0.875rem'
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      const targetItem = deleteConfirmation.item;
+                                      setDeleteConfirmation({ show: false, item: null });
+                                      await executeDeleteRiceMovement(targetItem);
+                                    }}
+                                    style={{
+                                      padding: '6px 18px',
+                                      backgroundColor: '#ef4444',
+                                      color: 'white',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      fontSize: '0.875rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px'
+                                    }}
+                                  >
+                                    🗑️ Yes, Delete
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
 
                         {/* Solution 2: Inline Row Edit expanded underneath this row */}
                         {isEditingThisRow && editingRiceMovement && (
@@ -10779,97 +10882,6 @@ return (
         initialDate={paltiDate}
         onDateChange={setPaltiDate}
       />
-
-      {deleteConfirmation.show && deleteConfirmation.item && createPortal(
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 11000,
-          animation: 'fadeIn 0.2s ease'
-        }} onClick={() => setDeleteConfirmation({ show: false, item: null })}>
-          <div style={{
-            background: 'white',
-            width: '90%',
-            maxWidth: '420px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            borderRadius: '16px',
-            padding: '2rem',
-            position: 'relative',
-            animation: 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-            textAlign: 'center'
-          }} onClick={(e) => e.stopPropagation()}>
-            <div style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
-              backgroundColor: '#fee2e2',
-              color: '#ef4444',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.75rem',
-              margin: '0 auto 1.25rem auto'
-            }}>
-              ⚠️
-            </div>
-            
-            <h3 style={{ margin: '0 0 0.5rem 0', color: '#1f2937', fontSize: '1.25rem', fontWeight: 700 }}>
-              Confirm Deletion
-            </h3>
-            
-            <p style={{ margin: '0 0 1.5rem 0', color: '#6b7280', fontSize: '0.9rem', lineHeight: '1.5' }}>
-              Are you sure you want to delete this <strong>{deleteConfirmation.item.movementType || 'movement'}</strong> entry? This action is permanent and cannot be undone.
-            </p>
-            
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-              <button
-                onClick={() => setDeleteConfirmation({ show: false, item: null })}
-                style={{
-                  padding: '0.5rem 1.25rem',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
-                }}
-              >
-                Cancel
-              </button>
-              
-              <button
-                onClick={async () => {
-                  const targetItem = deleteConfirmation.item;
-                  setDeleteConfirmation({ show: false, item: null });
-                  await executeDeleteRiceMovement(targetItem);
-                }}
-                style={{
-                  padding: '0.5rem 1.25rem',
-                  background: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
-                }}
-              >
-                Yes, Delete
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </Container>
   );
 };
