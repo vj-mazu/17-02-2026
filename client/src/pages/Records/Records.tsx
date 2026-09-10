@@ -7505,52 +7505,28 @@ return (
                   <FormGroup>
                     <Label>Type of Movement *</Label>
                     <Select
-                      value={movementType}
-                      onChange={(e) => setMovementType(e.target.value as 'kunchinittu' | 'loading')}
+                      value="kunchinittu"
+                      disabled
+                      style={{ backgroundColor: '#f8fafc', cursor: 'not-allowed' }}
                     >
                       <option value="kunchinittu">KUNCHINITTU</option>
-                      <option value="loading">LOADING</option>
                     </Select>
                   </FormGroup>
 
-                  {movementType === 'kunchinittu' ? (
-                    <FormGroup style={{ gridColumn: 'span 2' }}>
-                      <Label>Location Code *</Label>
-                      <Select
-                        value={locationCode}
-                        onChange={(e) => setLocationCode(e.target.value)}
-                      >
-                        <option value="">-- SELECT LOCATION --</option>
-                        {riceStockLocations.map((loc: any) => (
-                          <option key={loc.id} value={loc.code}>
-                            {loc.code} {loc.name ? `- ${loc.name}` : ''}
-                          </option>
-                        ))}
-                      </Select>
-                    </FormGroup>
-                  ) : (
-                    <>
-                      <FormGroup>
-                        <Label>Lorry Number *</Label>
-                        <Input
-                          type="text"
-                          value={lorryNumber}
-                          onChange={(e) => setLorryNumber(e.target.value)}
-                          placeholder="Enter lorry number"
-                        />
-                      </FormGroup>
-
-                      <FormGroup>
-                        <Label>Bill Number *</Label>
-                        <Input
-                          type="text"
-                          value={billNumber}
-                          onChange={(e) => setBillNumber(e.target.value)}
-                          placeholder="Enter bill number"
-                        />
-                      </FormGroup>
-                    </>
-                  )}
+                  <FormGroup style={{ gridColumn: 'span 2' }}>
+                    <Label>Location Code *</Label>
+                    <Select
+                      value={locationCode}
+                      onChange={(e) => setLocationCode(e.target.value)}
+                    >
+                      <option value="">-- SELECT LOCATION --</option>
+                      {riceStockLocations.map((loc: any) => (
+                        <option key={loc.id} value={loc.code}>
+                          {loc.code} {loc.name ? `- ${loc.name}` : ''}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormGroup>
                 </div>
 
                 <Button className="success" onClick={handleRiceProductionSubmit} disabled={isSubmittingRiceProduction} style={{ width: '100%', padding: '0.875rem', fontSize: '1.05rem' }}>
