@@ -1607,7 +1607,7 @@ const Records: React.FC = () => {
             ...prod,
             movementType: 'production',
             // CRITICAL FIX: Include processing type (RAW/STEAM) in variety display
-            variety: prod.outturn ? `${prod.outturn.allottedVariety} ${prod.outturn.type}`.toUpperCase() : 'SUM25 RNR RAW',
+            variety: prod.outturn ? `${prod.outturn.allottedVariety} ${prod.outturn.type}`.toUpperCase() : (prod.variety || '-'),
             productType: prod.productType || prod.product || 'Rice', // Add product type
             bagSizeKg: prod.packaging?.allottedKg || 26,
             packagingId: prod.packagingId, // Ensure packagingId is available for edits

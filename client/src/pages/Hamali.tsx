@@ -724,7 +724,7 @@ const Hamali: React.FC = () => {
                   code: mvtType === 'purchase' ? 'Purchase' :
                     mvtType === 'sale' ? 'Sale' :
                       mvtType === 'palti' ? 'Palti' : mvtType,
-                  allottedVariety: movement.variety || movement.VARIETY || movement.Variety || 'Sum25 RNR Raw'
+                  allottedVariety: movement.variety || movement.VARIETY || movement.Variety || '-'
                 },
                 status: movement.status || movement.STATUS || movement.Status,
                 isRiceProduction: false,
@@ -1564,7 +1564,7 @@ const Hamali: React.FC = () => {
                           }
 
                           // Format variety name
-                          const variety = item.outturn?.allottedVariety || 'Sum25 RNR Raw';
+                          const variety = item.outturn?.allottedVariety || item.variety || '-';
 
                           // Format packaging info
                           const packagingBrand = (() => {
@@ -1626,7 +1626,7 @@ const Hamali: React.FC = () => {
                             toField = item.toLocation || item.originalMovement?.toLocation || 'Target';
                           } else {
                             // Production entries
-                            fromField = `Outt1-${item.outturn?.code || 'Sum25 RNR Raw'}`;
+                            fromField = `Outt1-${item.outturn?.code || '-'}`;
 
                             if (item.movementType === 'kunchinittu') {
                               toField = item.locationCode;
