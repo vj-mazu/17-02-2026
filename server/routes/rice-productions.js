@@ -810,6 +810,9 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       }
     }
 
+    const finalMovementType = movementType || production.movementType || 'kunchinittu';
+    const finalLocationCode = locationCode !== undefined ? locationCode : production.locationCode;
+
     await production.update({
       date: date || production.date,
       productType: productType || production.productType,
@@ -817,10 +820,10 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       packagingId: packagingId || production.packagingId,
       bags: finalBags,
       paddyBagsDeducted,
-      movementType: movementType || production.movementType,
-      locationCode: movementType === 'kunchinittu' ? locationCode : null,
-      lorryNumber: movementType === 'loading' ? lorryNumber : null,
-      billNumber: movementType === 'loading' ? billNumber : null
+      movementType: finalMovementType,
+      locationCode: finalMovementType === 'kunchinittu' ? finalLocationCode : (finalLocationCode || null),
+      lorryNumber: finalMovementType === 'loading' ? (lorryNumber !== undefined ? lorryNumber : production.lorryNumber) : null,
+      billNumber: finalMovementType === 'loading' ? (billNumber !== undefined ? billNumber : production.billNumber) : null
     });
 
     const updatedProduction = await RiceProduction.findByPk(production.id, {

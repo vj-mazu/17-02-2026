@@ -1118,6 +1118,7 @@ const Records: React.FC = () => {
         // Production entries - use rice-productions
         response = await axios.put<{ message?: string; production?: any; error?: string }>(`/rice-productions/${editingRiceMovement.id}`, {
           date: updatedData.date,
+          movementType: editingRiceMovement.movementType || 'kunchinittu',
           productType: updatedData.productType || updatedData.product_type,
           variety: updatedData.variety,
           bags: updatedData.bags,
@@ -1624,9 +1625,9 @@ const Records: React.FC = () => {
               allottedKg: 26
             },
             from: `Outt1-${prod.outturn?.code || 'Sum25 RNR Raw'}`,
-            to: prod.locationCode || 'A1',
+            to: prod.locationCode || prod.location_code || prod.location || '-',
             fromLocation: `Outt1-${prod.outturn?.code || 'Sum25 RNR Raw'}`,
-            toLocation: prod.locationCode || 'A1',
+            toLocation: prod.locationCode || prod.location_code || prod.location || '-',
             partyName: null,
             billNumber: prod.billNumber,
             lorryNumber: prod.lorryNumber
