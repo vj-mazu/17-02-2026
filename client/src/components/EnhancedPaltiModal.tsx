@@ -623,7 +623,8 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
 
     // Fetch available stock for selected product type, packaging, variety, and location
     const fetchAvailableStock = useCallback(async () => {
-        if (!productType || !sourcePackagingId || !locationCode || !selectedVarietyData?.variety) {
+        const varietyStr = selectedVarietyData?.standardized_variety || selectedVarietyData?.allotted_variety || selectedVarietyData?.variety;
+        if (!productType || !sourcePackagingId || !locationCode || !varietyStr) {
             setAvailableStock(null);
             return;
         }
@@ -637,7 +638,7 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                     productType,
                     packagingId: sourcePackagingId,
                     locationCode,
-                    variety: selectedVarietyData.variety,
+                    variety: varietyStr,
                     date
                 }
             });
@@ -654,7 +655,7 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
         } finally {
             setStockLoading(false);
         }
-    }, [productType, sourcePackagingId, locationCode, selectedVarietyData]);
+    }, [productType, sourcePackagingId, locationCode, selectedVarietyData, date]);
 
     // Fetch available stock when relevant inputs change
     useEffect(() => {
@@ -813,10 +814,12 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                 const entryShortageKg = isFirstEntry ? shortageKg : 0;
                 const entryShortageBags = isFirstEntry ? (shortageKg / (targetPkg?.allottedKg || 26)) : 0;
 
+                const chosenVariety = selectedVarietyData?.standardized_variety || selectedVarietyData?.allotted_variety || selectedVarietyData?.variety || 'UNKNOWN';
+
                 console.log('📦 Creating Palti entry:', {
                     productType,
                     outturnId,
-                    variety: selectedVarietyData?.variety,
+                    variety: chosenVariety,
                     targetBags,
                     targetQtls,
                     entrySourceBags,
@@ -828,8 +831,8 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                     date,
                     movementType: 'palti',
                     productType: productType,
-                    outturnId, // NEW: Include outturn ID for standardization
-                    variety: selectedVarietyData?.variety, // BACKWARD COMPATIBILITY: Include variety string
+                    outturnId, // Include outturn ID
+                    variety: chosenVariety, // Always pass standardized variety string
                     sourcePackagingId: parseInt(sourcePackagingId),
                     targetPackagingId: parseInt(target.targetPackagingId),
                     sourceBags: entrySourceBags, // FIXED: Proportional split

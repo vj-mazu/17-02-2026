@@ -1225,13 +1225,14 @@ router.post('/movements', auth, async (req, res) => {
             console.log(`🔄 Product type mapped: "${frontendProductType}" → "${productType}"`);
         }
 
-        // ✅ NEW: VARIETY NORMALIZATION - Fetch standardized variety from outturn if outturnId provided
-        let finalVariety = variety;
+        // VARIETY RESOLUTION: Always prioritize and preserve the explicit variety string passed from the frontend
+        let finalVariety = (variety && typeof variety === 'string' && variety.trim()) ? variety.trim().toUpperCase() : null;
 
-        if (outturnId) {
+        // Fallback to outturn lookup ONLY if variety was not provided
+        if (!finalVariety && outturnId && parseInt(outturnId) > 0) {
             try {
                 const [outturnResult] = await sequelize.query(`
-                    SELECT UPPER("allottedVariety" || ' ' || type) as standardized_variety
+                    SELECT UPPER(TRIM("allottedVariety" || ' ' || type)) as standardized_variety
                     FROM outturns
                     WHERE id = :outturnId
                 `, {
@@ -1248,8 +1249,7 @@ router.post('/movements', auth, async (req, res) => {
             }
         }
 
-        // Fallback to provided variety or default
-        finalVariety = finalVariety || variety || 'SUM25 RNR RAW';
+        finalVariety = finalVariety || 'UNKNOWN';
         console.log(`📊 Final variety for storage: ${finalVariety}`);
 
         console.log('📥 Rice stock movement creation request:', { ...req.body, productType, finalVariety });
@@ -1751,7 +1751,7 @@ router.post('/movements', auth, async (req, res) => {
             date,
             movementType,
             productType,
-            variety: variety || 'Sum25 RNR Raw',
+            variety: variety || 'UNKNOWN',
             bags: finalBags,
             quantityQuintals: finalQuantityQuintals,
             packagingBrand: finalPackagingBrand || 'White Packet',
@@ -2563,7 +2563,7 @@ router.post('/movements/batch', auth, async (req, res) => {
                         date,
                         movementType,
                         productType,
-                        variety: variety || 'Sum25 RNR Raw',
+                        variety: variety || 'UNKNOWN',
                         bags: parseInt(bags),
                         quantityQuintals: parseFloat(quantityQuintals),
                         packagingBrand: packagingBrand || 'White Packet',

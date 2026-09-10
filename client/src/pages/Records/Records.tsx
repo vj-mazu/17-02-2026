@@ -1687,7 +1687,7 @@ const Records: React.FC = () => {
               date: movement.date || movement.DATE || movement.Date,
               productType: movement.productType || movement.product_type || movement.producttype || 'Rice',
               movementType: mvtType,
-              variety: movement.variety || movement.VARIETY || movement.Variety || 'Sum25 RNR Raw',
+              variety: movement.variety || movement.VARIETY || movement.Variety || movement.standardized_variety || movement.standardizedVariety || '-',
               bags: bags,
               sourceBags: mvtType === 'palti' ? parseInt(movement.sourceBags || movement.source_bags || 0) || 0 : null,
               bagSizeKg: bagSize,
@@ -4072,7 +4072,7 @@ const Records: React.FC = () => {
                   bags: Math.abs(Number(bags)),
                   bagSizeKg: Number(item.bagSizeKg || item.bag_size_kg || 26),
                   product: productType,
-                  variety: item.variety || item.outturn?.allottedVariety || 'Sum25 RNR Raw',
+                  variety: item.variety || item.outturn?.allottedVariety || item.standardized_variety || item.standardizedVariety || '-',
                   packaging: (() => {
                     // Handle Palti movements with source → target format
                     if ((item.movementType || item.movement_type) === 'palti') {
@@ -4209,7 +4209,7 @@ const Records: React.FC = () => {
                 dayData.productions.forEach((prod: any) => {
                   const category = prod.category;
                   const movementType = (prod.movementType || '').toLowerCase();
-                  const variety = prod.variety || 'Sum25 RNR Raw';
+                  const variety = prod.variety || prod.outturn?.allottedVariety || '-';
 
                   // Determine base location with defaults for production
                   let baseLocation = prod.location || prod.locationCode;
