@@ -768,7 +768,8 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
     let finalBags = bags !== undefined ? parseFloat(bags) : production.bags;
 
     if (bags !== undefined || packagingId) {
-      const packaging = await Packaging.findByPk(packagingId || production.packagingId);
+      const pkgId = packagingId ? parseInt(packagingId) : production.packagingId;
+      const packaging = await Packaging.findByPk(pkgId);
       if (!packaging) {
         return res.status(400).json({ error: 'Invalid packaging selected' });
       }
@@ -781,32 +782,32 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       // Calculate paddy bags deducted using new formula
       paddyBagsDeducted = calculatePaddyBagsDeducted(quantityQuintals, productType || production.productType);
 
-      // Validate available paddy bags (excluding current production's deduction)
-      const totalPaddyBags = await Arrival.sum('bags', {
-        where: {
-          outturnId: production.outturnId,
-          movementType: { [Op.in]: ['production-shifting', 'purchase'] }
+      // Validate available paddy bags (if outturnId exists)
+      if (production.outturnId) {
+        const totalPaddyBags = await Arrival.sum('bags', {
+          where: {
+            outturnId: production.outturnId,
+            movementType: { [Op.in]: ['production-shifting', 'purchase', 'for-production'] }
+          }
+        }) || 0;
+
+        const usedPaddyBagsDeducted = await RiceProduction.sum('paddyBagsDeducted', {
+          where: {
+            outturnId: production.outturnId,
+            status: { [Op.in]: ['pending', 'approved'] },
+            id: { [Op.ne]: production.id }
+          }
+        }) || 0;
+
+        const availablePaddyBags = totalPaddyBags - usedPaddyBagsDeducted;
+
+        if (paddyBagsDeducted > availablePaddyBags) {
+          return res.status(400).json({
+            error: `Insufficient paddy bags available. Available: ${availablePaddyBags} bags, Required: ${paddyBagsDeducted} bags (for ${finalBags} rice bags)`,
+            availablePaddyBags,
+            requiredPaddyBags: paddyBagsDeducted
+          });
         }
-      }) || 0;
-
-      // Get total paddy bags already DEDUCTED (excluding current production)
-      const usedPaddyBagsDeducted = await RiceProduction.sum('paddyBagsDeducted', {
-        where: {
-          outturnId: production.outturnId,
-          status: { [Op.in]: ['pending', 'approved'] },
-          id: { [Op.ne]: production.id } // Exclude current production
-        }
-      }) || 0;
-
-      const availablePaddyBags = totalPaddyBags - usedPaddyBagsDeducted;
-
-      // FIX: Compare deducted bags, not user-entered bags
-      if (paddyBagsDeducted > availablePaddyBags) {
-        return res.status(400).json({
-          error: `Insufficient paddy bags available. Available: ${availablePaddyBags} bags, Required: ${paddyBagsDeducted} bags (for ${finalBags} rice bags)`,
-          availablePaddyBags,
-          requiredPaddyBags: paddyBagsDeducted
-        });
       }
     }
 
@@ -817,7 +818,7 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       date: date || production.date,
       productType: productType || production.productType,
       quantityQuintals,
-      packagingId: packagingId || production.packagingId,
+      packagingId: packagingId ? parseInt(packagingId) : production.packagingId,
       bags: finalBags,
       paddyBagsDeducted,
       movementType: finalMovementType,
@@ -835,25 +836,23 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
     });
 
     // AUTOMATIC RESYNC: Clear and rebuild the By-Products table for this outturn
-    // This handles date changes, outturn changes, and quantity changes is a 100% robust way.
     try {
-      const newOutturnId = outturnId || production.outturnId;
+      const newOutturnId = outturnId ? parseInt(outturnId) : production.outturnId;
 
-      // If the outturn itself was changed, we must resync BOTH outturns
-      if (oldOutturnId !== newOutturnId) {
-        console.log(`📊 Outturn changed from ${oldOutturnId} to ${newOutturnId}. Resyncing both...`);
-        await ByProductSyncService.syncOutturn(oldOutturnId, req.user.userId);
-        await ByProductSyncService.syncOutturn(newOutturnId, req.user.userId);
-      } else {
-        // Just resync the current outturn
-        await ByProductSyncService.syncOutturn(newOutturnId, req.user.userId);
+      if (newOutturnId) {
+        if (oldOutturnId && oldOutturnId !== newOutturnId) {
+          console.log(`📊 Outturn changed from ${oldOutturnId} to ${newOutturnId}. Resyncing both...`);
+          await ByProductSyncService.syncOutturn(oldOutturnId, req.user?.userId || req.user?.id);
+          await ByProductSyncService.syncOutturn(newOutturnId, req.user?.userId || req.user?.id);
+        } else {
+          await ByProductSyncService.syncOutturn(newOutturnId, req.user?.userId || req.user?.id);
+        }
       }
     } catch (syncError) {
       console.error('⚠️ By-Product resync failed during update:', syncError.message);
-      // Don't fail the main request - just log it
     }
 
-    // CRITICAL: Clear all related caches to ensure fresh data on refresh
+    // Clear all related caches to ensure fresh data on refresh
     try {
       const cacheService = require('../services/cacheService');
       await cacheService.delPattern('rice*');
@@ -871,7 +870,7 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
     });
   } catch (error) {
     console.error('Update rice production error:', error);
-    res.status(500).json({ error: 'Failed to update rice production entry' });
+    res.status(500).json({ error: error.message || 'Failed to update rice production entry' });
   }
 });
 
