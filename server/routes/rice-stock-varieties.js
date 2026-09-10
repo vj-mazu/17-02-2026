@@ -57,29 +57,27 @@ router.get('/rice-stock/varieties', auth, async (req, res) => {
             ? `WHERE ${whereConditions.join(' AND ')}`
             : '';
 
-        // Build SELECT fields based on metadata requirement
+        // Build SELECT fields based on metadata requirement - group by unique variety name
         const selectFields = include_metadata === 'true'
             ? `
-                o.id,
-                o.code,
+                MAX(o.id) as id,
+                MAX(o.code) as code,
                 TRIM(UPPER(CONCAT(o."allottedVariety", ' ', o.type))) as standardized_variety,
-                o."allottedVariety" as allotted_variety,
+                MAX(o."allottedVariety") as allotted_variety,
                 o.type as processing_type,
-                o."createdAt" as created_at,
-                o.is_cleared,
+                MAX(o."createdAt") as created_at,
+                BOOL_AND(COALESCE(o.is_cleared, false)) as is_cleared,
                 COUNT(rsm.id) as usage_count
             `
             : `
-                o.id,
-                o.code,
+                MAX(o.id) as id,
+                MAX(o.code) as code,
                 TRIM(UPPER(CONCAT(o."allottedVariety", ' ', o.type))) as standardized_variety,
-                o."allottedVariety" as allotted_variety,
+                MAX(o."allottedVariety") as allotted_variety,
                 o.type as processing_type
             `;
 
-        const groupByClause = include_metadata === 'true'
-            ? 'GROUP BY o.id, o.code, o."allottedVariety", o.type, o."createdAt", o.is_cleared'
-            : '';
+        const groupByClause = 'GROUP BY TRIM(UPPER(CONCAT(o."allottedVariety", \' \', o.type))), o.type';
 
         // Execute query
         const [varieties] = await sequelize.query(`
@@ -88,7 +86,7 @@ router.get('/rice-stock/varieties', auth, async (req, res) => {
             ${include_metadata === 'true' ? 'LEFT JOIN rice_stock_movements rsm ON rsm.outturn_id = o.id AND rsm.status = \'approved\'' : ''}
             ${whereClause}
             ${groupByClause}
-            ORDER BY o."allottedVariety", o.type
+            ORDER BY standardized_variety ASC
             LIMIT $${paramIndex}
         `, {
             bind: [...bindParams, parseInt(limit)]

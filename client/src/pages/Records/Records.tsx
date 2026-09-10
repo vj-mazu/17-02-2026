@@ -1118,7 +1118,7 @@ const Records: React.FC = () => {
         // Production entries - use rice-productions
         response = await axios.put<{ message?: string; production?: any; error?: string }>(`/rice-productions/${editingRiceMovement.id}`, {
           date: updatedData.date,
-          movementType: editingRiceMovement.movementType || 'kunchinittu',
+          movementType: ['kunchinittu', 'loading'].includes(editingRiceMovement.movementType) ? editingRiceMovement.movementType : 'kunchinittu',
           productType: updatedData.productType || updatedData.product_type,
           variety: updatedData.variety,
           bags: updatedData.bags,

@@ -811,7 +811,8 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       }
     }
 
-    const finalMovementType = movementType || production.movementType || 'kunchinittu';
+    const rawMovementType = movementType || production.movementType;
+    const finalMovementType = ['kunchinittu', 'loading'].includes(rawMovementType) ? rawMovementType : 'kunchinittu';
     const finalLocationCode = locationCode !== undefined ? locationCode : production.locationCode;
 
     await production.update({

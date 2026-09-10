@@ -283,14 +283,36 @@ const RiceStockVarietyDropdown: React.FC<RiceStockVarietyDropdownProps> = ({
       combined = combined.filter(v => 
         v.standardized_variety.toLowerCase().includes(search) ||
         v.allotted_variety.toLowerCase().includes(search) ||
-        v.code.toLowerCase().includes(search)
+        (v.code && v.code.toLowerCase().includes(search))
       );
     }
 
-    // Sort alphabetically by standardized variety
-    combined.sort((a, b) => a.standardized_variety.localeCompare(b.standardized_variety));
+    // Deduplicate by standardized_variety so no duplicates appear
+    const varietyMap = new Map<string, RiceStockVariety>();
+    for (const item of combined) {
+      const key = (item.standardized_variety || '').trim().toUpperCase();
+      if (!key) continue;
 
-    setFilteredVarieties(combined);
+      if (!varietyMap.has(key)) {
+        varietyMap.set(key, { ...item });
+      } else {
+        const existing = varietyMap.get(key)!;
+        if (item.usage_count !== undefined) {
+          existing.usage_count = (existing.usage_count || 0) + item.usage_count;
+        }
+        // Prefer real outturn ID (> 0) over generic ID (< 0)
+        if (item.id && item.id > 0 && (!existing.id || existing.id < 0 || existing.id < item.id)) {
+          existing.id = item.id;
+          existing.code = item.code || existing.code;
+        }
+      }
+    }
+
+    const uniqueList = Array.from(varietyMap.values());
+    // Sort alphabetically by standardized variety
+    uniqueList.sort((a, b) => a.standardized_variety.localeCompare(b.standardized_variety));
+
+    setFilteredVarieties(uniqueList);
   }, [varieties, genericVarieties, activeFilter, searchTerm]);
 
   // Fetch varieties on component mount and when dependencies change
@@ -306,11 +328,22 @@ const RiceStockVarietyDropdown: React.FC<RiceStockVarietyDropdownProps> = ({
   // Get active option value based on outturn ID and fallback variety name
   const getSelectValue = () => {
     if (value && value > 0) {
+      const directMatch = filteredVarieties.find(v => v.id === value);
+      if (directMatch) return String(directMatch.id);
+
+      const orig = varieties.find(v => v.id === value);
+      if (orig) {
+        const nameMatch = filteredVarieties.find(
+          v => v.standardized_variety.trim().toUpperCase() === orig.standardized_variety.trim().toUpperCase()
+        );
+        if (nameMatch) return String(nameMatch.id);
+      }
       return String(value);
     }
     if (varietyName) {
-      // Find matching variety in filtered list by name
-      const match = filteredVarieties.find(v => v.standardized_variety === varietyName);
+      const match = filteredVarieties.find(
+        v => v.standardized_variety.trim().toUpperCase() === varietyName.trim().toUpperCase()
+      );
       if (match) return String(match.id);
     }
     return '';
@@ -407,9 +440,9 @@ const RiceStockVarietyDropdown: React.FC<RiceStockVarietyDropdownProps> = ({
         {filteredVarieties.map((variety) => (
           <option key={variety.id} value={variety.id}>
             {variety.standardized_variety}
-            {showVarietyInfo && variety.usage_count !== undefined && (
+            {showVarietyInfo && typeof variety.usage_count === 'number' && variety.usage_count > 0 ? (
               ` (${variety.usage_count} uses)`
-            )}
+            ) : null}
           </option>
         ))}
       </Select>
