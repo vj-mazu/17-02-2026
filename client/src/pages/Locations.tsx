@@ -751,7 +751,10 @@ const Locations: React.FC = () => {
   };
 
   const handleCreateRiceStockLocation = async () => {
-    if (!riceStockLocationCode.trim()) {
+    const codeToSave = riceStockLocationCode.trim().toUpperCase();
+    const nameToSave = riceStockLocationName.trim();
+
+    if (!codeToSave) {
       toast.error('Please enter location code');
       return;
     }
@@ -761,11 +764,30 @@ const Locations: React.FC = () => {
       return;
     }
 
+    // Client-side duplicate checks
+    const duplicateCode = riceStockLocations.find(
+      loc => loc.code.toUpperCase() === codeToSave && loc.id !== editingRiceStockLocation?.id
+    );
+    if (duplicateCode) {
+      toast.error(`Location code '${codeToSave}' already exists. Please use a unique code.`);
+      return;
+    }
+
+    if (nameToSave) {
+      const duplicateName = riceStockLocations.find(
+        loc => loc.name && loc.name.trim().toLowerCase() === nameToSave.toLowerCase() && loc.id !== editingRiceStockLocation?.id
+      );
+      if (duplicateName) {
+        toast.error(`Location description '${nameToSave}' already exists. Please use a unique description.`);
+        return;
+      }
+    }
+
     try {
       const token = localStorage.getItem('token');
       const payload = {
-        code: riceStockLocationCode.trim().toUpperCase(),
-        name: riceStockLocationName.trim() || null
+        code: codeToSave,
+        name: nameToSave || null
       };
 
       if (editingRiceStockLocation) {

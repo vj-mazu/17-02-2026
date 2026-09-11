@@ -508,20 +508,57 @@ router.post('/rice-stock-locations', auth, authorize('manager', 'admin'), async 
   try {
     const { code, name, isDirectLoad } = req.body;
 
-    if (!code) {
+    if (!code || !code.trim()) {
       return res.status(400).json({ error: 'Location code is required' });
     }
 
     const trimmedCode = code.trim().toUpperCase();
+    const trimmedName = name && name.trim() ? name.trim() : null;
 
-    // Check if code already exists
-    const [existing] = await sequelize.query(
-      `SELECT id FROM rice_stock_locations WHERE code = :code LIMIT 1`,
+    // 1. Check duplicate code
+    const [existingCode] = await sequelize.query(
+      `SELECT id, is_active FROM rice_stock_locations WHERE UPPER(TRIM(code)) = UPPER(TRIM(:code)) LIMIT 1`,
       { replacements: { code: trimmedCode } }
     );
 
-    if (existing && existing.length > 0) {
-      return res.status(400).json({ error: 'Location code already exists' });
+    if (existingCode && existingCode.length > 0) {
+      if (existingCode[0].is_active) {
+        return res.status(400).json({ error: `Location code '${trimmedCode}' already exists` });
+      } else {
+        // Reactivate soft-deleted location
+        const [reactivated] = await sequelize.query(`
+          UPDATE rice_stock_locations 
+          SET 
+            name = :name,
+            is_active = true,
+            is_direct_load = :isDirectLoad,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = :id
+          RETURNING *
+        `, {
+          replacements: {
+            id: existingCode[0].id,
+            name: trimmedName,
+            isDirectLoad: Boolean(isDirectLoad)
+          }
+        });
+
+        return res.status(201).json({
+          message: 'Rice stock location created successfully',
+          location: reactivated[0]
+        });
+      }
+    }
+
+    // 2. Check duplicate name if provided
+    if (trimmedName) {
+      const [existingName] = await sequelize.query(
+        `SELECT id FROM rice_stock_locations WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name)) AND is_active = true LIMIT 1`,
+        { replacements: { name: trimmedName } }
+      );
+      if (existingName && existingName.length > 0) {
+        return res.status(400).json({ error: `Location description '${trimmedName}' already exists` });
+      }
     }
 
     const userId = req.user?.userId || req.user?.id || null;
@@ -533,7 +570,7 @@ router.post('/rice-stock-locations', auth, authorize('manager', 'admin'), async 
     `, {
       replacements: {
         code: trimmedCode,
-        name: name ? name.trim() : null,
+        name: trimmedName,
         isDirectLoad: Boolean(isDirectLoad),
         createdBy: userId
       }
@@ -561,7 +598,7 @@ router.post('/rice-stock-locations', auth, authorize('manager', 'admin'), async 
     });
   } catch (error) {
     console.error('❌ Create rice stock location error:', error);
-    res.status(500).json({ error: 'Failed to create rice stock location' });
+    res.status(500).json({ error: error.message || 'Failed to create rice stock location' });
   }
 });
 
@@ -581,16 +618,28 @@ router.put('/rice-stock-locations/:id', auth, authorize('manager', 'admin'), asy
     }
 
     const currentLocation = existing[0];
-    const newCode = code ? code.trim().toUpperCase() : currentLocation.code;
+    const newCode = code && code.trim() ? code.trim().toUpperCase() : currentLocation.code;
+    const newName = name !== undefined ? (name && name.trim() ? name.trim() : null) : currentLocation.name;
 
     // Check if new code already exists on another location
     if (newCode !== currentLocation.code) {
-      const [dup] = await sequelize.query(
-        `SELECT id FROM rice_stock_locations WHERE code = :code AND id != :id LIMIT 1`,
+      const [dupCode] = await sequelize.query(
+        `SELECT id FROM rice_stock_locations WHERE UPPER(TRIM(code)) = UPPER(TRIM(:code)) AND id != :id AND is_active = true LIMIT 1`,
         { replacements: { code: newCode, id } }
       );
-      if (dup && dup.length > 0) {
-        return res.status(400).json({ error: 'Location code already exists' });
+      if (dupCode && dupCode.length > 0) {
+        return res.status(400).json({ error: `Location code '${newCode}' already exists` });
+      }
+    }
+
+    // Check if new name already exists on another location
+    if (newName && newName !== currentLocation.name) {
+      const [dupName] = await sequelize.query(
+        `SELECT id FROM rice_stock_locations WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name)) AND id != :id AND is_active = true LIMIT 1`,
+        { replacements: { name: newName, id } }
+      );
+      if (dupName && dupName.length > 0) {
+        return res.status(400).json({ error: `Location description '${newName}' already exists` });
       }
     }
 
@@ -608,7 +657,7 @@ router.put('/rice-stock-locations/:id', auth, authorize('manager', 'admin'), asy
       replacements: {
         id,
         code: newCode,
-        name: name !== undefined ? (name ? name.trim() : null) : currentLocation.name,
+        name: newName,
         isActive: isActive !== undefined ? isActive : currentLocation.is_active,
         isDirectLoad: isDirectLoad !== undefined ? Boolean(isDirectLoad) : (currentLocation.is_direct_load || false)
       }
@@ -636,7 +685,7 @@ router.put('/rice-stock-locations/:id', auth, authorize('manager', 'admin'), asy
     });
   } catch (error) {
     console.error('Update rice stock location error:', error);
-    res.status(500).json({ error: 'Failed to update rice stock location' });
+    res.status(500).json({ error: error.message || 'Failed to update rice stock location' });
   }
 });
 
