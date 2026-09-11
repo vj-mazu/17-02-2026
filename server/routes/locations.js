@@ -431,7 +431,7 @@ router.get('/rice-stock-locations', auth, async (req, res) => {
   try {
     const { includeInactive } = req.query;
 
-    // Self-healing: Ensure table and columns exist in DB (especially on Render/cloud)
+    // Self-healing: Ensure table exists in DB
     try {
       await sequelize.query(`
         CREATE TABLE IF NOT EXISTS rice_stock_locations (
@@ -440,7 +440,7 @@ router.get('/rice-stock-locations', auth, async (req, res) => {
           name VARCHAR(100),
           is_active BOOLEAN DEFAULT true,
           is_direct_load BOOLEAN DEFAULT false,
-          created_by INTEGER REFERENCES users(id),
+          created_by INTEGER,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
@@ -455,39 +455,51 @@ router.get('/rice-stock-locations', auth, async (req, res) => {
       console.warn('Rice stock locations table check:', tblErr.message);
     }
 
-    const query = `
-      SELECT 
-        rsl.id,
-        rsl.code,
-        rsl.name,
-        COALESCE(rsl.is_active, true) AS "isActive",
-        COALESCE(rsl.is_direct_load, false) AS "isDirectLoad",
-        rsl.created_at AS "createdAt",
-        rsl.created_by AS "createdBy",
-        u.username AS "creatorUsername"
-      FROM rice_stock_locations rsl
-      LEFT JOIN users u ON rsl.created_by = u.id
-      ${!includeInactive ? 'WHERE COALESCE(rsl.is_active, true) = true' : ''}
-      ORDER BY rsl.code ASC
-    `;
-    const [rows] = await sequelize.query(query);
+    const [rows] = await sequelize.query(`SELECT * FROM rice_stock_locations ORDER BY code ASC`);
 
-    const locations = rows.map(r => ({
-      id: r.id,
-      code: r.code,
-      name: r.name,
-      isActive: r.isActive,
-      isDirectLoad: r.isDirectLoad,
-      createdAt: r.createdAt,
-      createdBy: r.createdBy,
-      creator: { username: r.creatorUsername || 'Unknown' }
-    }));
+    // Fetch creators
+    const creatorIds = [...new Set(rows.map(r => r.created_by || r.createdBy))].filter(Boolean);
+    const creatorMap = {};
+    if (creatorIds.length > 0) {
+      try {
+        const [creators] = await sequelize.query(
+          `SELECT id, username FROM users WHERE id IN (:ids)`,
+          { replacements: { ids: creatorIds } }
+        );
+        creators.forEach(c => { creatorMap[c.id] = c.username; });
+      } catch (uErr) {
+        console.warn('Could not fetch creator usernames:', uErr.message);
+      }
+    }
+
+    const locations = rows
+      .filter(r => {
+        const isActive = r.is_active !== undefined ? r.is_active : (r.isActive !== undefined ? r.isActive : true);
+        return includeInactive ? true : Boolean(isActive);
+      })
+      .map(r => {
+        const isActive = r.is_active !== undefined ? r.is_active : (r.isActive !== undefined ? r.isActive : true);
+        const isDirectLoad = r.is_direct_load !== undefined ? r.is_direct_load : (r.isDirectLoad !== undefined ? r.isDirectLoad : false);
+        const createdBy = r.created_by !== undefined ? r.created_by : r.createdBy;
+        const createdAt = r.created_at || r.createdAt || new Date();
+
+        return {
+          id: r.id,
+          code: r.code,
+          name: r.name,
+          isActive: Boolean(isActive),
+          isDirectLoad: Boolean(isDirectLoad),
+          createdAt,
+          createdBy,
+          creator: { username: (createdBy && creatorMap[createdBy]) || 'Unknown' }
+        };
+      });
 
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json({ locations });
   } catch (error) {
     console.error('❌ Get rice stock locations error:', error);
-    res.status(500).json({ error: 'Failed to fetch rice stock locations' });
+    res.status(500).json({ error: error.message || 'Failed to fetch rice stock locations' });
   }
 });
 
