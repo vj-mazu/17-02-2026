@@ -12,24 +12,25 @@ const YieldCalculationService = require('../services/YieldCalculationService');
 
 const router = express.Router();
 
-// Generate next SL No
+// Generate next SL No - Atomic MAX query to prevent race conditions
 const generateSlNo = async () => {
   try {
-    const lastArrival = await Arrival.findOne({
-      order: [['createdAt', 'DESC']],
-      attributes: ['slNo']
-    });
+    const [result] = await sequelize.query(`
+      SELECT COALESCE(
+        MAX(
+          CASE 
+            WHEN "slNo" ~ '^A[0-9]+$' THEN SUBSTRING("slNo" FROM 2)::INTEGER 
+            ELSE 0 
+          END
+        ), 0
+      ) AS "maxSlNo"
+      FROM arrivals;
+    `);
 
-    if (!lastArrival || !lastArrival.slNo) {
-      return 'A01';
-    }
-
-    const lastNumber = parseInt(lastArrival.slNo.substring(1));
-    const nextNumber = lastNumber + 1;
+    const nextNumber = (parseInt(result[0]?.maxSlNo) || 0) + 1;
     return `A${nextNumber.toString().padStart(2, '0')}`;
   } catch (error) {
     console.error('Error generating SL No:', error);
-    // Return default if there's an error
     return 'A01';
   }
 };

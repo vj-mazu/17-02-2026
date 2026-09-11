@@ -31,10 +31,10 @@ const calculatePaddyBagsDeducted = (quintals, productType) => {
 router.get('/', auth, async (req, res) => {
   const startTime = Date.now();
   try {
-    const { month, dateFrom, dateTo, outturnId, status, limit = 100, page = 1 } = req.query;
+    const { month, dateFrom, dateTo, outturnId, status, limit = 100, page = 1, cursorId } = req.query;
 
     // Create cache key
-    const cacheKey = `rice-productions:${page}:${limit}:${outturnId || ''}:${status || ''}:${dateFrom || ''}:${dateTo || ''}:${month || ''}`;
+    const cacheKey = `rice-productions:${page}:${limit}:${outturnId || ''}:${status || ''}:${dateFrom || ''}:${dateTo || ''}:${month || ''}:${cursorId || ''}`;
 
     // Try cache first
     const cached = await require('../services/cacheService').get(cacheKey);
@@ -80,13 +80,18 @@ router.get('/', auth, async (req, res) => {
     if (outturnId) where.outturnId = outturnId;
     if (status) where.status = status;
 
+    // High-performance Keyset Pagination: When cursorId is provided, bypass deep OFFSET
+    if (cursorId && parseInt(cursorId) > 0) {
+      where.id = { [Op.lt]: parseInt(cursorId) };
+    }
+
     // Pagination setup
     const limitNum = Math.min(parseInt(limit), 5000); // Increased from 500 for Paddy Stock accuracy
     const pageNum = parseInt(page) || 1;
-    const offset = (pageNum - 1) * limitNum;
+    const offset = cursorId ? 0 : (pageNum - 1) * limitNum;
 
     // Get total count for pagination (only on first page for performance)
-    const totalCount = pageNum === 1 ? await RiceProduction.count({ where }) : null;
+    const totalCount = (pageNum === 1 && !cursorId) ? await RiceProduction.count({ where }) : null;
 
     const productions = await RiceProduction.findAll({
       where,
@@ -96,7 +101,7 @@ router.get('/', auth, async (req, res) => {
         { model: User, as: 'creator', attributes: ['username', 'role'] },
         { model: User, as: 'approver', attributes: ['username', 'role'] }
       ],
-      order: [['date', 'DESC'], ['createdAt', 'DESC']],
+      order: [['date', 'DESC'], ['id', 'DESC']],
       limit: limitNum,
       offset: offset,
       subQuery: false // Prevent N+1 queries

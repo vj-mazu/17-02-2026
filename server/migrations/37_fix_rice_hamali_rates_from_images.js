@@ -122,8 +122,8 @@ async function up() {
 
     for (const [work_type, work_detail, rate_18_21, rate_21_24, rate_24_27, display_order] of ratesData) {
       await sequelize.query(`
-        INSERT INTO rice_hamali_rates (work_type, work_detail, rate_18_21, rate_21_24, rate_24_27, display_order)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO rice_hamali_rates (work_type, work_detail, rate_18_21, rate_21_24, rate_24_27, display_order, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `, {
         replacements: [work_type, work_detail, rate_18_21, rate_21_24, rate_24_27, display_order]
       });

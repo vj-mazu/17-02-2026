@@ -584,9 +584,14 @@ const Hamali: React.FC = () => {
 
       const token = localStorage.getItem('token');
 
-      // Fetch rice productions
+      // Fetch rice productions for the selected date ONLY (eliminates slow loading lag)
       const productionsResponse = await axios.get<{ productions: any[] }>('/rice-productions', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        params: {
+          dateFrom: hamaliDate,
+          dateTo: hamaliDate,
+          limit: 200
+        }
       });
       console.log('✅ Rice productions response:', productionsResponse.data);
 

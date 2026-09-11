@@ -6,7 +6,7 @@ const router = express.Router();
 // Get all rice hamali rates with all rate columns
 router.get('/', auth, async (req, res) => {
   try {
-    const [rates] = await sequelize.query(`
+    let [rates] = await sequelize.query(`
       SELECT 
         id,
         work_type,
@@ -18,6 +18,29 @@ router.get('/', auth, async (req, res) => {
       WHERE is_active = true
       ORDER BY display_order ASC, work_type ASC, work_detail ASC
     `);
+
+    // Auto-seed if rates table is empty
+    if (!rates || rates.length === 0) {
+      try {
+        const migration36 = require('../migrations/36_add_complete_rice_hamali_rates');
+        await migration36.up();
+        const [reloadedRates] = await sequelize.query(`
+          SELECT 
+            id,
+            work_type,
+            work_detail,
+            COALESCE(rate_24_27, 0) as rate_24_27,
+            is_active,
+            display_order
+          FROM rice_hamali_rates 
+          WHERE is_active = true
+          ORDER BY display_order ASC, work_type ASC, work_detail ASC
+        `);
+        rates = reloadedRates;
+      } catch (seedErr) {
+        console.warn('Could not auto-seed rice hamali rates:', seedErr.message);
+      }
+    }
 
     // Group by work_type for better organization
     const groupedRates = rates.reduce((acc, rate) => {
@@ -92,8 +115,8 @@ router.post('/', auth, async (req, res) => {
 
     const [result] = await sequelize.query(`
       INSERT INTO rice_hamali_rates 
-      (work_type, work_detail, rate_18_21, rate_21_24, rate_24_27, display_order)
-      VALUES (:work_type, :work_detail, :rate_18_21, :rate_21_24, :rate_24_27, :display_order)
+      (work_type, work_detail, rate_18_21, rate_21_24, rate_24_27, display_order, is_active, created_at, updated_at)
+      VALUES (:work_type, :work_detail, :rate_18_21, :rate_21_24, :rate_24_27, :display_order, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING *
     `, {
       replacements: {

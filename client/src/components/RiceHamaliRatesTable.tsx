@@ -524,42 +524,50 @@ const RiceHamaliRatesTable: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(rates).map(([workType, workRates]) => (
-              <React.Fragment key={workType}>
-                <WorkTypeHeader>
-                  <td colSpan={5}>
-                    <strong>{workType}</strong>
-                  </td>
-                </WorkTypeHeader>
-                {workRates.map((rate, index) => (
-                  <tr key={rate.id}>
-                    <Td>{rate.display_order || index + 1}</Td>
-                    <Td>{rate.work_type}</Td>
-                    <Td>{rate.work_detail}</Td>
-                    <RateCell>{rate.rate_24_27 ? Number(rate.rate_24_27).toFixed(2) : '0.00'}</RateCell>
-                    <Td>
-                      <ButtonGroup>
-                        <Button 
-                          type="button" 
-                          onClick={() => handleEdit(rate)}
-                          style={{ padding: '0.5rem', fontSize: '0.8rem' }}
-                        >
-                          Edit
-                        </Button>
-                        <Button 
-                          type="button" 
-                          variant="danger"
-                          onClick={() => handleDelete(rate.id)}
-                          style={{ padding: '0.5rem', fontSize: '0.8rem' }}
-                        >
-                          Delete
-                        </Button>
-                      </ButtonGroup>
-                    </Td>
-                  </tr>
-                ))}
-              </React.Fragment>
-            ))}
+            {Object.keys(rates).length === 0 ? (
+              <tr>
+                <Td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                  No rice hamali rates found. Click "+ Add New Rate" above to create one.
+                </Td>
+              </tr>
+            ) : (
+              Object.entries(rates).map(([workType, workRates]) => (
+                <React.Fragment key={workType}>
+                  <WorkTypeHeader>
+                    <td colSpan={5}>
+                      <strong>{workType}</strong>
+                    </td>
+                  </WorkTypeHeader>
+                  {workRates.map((rate, index) => (
+                    <tr key={rate.id}>
+                      <Td>{rate.display_order || index + 1}</Td>
+                      <Td>{rate.work_type}</Td>
+                      <Td>{rate.work_detail}</Td>
+                      <RateCell>{rate.rate_24_27 ? Number(rate.rate_24_27).toFixed(2) : '0.00'}</RateCell>
+                      <Td>
+                        <ButtonGroup>
+                          <Button 
+                            type="button" 
+                            onClick={() => handleEdit(rate)}
+                            style={{ padding: '0.5rem', fontSize: '0.8rem' }}
+                          >
+                            Edit
+                          </Button>
+                          <Button 
+                            type="button" 
+                            variant="danger"
+                            onClick={() => handleDelete(rate.id)}
+                            style={{ padding: '0.5rem', fontSize: '0.8rem' }}
+                          >
+                            Delete
+                          </Button>
+                        </ButtonGroup>
+                      </Td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))
+            )}
           </tbody>
         </Table>
       </TableContainer>

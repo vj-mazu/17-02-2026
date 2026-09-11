@@ -273,8 +273,8 @@ const SimplePaltiModal: React.FC<SimplePaltiModalProps> = ({ isOpen, onClose, on
       return;
     }
 
-    if (!formData.date || !formData.sourceBags || !formData.sourcePackaging || !formData.targetPackaging || !formData.location) {
-      toast.error('Please fill in all required fields');
+    if (!formData.date || !formData.variety?.trim() || !formData.sourceBags || !formData.sourcePackaging || !formData.targetPackaging || !formData.location) {
+      toast.error('Please fill in all required fields including Variety');
       return;
     }
 
