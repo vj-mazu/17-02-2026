@@ -65,11 +65,12 @@ app.use(compression({
 // Security middleware
 app.use(helmet());
 
-// CORS Configuration - Support multiple origins
+// CORS Configuration - Support multiple origins and Vercel domains
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3005',
   'http://localhost:5173',
+  'https://ashilstockchecking.vercel.app',
   'https://complete-paddy-rice-management-syst.vercel.app',
   'https://complete-paddy-rice-management-system.vercel.app',
   process.env.CLIENT_URL
@@ -88,7 +89,11 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    const isAllowed = allowedOrigins.indexOf(origin) !== -1 ||
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.onrender.com');
+
+    if (isAllowed) {
       callback(null, true);
     } else {
       console.log('❌ CORS blocked origin:', origin);
