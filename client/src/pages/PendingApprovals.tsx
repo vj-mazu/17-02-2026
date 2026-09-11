@@ -503,7 +503,7 @@ interface PendingRiceHamali {
     creatorRole?: string;
 }
 
-type TabType = 'arrivals' | 'rice-production' | 'rice-stock' | 'paddy-hamali' | 'rice-hamali' | 'purchase-rates';
+type TabType = 'arrivals' | 'rice-production' | 'rice-stock' | 'paddy-hamali' | 'rice-hamali' | 'purchase-rates' | 'paddy-sale';
 
 const PendingApprovals: React.FC = () => {
     const { user } = useAuth();
@@ -523,11 +523,13 @@ const PendingApprovals: React.FC = () => {
     const [selectedStockIds, setSelectedStockIds] = useState<number[]>([]);
     const [selectedPaddyHamaliIds, setSelectedPaddyHamaliIds] = useState<number[]>([]);
     const [selectedRiceHamaliIds, setSelectedRiceHamaliIds] = useState<number[]>([]);
+    const [selectedPaddySaleIds, setSelectedPaddySaleIds] = useState<number[]>([]);
 
     // New data states
     const [pendingRiceStock, setPendingRiceStock] = useState<PendingRiceStockMovement[]>([]);
     const [pendingPaddyHamali, setPendingPaddyHamali] = useState<PendingPaddyHamali[]>([]);
     const [pendingRiceHamali, setPendingRiceHamali] = useState<PendingRiceHamali[]>([]);
+    const [pendingPaddySales, setPendingPaddySales] = useState<PendingArrival[]>([]);
 
     // Confirmation Modal state
     const [modalConfig, setModalConfig] = useState<{
@@ -536,7 +538,7 @@ const PendingApprovals: React.FC = () => {
         message: string;
         type: 'approve' | 'reject' | 'confirm';
         showInput?: boolean;
-        actionType: 'approve_arrivals' | 'reject_arrivals' | 'approve_productions' | 'reject_productions' | 'approve_rates' | 'reject_rates' | 'approve_rice_stock' | 'reject_rice_stock' | 'approve_paddy_hamali' | 'reject_paddy_hamali' | 'approve_rice_hamali' | 'reject_rice_hamali' | null;
+        actionType: 'approve_arrivals' | 'reject_arrivals' | 'approve_productions' | 'reject_productions' | 'approve_rates' | 'reject_rates' | 'approve_rice_stock' | 'reject_rice_stock' | 'approve_paddy_hamali' | 'reject_paddy_hamali' | 'approve_rice_hamali' | 'reject_rice_hamali' | 'approve_paddy_sales' | 'reject_paddy_sales' | null;
     }>({
         isOpen: false,
         title: '',
@@ -552,11 +554,18 @@ const PendingApprovals: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            if (activeTab === 'arrivals') {
+            if (activeTab === 'arrivals' || activeTab === 'paddy-sale') {
                 const response = await axios.get('/arrivals/pending-list');
                 const data = response.data as { approvals: PendingArrival[] };
-                setPendingArrivals(data.approvals || []);
+                const approvals = data.approvals || [];
+                
+                const standardArrivals = approvals.filter(a => a.movementType !== 'sale');
+                const paddySales = approvals.filter(a => a.movementType === 'sale');
+                
+                setPendingArrivals(standardArrivals);
+                setPendingPaddySales(paddySales);
                 setSelectedArrivalIds([]);
+                setSelectedPaddySaleIds([]);
             } else if (activeTab === 'rice-production') {
                 const response = await axios.get('/rice-productions/pending-list');
                 const data = response.data as { productions: PendingRiceProduction[] };
@@ -631,6 +640,49 @@ const PendingApprovals: React.FC = () => {
             type: 'reject',
             showInput: true,
             actionType: 'reject_arrivals'
+        });
+    };
+
+    // Selection handlers for paddy sales
+    const handleSelectAllPaddySales = (checked: boolean) => {
+        setSelectedPaddySaleIds(checked ? pendingPaddySales.map(s => s.id) : []);
+    };
+
+    const handleSelectPaddySale = (id: number, checked: boolean) => {
+        setSelectedPaddySaleIds(checked
+            ? [...selectedPaddySaleIds, id]
+            : selectedPaddySaleIds.filter(i => i !== id));
+    };
+
+    // Bulk actions for paddy sales
+    const handleBulkApprovePaddySales = () => {
+        if (selectedPaddySaleIds.length === 0) {
+            toast.warning('Please select at least one record');
+            return;
+        }
+
+        setModalConfig({
+            isOpen: true,
+            title: 'Approve Paddy Sales',
+            message: `Are you sure you want to approve ${selectedPaddySaleIds.length} paddy sale record(s)?`,
+            type: 'approve',
+            actionType: 'approve_paddy_sales'
+        });
+    };
+
+    const handleBulkRejectPaddySales = () => {
+        if (selectedPaddySaleIds.length === 0) {
+            toast.warning('Please select at least one record');
+            return;
+        }
+
+        setModalConfig({
+            isOpen: true,
+            title: 'Reject Paddy Sales',
+            message: `Enter rejection reason for ${selectedPaddySaleIds.length} paddy sale record(s):`,
+            type: 'reject',
+            showInput: true,
+            actionType: 'reject_paddy_sales'
         });
     };
 
@@ -860,6 +912,14 @@ const PendingApprovals: React.FC = () => {
                     await axios.post('/arrivals/bulk-reject', { arrivalIds: selectedArrivalIds, remarks: reason });
                     toast.success(`${selectedArrivalIds.length} arrival(s) rejected`);
                     break;
+                case 'approve_paddy_sales':
+                    await axios.post('/arrivals/bulk-approve', { arrivalIds: selectedPaddySaleIds });
+                    toast.success(`${selectedPaddySaleIds.length} paddy sale(s) approved`);
+                    break;
+                case 'reject_paddy_sales':
+                    await axios.post('/arrivals/bulk-reject', { arrivalIds: selectedPaddySaleIds, remarks: reason });
+                    toast.success(`${selectedPaddySaleIds.length} paddy sale(s) rejected`);
+                    break;
                 case 'approve_productions':
                     await axios.post('/rice-productions/bulk-approve', { productionIds: selectedProductionIds });
                     toast.success(`${selectedProductionIds.length} rice production(s) approved`);
@@ -1035,6 +1095,97 @@ const PendingApprovals: React.FC = () => {
                                     <td>{arrival.wbNo}</td>
                                     <td>{arrival.lorryNumber}</td>
                                     <td>{arrival.creator?.username} <small>({arrival.creator?.role})</small></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </Table>
+                </TableContainer>
+            </>
+        );
+    };
+
+    const renderPaddySalesTable = () => {
+        if (loading) {
+            return <LoadingState><div className="spinner">⏳</div><p>Loading...</p></LoadingState>;
+        }
+
+        if (pendingPaddySales.length === 0) {
+            return (
+                <EmptyState>
+                    <div className="icon">💰</div>
+                    <h3>No Pending Paddy Sales</h3>
+                    <p>All paddy sale records have been approved!</p>
+                </EmptyState>
+            );
+        }
+
+        return (
+            <>
+                <ActionBar>
+                    <ActionInfo>
+                        <span className="count">{pendingPaddySales.length} pending paddy sale(s)</span>
+                        {selectedPaddySaleIds.length > 0 && (
+                            <span className="selected">{selectedPaddySaleIds.length} selected</span>
+                        )}
+                    </ActionInfo>
+                    <ActionButtons>
+                        <Button
+                            $variant="reject"
+                            onClick={handleBulkRejectPaddySales}
+                            disabled={selectedPaddySaleIds.length === 0 || processing}
+                        >
+                            ❌ Reject ({selectedPaddySaleIds.length})
+                        </Button>
+                        <Button
+                            $variant="approve"
+                            onClick={handleBulkApprovePaddySales}
+                            disabled={selectedPaddySaleIds.length === 0 || processing}
+                        >
+                            ✅ Approve ({selectedPaddySaleIds.length})
+                        </Button>
+                    </ActionButtons>
+                </ActionBar>
+                <TableContainer>
+                    <Table>
+                        <thead>
+                            <tr>
+                                <th className="checkbox-cell">
+                                    <Checkbox
+                                        type="checkbox"
+                                        checked={selectedPaddySaleIds.length === pendingPaddySales.length && pendingPaddySales.length > 0}
+                                        onChange={(e) => handleSelectAllPaddySales(e.target.checked)}
+                                    />
+                                </th>
+                                <th>Date</th>
+                                <th>Party Name (Buyer)</th>
+                                <th>Source Godown</th>
+                                <th>Bags</th>
+                                <th>Net Weight (kg)</th>
+                                <th>Lorry Number</th>
+                                <th>WB No</th>
+                                <th>Bill No</th>
+                                <th>Created By</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {pendingPaddySales.map(sale => (
+                                <tr key={sale.id}>
+                                    <td className="checkbox-cell">
+                                        <Checkbox
+                                            type="checkbox"
+                                            checked={selectedPaddySaleIds.includes(sale.id)}
+                                            onChange={(e) => handleSelectPaddySale(sale.id, e.target.checked)}
+                                        />
+                                    </td>
+                                    <td>{new Date(sale.date).toLocaleDateString('en-GB')}</td>
+                                    <td><strong>{sale.broker || '-'}</strong></td>
+                                    <td>{sale.fromKunchinittu?.code} - {sale.fromWarehouse?.name || '-'}</td>
+                                    <td><strong>{sale.bags || '-'}</strong></td>
+                                    <td><strong>{parseFloat(sale.netWeight.toString()).toFixed(0)}</strong></td>
+                                    <td>{sale.lorryNumber || '-'}</td>
+                                    <td>{sale.wbNo || '-'}</td>
+                                    <td><strong>{(sale as any).billNo || (sale as any).bill_no || '-'}</strong></td>
+                                    <td>{sale.creator?.username} <small>({sale.creator?.role})</small></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -1593,6 +1744,12 @@ const PendingApprovals: React.FC = () => {
                     {pendingRiceHamali.length > 0 && <Badge color="#be185d">{pendingRiceHamali.length}</Badge>}
                 </Tab>
                 {user?.role === 'admin' && (
+                    <Tab $active={activeTab === 'paddy-sale'} onClick={() => setActiveTab('paddy-sale')}>
+                        Paddy Sale
+                        {pendingPaddySales.length > 0 && <Badge color="#ef4444">{pendingPaddySales.length}</Badge>}
+                    </Tab>
+                )}
+                {user?.role === 'admin' && (
                     <Tab $active={activeTab === 'purchase-rates'} onClick={() => setActiveTab('purchase-rates')}>
                         Purchase Rates
                         {pendingPurchaseRates.length > 0 && <Badge color="#8b5cf6">{pendingPurchaseRates.length}</Badge>}
@@ -1602,6 +1759,7 @@ const PendingApprovals: React.FC = () => {
 
             <ContentArea>
                 {activeTab === 'arrivals' && renderArrivalsTable()}
+                {activeTab === 'paddy-sale' && renderPaddySalesTable()}
                 {activeTab === 'rice-production' && renderRiceProductionsTable()}
                 {activeTab === 'rice-stock' && renderRiceStockTable()}
                 {activeTab === 'paddy-hamali' && renderPaddyHamaliTable()}

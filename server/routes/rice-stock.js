@@ -132,14 +132,14 @@ router.get('/', auth, async (req, res) => {
                 rsm.product_type as "productType",
                 -- STANDARDIZED VARIETY: Prefer outturn-based variety over free-text
                 CASE 
-                    WHEN rsm.outturn_id IS NOT NULL AND o.allotted_variety IS NOT NULL THEN 
-                        UPPER(TRIM(CONCAT(o.allotted_variety, ' ', COALESCE(o.type, ''))))
+                    WHEN rsm.outturn_id IS NOT NULL AND o."allottedVariety" IS NOT NULL THEN 
+                        UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))))
                     ELSE 
                         UPPER(TRIM(rsm.variety))
                 END as variety,
                 rsm.outturn_id,
                 o.code as outturn_code,
-                o.allotted_variety as outturn_variety,
+                o."allottedVariety" as outturn_variety,
                 o.type as outturn_type,
                 rsm.bags,
                 rsm.source_bags as "sourceBags",
@@ -477,8 +477,8 @@ router.get('/', auth, async (req, res) => {
                 rsm.date, rsm.movement_type as "movementType", rsm.product_type as "productType",
                 -- STANDARDIZED VARIETY: Prefer outturn-based variety over free-text
                 CASE 
-                    WHEN rsm.outturn_id IS NOT NULL AND o.allotted_variety IS NOT NULL THEN 
-                        UPPER(TRIM(CONCAT(o.allotted_variety, ' ', COALESCE(o.type, ''))))
+                    WHEN rsm.outturn_id IS NOT NULL AND o."allottedVariety" IS NOT NULL THEN 
+                        UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))))
                     ELSE 
                         UPPER(TRIM(rsm.variety))
                 END as variety,

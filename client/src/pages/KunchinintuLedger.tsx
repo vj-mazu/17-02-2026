@@ -605,8 +605,19 @@ const KunchinintuLedger: React.FC = () => {
 
       // Get transactions - try both 'transactions' and direct arrays
       const transactions = ledgerData.transactions || { inward: [], outward: [] };
-      const inwardTrans = transactions.inward || [];
-      const outwardTrans = transactions.outward || [];
+      let inwardTrans = transactions.inward || [];
+      let outwardTrans = transactions.outward || [];
+
+      // SAFETY CAP: Prevent browser crash on extremely large datasets (million records)
+      const MAX_PDF_RECORDS = 5000;
+      if (inwardTrans.length > MAX_PDF_RECORDS) {
+        toast.warning(`Too many records! Inward list is limited to the first ${MAX_PDF_RECORDS} rows to prevent browser freeze. Please narrow the date filter.`);
+        inwardTrans = inwardTrans.slice(0, MAX_PDF_RECORDS);
+      }
+      if (outwardTrans.length > MAX_PDF_RECORDS) {
+        toast.warning(`Too many records! Outward list is limited to the first ${MAX_PDF_RECORDS} rows to prevent browser freeze. Please narrow the date filter.`);
+        outwardTrans = outwardTrans.slice(0, MAX_PDF_RECORDS);
+      }
 
       console.log('📊 PDF Data Ready:', {
         kunchinittu: kunchinittu.code,
@@ -655,7 +666,7 @@ const KunchinintuLedger: React.FC = () => {
           id: r.id || idx,
           slNo: (idx + 1).toString(),
           date: r.date,
-          movementType: r.movementType || 'Production-Shifting',
+          movementType: r.movementType === 'sale' ? 'Paddy Sale' : (r.movementType || 'Production-Shifting'),
           broker: r.broker || '-',
           variety: r.variety || varietyData,
           bags: r.bags || 0,
@@ -665,7 +676,8 @@ const KunchinintuLedger: React.FC = () => {
           netWeight: r.netWeight || 0,
           lorryNumber: r.lorryNumber || '-',
           fromLocation: kunchinittu.name || kunchinittu.code || '-',
-          toLocation: r.toLocation || r.outturn?.code || '-'
+          toLocation: r.movementType === 'sale' ? (r.fromLocation || r.broker || 'Paddy Sale') : (r.toLocation || r.outturn?.code || '-'),
+          billNo: r.billNo || '-'
         }))
       };
 
@@ -780,6 +792,20 @@ const KunchinintuLedger: React.FC = () => {
     try {
       const kunchi = ledgerDataItem.kunchinittu;
       const transactions = ledgerDataItem.transactions || { inward: [], outward: [] };
+      let inwardTrans = transactions.inward || [];
+      let outwardTrans = transactions.outward || [];
+
+      // SAFETY CAP: Prevent browser crash on extremely large datasets (million records)
+      const MAX_PDF_RECORDS = 5000;
+      if (inwardTrans.length > MAX_PDF_RECORDS) {
+        toast.warning(`Too many records! Inward list is limited to the first ${MAX_PDF_RECORDS} rows to prevent browser freeze. Please narrow the date filter.`);
+        inwardTrans = inwardTrans.slice(0, MAX_PDF_RECORDS);
+      }
+      if (outwardTrans.length > MAX_PDF_RECORDS) {
+        toast.warning(`Too many records! Outward list is limited to the first ${MAX_PDF_RECORDS} rows to prevent browser freeze. Please narrow the date filter.`);
+        outwardTrans = outwardTrans.slice(0, MAX_PDF_RECORDS);
+      }
+
       const totals = ledgerDataItem.totals || {
         inward: { bags: 0, netWeight: 0 },
         outward: { bags: 0, netWeight: 0 },
@@ -800,7 +826,7 @@ const KunchinintuLedger: React.FC = () => {
         averageRate: (kunchi as any).averageRate || 0,
         summary: totals,
         totals: totals,
-        inwardRecords: transactions.inward.map((r, idx) => ({
+        inwardRecords: inwardTrans.map((r, idx) => ({
           id: r.id,
           slNo: (idx + 1).toString(),
           date: r.date,
@@ -818,11 +844,11 @@ const KunchinintuLedger: React.FC = () => {
           fromKunchinittu: r.fromKunchinittu,
           toKunchinittu: r.toKunchinittu
         })),
-        outwardRecords: transactions.outward.map((r, idx) => ({
+        outwardRecords: outwardTrans.map((r, idx) => ({
           id: r.id,
           slNo: (idx + 1).toString(),
           date: r.date,
-          movementType: r.movementType,
+          movementType: r.movementType === 'sale' ? 'Paddy Sale' : r.movementType,
           broker: r.broker || '-',
           variety: r.variety || kunchi.variety?.name || '-',
           bags: r.bags || 0,
@@ -832,10 +858,10 @@ const KunchinintuLedger: React.FC = () => {
           netWeight: r.netWeight || 0,
           lorryNumber: r.lorryNumber || '-',
           fromLocation: kunchi.name || kunchi.code || '-',
-          toLocation: r.outturn?.code || r.toWarehouseShift?.code || '-',
+          toLocation: r.movementType === 'sale' ? (r.fromLocation || r.broker || 'Paddy Sale') : (r.outturn?.code || r.toWarehouseShift?.code || '-'),
           outturn: r.outturn
         })),
-        transactions: transactions
+        transactions: { inward: inwardTrans, outward: outwardTrans }
       };
 
       generateKunchinintuPortraitPDF(pdfData, { from: dateFrom, to: dateTo });
@@ -1481,7 +1507,12 @@ const KunchinintuLedger: React.FC = () => {
                         <th>Bags</th>
                         {viewMode === 'detailed' && <th>Moisture</th>}
                         {viewMode === 'detailed' && <th>Cutting</th>}
-                        {viewMode === 'detailed' && <th>Wb No</th>}
+                        {viewMode === 'detailed' && (
+                          <>
+                            <th>Wb No</th>
+                            <th>Bill No</th>
+                          </>
+                        )}
                         <th>Net Weight</th>
                         {viewMode === 'detailed' && <th>Lorry No</th>}
                       </tr>
@@ -1515,22 +1546,26 @@ const KunchinintuLedger: React.FC = () => {
                               <span className="production-link" title="Production Shifting - Click to view in Outturn Report">
                                 🏭 {record.movementType === 'for-production' ? 'For Production' : 'Production Shifting'}
                               </span>
+                            ) : record.movementType === 'sale' ? (
+                              <span style={{ color: '#2563eb', fontWeight: 'bold' }}>
+                                💰 Paddy Sale
+                              </span>
                             ) : (
                               'Shifting'
                             )}
                           </td>
-                          <td>-</td>
+                          <td>{record.movementType === 'sale' ? (record.broker || '-') : '-'}</td>
                           <td>
-                            {record.movementType === 'production-shifting' || record.movementType === 'for-production' ? (
-                              `${ledgerData.kunchinittu.name || ledgerData.kunchinittu.code} ${record.fromWarehouse?.name || ledgerData.kunchinittu.warehouse.name}`
-                            ) : (
-                              `${ledgerData.kunchinittu.name || ledgerData.kunchinittu.code} ${record.fromWarehouse?.name || ledgerData.kunchinittu.warehouse.name}`
-                            )}
+                            {ledgerData.kunchinittu.name || ledgerData.kunchinittu.code} - {record.fromWarehouse?.name || ledgerData.kunchinittu.warehouse.name}
                           </td>
                           <td>
                             {record.movementType === 'production-shifting' || record.movementType === 'for-production' ? (
                               <span style={{ color: '#9f1239', fontWeight: 'bold' }}>
                                 Production - {record.outturn?.code || 'out01'}
+                              </span>
+                            ) : record.movementType === 'sale' ? (
+                              <span style={{ color: '#2563eb', fontWeight: 'bold' }}>
+                                Buyer: {record.fromLocation || record.broker || '-'}
                               </span>
                             ) : (
                               `${record.toKunchinittu?.name || record.toKunchinittu?.code || ''} ${record.toWarehouseShift?.name || ''}`
@@ -1540,7 +1575,16 @@ const KunchinintuLedger: React.FC = () => {
                           <td>{record.bags || 0}</td>
                           <td>{record.moisture || '-'}</td>
                           <td>{formatCutting(record.cutting)}</td>
-                          <td>{record.wbNo}</td>
+                          <td>{record.wbNo || '-'}</td>
+                          <td>
+                            {record.movementType === 'sale' ? (
+                              <span style={{ color: '#2563eb', fontWeight: 'bold' }}>
+                                {(record as any).billNo || (record as any).bill_no || '-'}
+                              </span>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
                           <td>{isNaN(Number(record.netWeight)) ? '0.00' : Number(record.netWeight || 0).toFixed(2)}</td>
                           <td>{record.lorryNumber}</td>
                         </tr>
@@ -1550,7 +1594,7 @@ const KunchinintuLedger: React.FC = () => {
                         return Object.entries(warehouseGroups).map(([warehouseName, transactions]) => (
                           <React.Fragment key={warehouseName}>
                             <tr style={{ background: '#dc2626', color: 'white' }}>
-                              <td colSpan={13} style={{ fontWeight: 'bold', padding: '6px 12px' }}>
+                              <td colSpan={14} style={{ fontWeight: 'bold', padding: '6px 12px' }}>
                                 Warehouse: {warehouseName}
                               </td>
                             </tr>
@@ -1559,14 +1603,24 @@ const KunchinintuLedger: React.FC = () => {
                                 <td>{idx + 1}</td>
                                 <td>{new Date(record.date).toLocaleDateString('en-GB')}</td>
                                 <td>
-                                  {record.movementType === 'production-shifting' || record.movementType === 'for-production' ? `🏭 ${record.movementType === 'for-production' ? 'For Production' : 'Production Shifting'}` : 'Shifting'}
+                                  {record.movementType === 'production-shifting' || record.movementType === 'for-production' ? (
+                                    `🏭 ${record.movementType === 'for-production' ? 'For Production' : 'Production Shifting'}`
+                                  ) : record.movementType === 'sale' ? (
+                                    `💰 Paddy Sale`
+                                  ) : (
+                                    'Shifting'
+                                  )}
                                 </td>
-                                <td>-</td>
+                                <td>{record.movementType === 'sale' ? (record.broker || '-') : '-'}</td>
                                 <td>{ledgerData.kunchinittu.name || ledgerData.kunchinittu.code} - {record.fromWarehouse?.name || warehouseName}</td>
                                 <td>
                                   {record.movementType === 'production-shifting' || record.movementType === 'for-production' ? (
                                     <span style={{ color: '#9f1239', fontWeight: 'bold' }}>
                                       → Production {record.outturn?.code ? `(${record.outturn.code})` : ''}
+                                    </span>
+                                  ) : record.movementType === 'sale' ? (
+                                    <span style={{ color: '#2563eb', fontWeight: 'bold' }}>
+                                      Buyer: {record.fromLocation || record.broker || '-'}
                                     </span>
                                   ) : (
                                     `${record.toKunchinittu?.name || record.toKunchinittu?.code || ''} - ${record.toWarehouseShift?.name || ''}`
@@ -1576,7 +1630,16 @@ const KunchinintuLedger: React.FC = () => {
                                 <td>{record.bags || 0}</td>
                                 <td>{record.moisture || '-'}</td>
                                 <td>{formatCutting(record.cutting)}</td>
-                                <td>{record.wbNo}</td>
+                                <td>{record.wbNo || '-'}</td>
+                                <td>
+                                  {record.movementType === 'sale' ? (
+                                    <span style={{ color: '#2563eb', fontWeight: 'bold' }}>
+                                      {(record as any).billNo || (record as any).bill_no || '-'}
+                                    </span>
+                                  ) : (
+                                    '-'
+                                  )}
+                                </td>
                                 <td>{isNaN(Number(record.netWeight)) ? '0.00' : Number(record.netWeight || 0).toFixed(2)}</td>
                                 <td>{record.lorryNumber}</td>
                               </tr>
@@ -1591,6 +1654,7 @@ const KunchinintuLedger: React.FC = () => {
                           <>
                             <td></td>
                             <td>{calculateCuttingTotal(ledgerData.transactions?.outward || [])}</td>
+                            <td></td>
                             <td></td>
                           </>
                         )}

@@ -2,7 +2,7 @@ let apiUrl = process.env.REACT_APP_API_URL || '';
 
 if (!apiUrl) {
   apiUrl = process.env.NODE_ENV === 'development'
-    ? 'http://localhost:5000/api'
+    ? 'http://localhost:5005/api'
     : '/api';
 }
 

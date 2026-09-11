@@ -21,7 +21,8 @@ const RiceStockLocation = sequelize.define('RiceStockLocation', {
   },
   isActive: {
     type: DataTypes.BOOLEAN,
-    defaultValue: true
+    defaultValue: true,
+    field: 'is_active'
   },
   isDirectLoad: {
     type: DataTypes.BOOLEAN,
@@ -35,14 +36,16 @@ const RiceStockLocation = sequelize.define('RiceStockLocation', {
     references: {
       model: 'users',
       key: 'id'
-    }
+    },
+    field: 'created_by'
   }
 }, {
   tableName: 'rice_stock_locations',
   timestamps: true,
+  underscored: true,
   indexes: [
     { fields: ['code'], name: 'idx_rice_stock_locations_code', unique: true },
-    { fields: ['isActive'], name: 'idx_rice_stock_locations_active' }
+    { fields: ['is_active'], name: 'idx_rice_stock_locations_active' }
   ]
 });
 

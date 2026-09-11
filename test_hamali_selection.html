@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Multi-Select Other Hamali Works</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f3f4f6;
+            margin: 2rem;
+            color: #1f2937;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .title {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            padding: 1rem;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        .help-text {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-bottom: 1rem;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .card {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transition: all 0.2s;
+            background: white;
+        }
+        .card.selected {
+            border: 3px solid #f59e0b;
+            background: #fffbeb;
+            box-shadow: 0 4px 6px rgba(245, 158, 11, 0.1);
+        }
+        .card input {
+            transform: scale(1.2);
+            cursor: pointer;
+        }
+        .card-title {
+            font-weight: bold;
+            font-size: 0.95rem;
+        }
+        .card-detail {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-top: 0.15rem;
+        }
+        .card-rate {
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: #d97706;
+            margin-top: 0.25rem;
+        }
+        .input-sections {
+            margin-top: 2rem;
+        }
+        .input-card {
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 1.5rem;
+            background: #fff;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .input-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #f3f4f6;
+            padding-bottom: 0.5rem;
+            font-weight: bold;
+            color: #92400e;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        label {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        input[type="text"], input[type="number"] {
+            padding: 0.75rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        .split-btn {
+            background-color: #f59e0b;
+            color: white;
+            border: none;
+            padding: 0.75rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .split-btn:hover {
+            background-color: #d97706;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="title">➕ Select Other Hamali Work Type(s)</div>
+        <div class="help-text">Check one or more work types below to fill their bags, details, and worker splits.</div>
+        
+        <div class="grid">
+            <div class="card" id="card-1" onclick="toggleSelection(1, 'Lorry Loading', 'Loading bags into transport lorry', 4.63)">
+                <input type="checkbox" id="check-1">
+                <div>
+                    <div class="card-title">Lorry Loading</div>
+                    <div class="card-detail">Loading bags into transport lorry</div>
+                    <div class="card-rate">₹4.63/bag</div>
+                </div>
+            </div>
+            
+            <div class="card" id="card-2" onclick="toggleSelection(2, 'Internal Shifting', 'Moving bags between storage sheds', 3.50)">
+                <input type="checkbox" id="check-2">
+                <div>
+                    <div class="card-title">Internal Shifting</div>
+                    <div class="card-detail">Moving bags between storage sheds</div>
+                    <div class="card-rate">₹3.50/bag</div>
+                </div>
+            </div>
+            
+            <div class="card" id="card-3" onclick="toggleSelection(3, 'Drying Work', 'Sun drying paddy or rice grains', 5.00)">
+                <input type="checkbox" id="check-3">
+                <div>
+                    <div class="card-title">Drying Work</div>
+                    <div class="card-detail">Sun drying paddy or rice grains</div>
+                    <div class="card-rate">₹5.00/bag</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-sections" id="input-sections">
+            <!-- Dynamic input cards render here -->
+        </div>
+    </div>
+
+    <script>
+        const selectedIds = new Set();
+
+        function toggleSelection(id, type, detail, rate) {
+            const card = document.getElementById(`card-${id}`);
+            const checkbox = document.getElementById(`check-${id}`);
+            
+            if (selectedIds.has(id)) {
+                selectedIds.delete(id);
+                card.classList.remove('selected');
+                checkbox.checked = false;
+                removeInputCard(id);
+            } else {
+                selectedIds.add(id);
+                card.classList.add('selected');
+                checkbox.checked = true;
+                addInputCard(id, type, detail, rate);
+            }
+        }
+
+        function addInputCard(id, type, detail, rate) {
+            const container = document.getElementById('input-sections');
+            const card = document.createElement('div');
+            card.className = 'input-card';
+            card.id = `input-card-${id}`;
+            card.innerHTML = `
+                <div class="input-header">
+                    <span>${type} → ${detail} (₹${rate}/bag)</span>
+                    <span style="color: #ef4444; cursor: pointer;" onclick="toggleSelection(${id}, '${type}', '${detail}', ${rate})">✕ Deselect</span>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Bags</label>
+                        <input type="number" placeholder="Enter bags count">
+                    </div>
+                    <div class="form-group">
+                        <label>Details</label>
+                        <input type="text" placeholder="Enter work details...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Description</label>
+                        <input type="text" placeholder="Enter description...">
+                    </div>
+                    <div class="form-group" style="justify-content: flex-end;">
+                        <button class="split-btn">Split Workers</button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+
+        function removeInputCard(id) {
+            const card = document.getElementById(`input-card-${id}`);
+            if (card) {
+                card.remove();
+            }
+        }
+    </script>
+</body>
+</html>

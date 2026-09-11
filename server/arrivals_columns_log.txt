@@ -1,0 +1,143 @@
+Arrivals Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "slNo",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "date",
+    "data_type": "date"
+  },
+  {
+    "column_name": "movementType",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "broker",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "variety",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "bags",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "fromLocation",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "toKunchinintuId",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "toWarehouseId",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "fromKunchinintuId",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "fromWarehouseId",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "toWarehouseShiftId",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "outturnId",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "fromOutturnId",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "linkedShiftingId",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "moisture",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "cutting",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "wbNo",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "grossWeight",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "tareWeight",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "netWeight",
+    "data_type": "numeric"
+  },
+  {
+    "column_name": "lorryNumber",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "status",
+    "data_type": "USER-DEFINED"
+  },
+  {
+    "column_name": "createdBy",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "approvedBy",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "approvedAt",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "adminApprovedBy",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "adminApprovedAt",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "deletedBy",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "deletedAt",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "remarks",
+    "data_type": "text"
+  },
+  {
+    "column_name": "bill_no",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "createdAt",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "updatedAt",
+    "data_type": "timestamp with time zone"
+  }
+]

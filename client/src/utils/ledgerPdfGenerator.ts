@@ -29,6 +29,7 @@ interface LedgerEntry {
     lorryNumber?: string;
     totalAmount?: number;
     averageRate?: number;
+    billNo?: string;
 }
 
 interface LedgerData {
@@ -214,7 +215,7 @@ export const generateKunchinintuLedgerPDF = (
         yPos += 8;
 
         // Outward table - matching frontend columns
-        const outwardColumns = ['S.No', 'Date', 'Type', 'Broker', 'From', 'To', 'Variety', 'Bags', 'M%', 'Cutting', 'WB No', 'Net Wt', 'Lorry', 'Amount', 'Rate/Q'];
+        const outwardColumns = ['S.No', 'Date', 'Type', 'Broker', 'From', 'To', 'Variety', 'Bags', 'M%', 'Cutting', 'WB No', 'Bill No', 'Net Wt', 'Lorry', 'Amount', 'Rate/Q'];
 
         autoTable(doc, {
             startY: yPos,
@@ -231,6 +232,7 @@ export const generateKunchinintuLedgerPDF = (
                 r.moisture?.toString() || '-',
                 r.cutting || '-',
                 r.wbNo || '-',
+                r.billNo || '-',
                 r.netWeight?.toFixed(2) || '0.00',
                 r.lorryNumber || '-',
                 r.totalAmount ? `₹${r.totalAmount.toFixed(0)}` : '-',
@@ -352,9 +354,9 @@ export const generateKunchinintuPortraitPDF = (
 
     // Portrait column widths - optimized to fit 198mm (210 - 2*6)
     // Total: 198mm = 8+18+15+22+16+16+18+10+8+12+16+14+25 = 198mm
-    const columnWidths = [8, 18, 15, 22, 16, 16, 18, 10, 8, 12, 16, 14, 25];
+    const columnWidths = [8, 16, 12, 20, 15, 15, 16, 10, 8, 10, 16, 12, 12, 23];
 
-    const portraitColumns = ['#', 'Date', 'Type', 'Broker', 'From', 'To', 'Variety', 'Bags', 'M%', 'Cut', 'Net Wt', 'WB', 'Lorry'];
+    const portraitColumns = ['#', 'Date', 'Type', 'Broker', 'From', 'To', 'Variety', 'Bags', 'M%', 'Cut', 'Net Wt', 'WB', 'Bill', 'Lorry'];
 
     // Inward Section
     const inwardRecords = ledgerData.inwardRecords || ledgerData.transactions?.inward || [];
@@ -383,6 +385,7 @@ export const generateKunchinintuPortraitPDF = (
                 (r.cutting || '-').substring(0, 6),
                 r.netWeight != null ? Number(r.netWeight).toFixed(0) : '0',
                 (r.wbNo || '-').substring(0, 8),
+                '-',
                 (r.lorryNumber || '-').substring(0, 12)
             ]),
             theme: 'grid',
@@ -402,7 +405,8 @@ export const generateKunchinintuPortraitPDF = (
                 9: { cellWidth: columnWidths[9] },
                 10: { cellWidth: columnWidths[10] },
                 11: { cellWidth: columnWidths[11] },
-                12: { cellWidth: columnWidths[12], halign: 'left' }
+                12: { cellWidth: columnWidths[12] },
+                13: { cellWidth: columnWidths[13], halign: 'left' }
             },
             margin: { left: margin, right: margin }
         });
@@ -443,6 +447,7 @@ export const generateKunchinintuPortraitPDF = (
                 (r.cutting || '-').substring(0, 6),
                 r.netWeight != null ? Number(r.netWeight).toFixed(0) : '0',
                 (r.wbNo || '-').substring(0, 8),
+                (r.billNo || '-').substring(0, 12),
                 (r.lorryNumber || '-').substring(0, 12)
             ]),
             theme: 'grid',
@@ -462,7 +467,8 @@ export const generateKunchinintuPortraitPDF = (
                 9: { cellWidth: columnWidths[9] },
                 10: { cellWidth: columnWidths[10] },
                 11: { cellWidth: columnWidths[11] },
-                12: { cellWidth: columnWidths[12], halign: 'left' }
+                12: { cellWidth: columnWidths[12] },
+                13: { cellWidth: columnWidths[13], halign: 'left' }
             },
             margin: { left: margin, right: margin }
         });

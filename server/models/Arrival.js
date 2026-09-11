@@ -21,7 +21,7 @@ const Arrival = sequelize.define('Arrival', {
     allowNull: false
   },
   movementType: {
-    type: DataTypes.ENUM('purchase', 'shifting', 'production-shifting', 'for-production', 'loose'),
+    type: DataTypes.ENUM('purchase', 'shifting', 'production-shifting', 'for-production', 'loose', 'sale'),
     allowNull: false
   },
 
@@ -205,6 +205,11 @@ const Arrival = sequelize.define('Arrival', {
   remarks: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  billNo: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    field: 'bill_no'
   }
 }, {
   tableName: 'arrivals',

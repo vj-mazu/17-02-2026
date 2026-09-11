@@ -1,0 +1,38 @@
+--- RICE STOCK LOCATIONS DB DIAGNOSTIC ---
+Columns in DB:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "code",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "name",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "is_active",
+    "data_type": "boolean"
+  },
+  {
+    "column_name": "created_by",
+    "data_type": "integer"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "is_direct_load",
+    "data_type": "boolean"
+  }
+]
+
+findAll query SUCCESS. Count: 0

@@ -103,21 +103,33 @@ router.post('/', auth, async (req, res) => {
       wbNo,
       grossWeight,
       tareWeight,
+      netWeight,
       lorryNumber,
-      remarks
+      remarks,
+      billNo
     } = req.body;
 
+    const isSale = movementType === 'sale';
+
     // Validate required fields
-    if (!date || !movementType || !wbNo || !grossWeight || !tareWeight || !lorryNumber) {
-      return res.status(400).json({
-        error: 'Required fields: date, movementType, wbNo, grossWeight, tareWeight, lorryNumber'
-      });
+    if (isSale) {
+      if (!date || !movementType || !wbNo || !netWeight || !lorryNumber) {
+        return res.status(400).json({
+          error: 'Required fields for sale: date, movementType, wbNo, netWeight, lorryNumber'
+        });
+      }
+    } else {
+      if (!date || !movementType || !wbNo || !grossWeight || !tareWeight || !lorryNumber) {
+        return res.status(400).json({
+          error: 'Required fields: date, movementType, wbNo, grossWeight, tareWeight, lorryNumber'
+        });
+      }
     }
 
-    // Calculate net weight
-    const netWeight = parseFloat(grossWeight) - parseFloat(tareWeight);
+    // Calculate/parse net weight
+    const netWeightValue = isSale ? parseFloat(netWeight) : (parseFloat(grossWeight) - parseFloat(tareWeight));
 
-    if (netWeight <= 0) {
+    if (isNaN(netWeightValue) || netWeightValue <= 0) {
       return res.status(400).json({ error: 'Net weight must be positive' });
     }
 
@@ -620,6 +632,134 @@ router.post('/', auth, async (req, res) => {
 
       console.log(`✅ Stock quantity validation passed: ${bags} bags available for production (${prodAvailableStock} total)`);
       console.log(`✅ PRODUCTION SHIFTING CHAIN VALIDATION PASSED: ${normalizedVariety} → Outturn ${outturn.code}`);
+    } else if (movementType === 'sale') {
+      if (!fromKunchinintuId || !fromWarehouseId || !normalizedVariety || !bags) {
+        return res.status(400).json({
+          error: 'Paddy Sale requires fromKunchinintuId, fromWarehouseId, variety, and bags'
+        });
+      }
+
+      // Validate source Kunchinittu and Warehouse have the variety
+      const sourceStock = await Arrival.findOne({
+        where: {
+          toKunchinintuId: fromKunchinintuId,
+          [Op.or]: [
+            { toWarehouseId: fromWarehouseId },
+            { toWarehouseShiftId: fromWarehouseId }
+          ],
+          status: 'approved',
+          adminApprovedBy: { [Op.not]: null },
+          [Op.and]: [
+            sequelize.where(
+              sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
+              normalizedVariety
+            )
+          ]
+        }
+      });
+
+      if (!sourceStock) {
+        const fromWarehouse = await Warehouse.findByPk(fromWarehouseId, {
+          attributes: ['code']
+        });
+        const kunch = await Kunchinittu.findByPk(fromKunchinintuId, {
+          attributes: ['code']
+        });
+
+        return res.status(400).json({
+          error: `❌ SOURCE STOCK NOT FOUND\n\n` +
+            `Problem: Warehouse "${fromWarehouse?.code}" in Kunchinittu "${kunch?.code}" does not contain "${normalizedVariety}" variety.\n` +
+            `Cannot sell what doesn't exist in stock.`
+        });
+      }
+
+      // Check available quantity (bags and netWeight)
+      const [sourceBagsTotal, sourceBagsOut, sourceWeightTotal, sourceWeightOut] = await Promise.all([
+        Arrival.sum('bags', {
+          where: {
+            [Op.or]: [
+              { toKunchinintuId: fromKunchinintuId, toWarehouseId: fromWarehouseId },
+              { toKunchinintuId: fromKunchinintuId, toWarehouseShiftId: fromWarehouseId }
+            ],
+            status: 'approved',
+            adminApprovedBy: { [Op.not]: null },
+            [Op.and]: [
+              sequelize.where(
+                sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
+                normalizedVariety
+              )
+            ]
+          }
+        }),
+        Arrival.sum('bags', {
+          where: {
+            fromKunchinintuId,
+            fromWarehouseId,
+            status: 'approved',
+            adminApprovedBy: { [Op.not]: null },
+            movementType: { [Op.in]: ['shifting', 'production-shifting', 'sale'] },
+            [Op.and]: [
+              sequelize.where(
+                sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
+                normalizedVariety
+              )
+            ]
+          }
+        }),
+        Arrival.sum('netWeight', {
+          where: {
+            [Op.or]: [
+              { toKunchinintuId: fromKunchinintuId, toWarehouseId: fromWarehouseId },
+              { toKunchinintuId: fromKunchinintuId, toWarehouseShiftId: fromWarehouseId }
+            ],
+            status: 'approved',
+            adminApprovedBy: { [Op.not]: null },
+            [Op.and]: [
+              sequelize.where(
+                sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
+                normalizedVariety
+              )
+            ]
+          }
+        }),
+        Arrival.sum('netWeight', {
+          where: {
+            fromKunchinintuId,
+            fromWarehouseId,
+            status: 'approved',
+            adminApprovedBy: { [Op.not]: null },
+            movementType: { [Op.in]: ['shifting', 'production-shifting', 'sale'] },
+            [Op.and]: [
+              sequelize.where(
+                sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
+                normalizedVariety
+              )
+            ]
+          }
+        })
+      ]);
+
+      const availableBags = (sourceBagsTotal || 0) - (sourceBagsOut || 0);
+      const availableWeight = (sourceWeightTotal || 0) - (sourceWeightOut || 0);
+
+      if (availableBags < bags) {
+        return res.status(400).json({
+          error: `❌ INSUFFICIENT BAGS STOCK FOR SALE\n\n` +
+            `Problem: Warehouse has only ${availableBags} bags of "${normalizedVariety}" variety available.\n` +
+            `You are trying to sell ${bags} bags.\n\n` +
+            `Solution: Reduce the quantity to ${availableBags} bags or less.`
+        });
+      }
+
+      if (availableWeight < netWeightValue) {
+        return res.status(400).json({
+          error: `❌ INSUFFICIENT WEIGHT STOCK FOR SALE\n\n` +
+            `Problem: Warehouse has only ${availableWeight.toLocaleString()} kg of "${normalizedVariety}" variety available.\n` +
+            `You are trying to sell ${netWeightValue.toLocaleString()} kg.\n\n` +
+            `Solution: Reduce the weight to ${availableWeight.toLocaleString()} kg or less.`
+        });
+      }
+      console.log(`✅ Paddy sale validation passed: ${bags} bags (${availableBags} total), ${netWeightValue} kg (${availableWeight} total) available`);
     }
 
     // Handle "For Production" purchase type (saved as purchase but goes directly to outturn)
@@ -725,23 +865,23 @@ router.post('/', auth, async (req, res) => {
       slNo,
       date,
       movementType,
-      broker: movementType === 'purchase' ? (broker || (fromOutturnId ? 'FROM PRODUCTION' : null)) : null,
+      broker: (movementType === 'purchase' || movementType === 'sale') ? (broker || (fromOutturnId ? 'FROM PRODUCTION' : null)) : null,
       variety: normalizedVariety || null,
       bags,
-      fromLocation: movementType === 'purchase' ? fromLocation : null,
+      fromLocation: (movementType === 'purchase' || movementType === 'sale') ? fromLocation : null,
       toKunchinintuId: (movementType === 'purchase' && purchaseType !== 'for-production') || movementType === 'shifting' ? toKunchinintuId : null, // For normal purchase AND shifting
       toWarehouseId: (movementType === 'purchase' && purchaseType !== 'for-production') ? toWarehouseId : null, // Only for normal purchase
-      fromKunchinintuId: (movementType === 'shifting' || movementType === 'production-shifting') ? fromKunchinintuId : null,
-      fromWarehouseId: (movementType === 'shifting' || movementType === 'production-shifting') ? fromWarehouseId : null,
+      fromKunchinintuId: (movementType === 'shifting' || movementType === 'production-shifting' || movementType === 'sale') ? fromKunchinintuId : null,
+      fromWarehouseId: (movementType === 'shifting' || movementType === 'production-shifting' || movementType === 'sale') ? fromWarehouseId : null,
       toWarehouseShiftId: movementType === 'shifting' ? toWarehouseShiftId : null,
       fromOutturnId: fromOutturnId || null, // For purchase from outturn
       outturnId: (movementType === 'production-shifting' || (movementType === 'purchase' && purchaseType === 'for-production')) ? outturnId : null,
       moisture,
       cutting,
       wbNo,
-      grossWeight,
-      tareWeight,
-      netWeight,
+      grossWeight: isSale ? 0 : grossWeight,
+      tareWeight: isSale ? 0 : tareWeight,
+      netWeight: netWeightValue,
       lorryNumber,
       // snapshotRate, // TEMPORARILY DISABLED until migration is run
       status,
@@ -750,7 +890,8 @@ router.post('/', auth, async (req, res) => {
       approvedAt,
       adminApprovedBy,
       adminApprovedAt,
-      remarks
+      remarks,
+      billNo: billNo || null
     });
 
     // Fetch the created arrival with associations
@@ -1224,16 +1365,25 @@ router.patch('/:id/approve', auth, authorize('manager', 'admin'), async (req, re
       return res.status(404).json({ error: 'Arrival not found' });
     }
 
-    if (arrival.status !== 'pending') {
-      return res.status(400).json({ error: 'Arrival already processed' });
+    // Paddy Sales can only be approved/rejected by Admin
+    if (arrival.movementType === 'sale' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Paddy Sales can only be processed by Admins' });
     }
 
-    await arrival.update({
+    const updateData = {
       status,
       approvedBy: req.user.userId,
       approvedAt: new Date(),
       remarks
-    });
+    };
+
+    // If Admin is approving a Paddy Sale, auto-approve the admin step as well to make it live
+    if (arrival.movementType === 'sale' && status === 'approved') {
+      updateData.adminApprovedBy = req.user.userId;
+      updateData.adminApprovedAt = new Date();
+    }
+
+    await arrival.update(updateData);
 
     // Clear caches
     await cacheService.delPattern('records_arrivals:*');
@@ -1663,15 +1813,26 @@ router.get('/pending-list', auth, authorize('manager', 'admin'), async (req, res
       });
     }
 
+    const { Op } = require('sequelize');
     const where = {};
 
-    // Managers see pending records (awaiting manager approval)
-    // Admins see approved records waiting for admin approval
+    // Managers see pending records (except sales)
+    // Admins see manager-approved records waiting for admin approval, and pending sales
     if (req.user.role === 'manager') {
       where.status = 'pending';
+      where.movementType = { [Op.ne]: 'sale' };
     } else if (req.user.role === 'admin') {
-      where.status = 'approved';
-      where.adminApprovedBy = null;
+      where[Op.or] = [
+        {
+          status: 'approved',
+          adminApprovedBy: null,
+          movementType: { [Op.ne]: 'sale' }
+        },
+        {
+          status: 'pending',
+          movementType: 'sale'
+        }
+      ];
     }
 
     const arrivals = await Arrival.findAll({
@@ -1679,7 +1840,7 @@ router.get('/pending-list', auth, authorize('manager', 'admin'), async (req, res
       attributes: [
         'id', 'slNo', 'date', 'movementType', 'variety', 'bags', 'netWeight',
         'wbNo', 'lorryNumber', 'broker', 'fromLocation', 'grossWeight', 'tareWeight',
-        'moisture', 'cutting', 'status', 'createdAt'
+        'moisture', 'cutting', 'status', 'createdAt', 'billNo'
       ],
       include: [
         { model: User, as: 'creator', attributes: ['username', 'role'] },

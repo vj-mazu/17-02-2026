@@ -441,7 +441,7 @@ router.get('/rice-stock-locations', auth, async (req, res) => {
     // Fetch locations without User association to avoid circular dependency issues
     const locations = await RiceStockLocation.findAll({
       where,
-      attributes: ['id', 'code', 'name', 'isActive', 'is_direct_load', 'createdAt', 'createdBy'],
+      attributes: ['id', 'code', 'name', 'isActive', 'isDirectLoad', 'createdAt', 'createdBy'],
       order: [['code', 'ASC']],
       raw: true
     });

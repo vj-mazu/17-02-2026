@@ -54,7 +54,7 @@ class QueryOptimizationService {
           SUM(COALESCE(a.bags, 0)) as "outwardBags"
         FROM arrivals a
         WHERE UPPER(TRIM(a.variety)) = :variety
-          AND a."movementType" IN ('shifting', 'production-shifting')
+          AND a."movementType" IN ('shifting', 'production-shifting', 'sale')
           AND a.status = 'approved'
           AND a."adminApprovedBy" IS NOT NULL
           AND a."fromKunchinintuId" IS NOT NULL
@@ -130,7 +130,7 @@ class QueryOptimizationService {
           SUM("netWeight") as total_weight
         FROM arrivals
         WHERE "fromKunchinintuId" = :kunchinintuId
-          AND "movementType" IN ('shifting', 'production-shifting')
+          AND "movementType" IN ('shifting', 'production-shifting', 'sale')
           AND status = 'approved'
           AND "adminApprovedBy" IS NOT NULL
           ${dateFilter}
@@ -357,6 +357,10 @@ class QueryOptimizationService {
             if (role === 'manager') {
               if (arrival.status !== 'pending') {
                 results.failed.push({ id: arrival.id, reason: 'Already approved or not pending' });
+                continue;
+              }
+              if (arrival.movementType === 'sale') {
+                results.failed.push({ id: arrival.id, reason: 'Paddy Sales can only be approved by Admins' });
                 continue;
               }
 

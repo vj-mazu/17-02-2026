@@ -60,7 +60,7 @@ router.get('/kunchinittu/:id', auth, async (req, res) => {
     const outwardWhere = {
       ...commonFilter,
       fromKunchinintuId: id,
-      movementType: { [Op.in]: ['shifting', 'production-shifting'] }
+      movementType: { [Op.in]: ['shifting', 'production-shifting', 'sale'] }
     };
 
     const commonIncludes = [
@@ -121,7 +121,7 @@ router.get('/kunchinittu/:id', auth, async (req, res) => {
         WHERE a."fromKunchinintuId" = :id
           AND a.status = 'approved'
           AND a."adminApprovedBy" IS NOT NULL
-          AND a."movementType" IN ('shifting', 'production-shifting')
+          AND a."movementType" IN ('shifting', 'production-shifting', 'sale')
           ${dateSQL}
       `, {
         replacements: dateReplacements,
@@ -470,23 +470,23 @@ router.get('/kunchinittu/:id/pdf', auth, async (req, res) => {
 
     doc.moveDown(0.3);
 
-    // Table Header - Landscape with proper spacing
-    const headers = ['S.No', 'Date', 'Type', 'Broker', 'From', 'To', 'Variety', 'Bags', 'Moist%', 'Cut', 'WB No', 'Net Wt', 'Lorry'];
-    const colWidths = [30, 50, 55, 60, 75, 75, 60, 35, 40, 30, 50, 50, 55];
+    // Table Header - Landscape with proper spacing (Inward)
+    const inwardHeaders = ['S.No', 'Date', 'Type', 'Broker', 'From', 'To', 'Variety', 'Bags', 'Moist%', 'Cut', 'WB No', 'Net Wt', 'Lorry'];
+    const inwardColWidths = [30, 50, 55, 60, 75, 75, 60, 35, 40, 30, 50, 50, 55];
 
     let y = doc.y;
     let x = 50;
 
     // Calculate total width
-    const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+    const inwardTotalWidth = inwardColWidths.reduce((a, b) => a + b, 0);
 
     // Header row
-    doc.rect(50, y, totalWidth, 20).fillAndStroke('#4a90e2');
+    doc.rect(50, y, inwardTotalWidth, 20).fillAndStroke('#4a90e2');
     doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
 
-    headers.forEach((header, i) => {
-      doc.text(header, x + 2, y + 6, { width: colWidths[i] - 4, align: 'center' });
-      x += colWidths[i];
+    inwardHeaders.forEach((header, i) => {
+      doc.text(header, x + 2, y + 6, { width: inwardColWidths[i] - 4, align: 'center' });
+      x += inwardColWidths[i];
     });
 
     y += 20;
@@ -497,7 +497,7 @@ router.get('/kunchinittu/:id/pdf', auth, async (req, res) => {
       x = 50;
       const bgColor = record.movementType === 'loose' ? '#fffbeb' : (idx % 2 === 0 ? '#f8f9fa' : '#ffffff');
 
-      doc.rect(50, y, totalWidth, 18).fillAndStroke(bgColor, '#ddd');
+      doc.rect(50, y, inwardTotalWidth, 18).fillAndStroke(bgColor, '#ddd');
 
       const rowData = [
         (idx + 1).toString(),
@@ -516,8 +516,8 @@ router.get('/kunchinittu/:id/pdf', auth, async (req, res) => {
       ];
 
       rowData.forEach((cell, i) => {
-        doc.fontSize(7).text(cell, x + 2, y + 5, { width: colWidths[i] - 4, align: 'center', ellipsis: true });
-        x += colWidths[i];
+        doc.fontSize(7).text(cell, x + 2, y + 5, { width: inwardColWidths[i] - 4, align: 'center', ellipsis: true });
+        x += inwardColWidths[i];
       });
 
       y += 18;
@@ -530,13 +530,13 @@ router.get('/kunchinittu/:id/pdf', auth, async (req, res) => {
 
     // Inward Total
     x = 50;
-    doc.rect(50, y, totalWidth, 20).fillAndStroke('#000000');
+    doc.rect(50, y, inwardTotalWidth, 20).fillAndStroke('#000000');
     doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
-    doc.text('Total', x + 2, y + 6, { width: colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6] - 4 });
-    x += colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6];
-    doc.text(totals.inward.bags.toString(), x + 2, y + 6, { width: colWidths[7] - 4, align: 'center' });
-    x += colWidths[7] + colWidths[8] + colWidths[9] + colWidths[10];
-    doc.text(totals.inward.netWeight.toFixed(2), x + 2, y + 6, { width: colWidths[11] - 4, align: 'center' });
+    doc.text('Total', x + 2, y + 6, { width: inwardColWidths[0] + inwardColWidths[1] + inwardColWidths[2] + inwardColWidths[3] + inwardColWidths[4] + inwardColWidths[5] + inwardColWidths[6] - 4 });
+    x += inwardColWidths[0] + inwardColWidths[1] + inwardColWidths[2] + inwardColWidths[3] + inwardColWidths[4] + inwardColWidths[5] + inwardColWidths[6];
+    doc.text(totals.inward.bags.toString(), x + 2, y + 6, { width: inwardColWidths[7] - 4, align: 'center' });
+    x += inwardColWidths[7] + inwardColWidths[8] + inwardColWidths[9] + inwardColWidths[10];
+    doc.text(totals.inward.netWeight.toFixed(2), x + 2, y + 6, { width: inwardColWidths[11] - 4, align: 'center' });
 
     doc.moveDown(2);
 
@@ -548,16 +548,20 @@ router.get('/kunchinittu/:id/pdf', auth, async (req, res) => {
     doc.moveDown(0.3);
 
     // Outward Table
+    const outwardHeaders = ['S.No', 'Date', 'Type', 'Broker', 'From', 'To', 'Variety', 'Bags', 'Moist%', 'Cut', 'WB No', 'Bill No', 'Net Wt', 'Lorry'];
+    const outwardColWidths = [30, 48, 52, 55, 70, 70, 55, 30, 35, 25, 45, 45, 45, 50];
+    const outwardTotalWidth = outwardColWidths.reduce((a, b) => a + b, 0);
+
     y = doc.y;
     x = 50;
 
     // Header row
-    doc.rect(50, y, totalWidth, 20).fillAndStroke('#4a90e2');
+    doc.rect(50, y, outwardTotalWidth, 20).fillAndStroke('#4a90e2');
     doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
 
-    headers.forEach((header, i) => {
-      doc.text(header, x + 2, y + 6, { width: colWidths[i] - 4, align: 'center' });
-      x += colWidths[i];
+    outwardHeaders.forEach((header, i) => {
+      doc.text(header, x + 2, y + 6, { width: outwardColWidths[i] - 4, align: 'center' });
+      x += outwardColWidths[i];
     });
 
     y += 20;
@@ -568,27 +572,30 @@ router.get('/kunchinittu/:id/pdf', auth, async (req, res) => {
       x = 50;
       const bgColor = idx % 2 === 0 ? '#f8f9fa' : '#ffffff';
 
-      doc.rect(50, y, totalWidth, 18).fillAndStroke(bgColor, '#ddd');
+      doc.rect(50, y, outwardTotalWidth, 18).fillAndStroke(bgColor, '#ddd');
 
       const rowData = [
         (idx + 1).toString(),
         new Date(record.date).toLocaleDateString('en-GB'),
-        record.movementType === 'production-shifting' ? 'Prod. Shift' : 'Shifting',
-        '-',
+        record.movementType === 'production-shifting' ? 'Prod. Shift' : (record.movementType === 'sale' ? 'Paddy Sale' : 'Shifting'),
+        record.movementType === 'sale' ? (record.broker || '-') : '-',
         `${ledgerKunchinittu.code} ${ledgerKunchinittu.warehouse?.name}`,
-        record.movementType === 'production-shifting' ? `Production - ${record.outturn?.code || 'out01'}` : `${record.toKunchinittu?.code || ''} ${record.toWarehouseShift?.name || ''}`,
+        record.movementType === 'production-shifting' 
+          ? `Production - ${record.outturn?.code || 'out01'}` 
+          : (record.movementType === 'sale' ? `Sale: ${record.fromLocation || '-'}` : `${record.toKunchinittu?.code || ''} ${record.toWarehouseShift?.name || ''}`),
         record.variety || '-',
         (record.bags || 0).toString(),
         (record.moisture || '-').toString(),
         record.cutting || '-',
         record.wbNo || '-',
+        record.billNo || record.bill_no || '-',
         (parseFloat(record.netWeight) || 0).toFixed(2),
         record.lorryNumber || '-'
       ];
 
       rowData.forEach((cell, i) => {
-        doc.fontSize(7).text(cell, x + 2, y + 5, { width: colWidths[i] - 4, align: 'center', ellipsis: true });
-        x += colWidths[i];
+        doc.fontSize(7).text(cell, x + 2, y + 5, { width: outwardColWidths[i] - 4, align: 'center', ellipsis: true });
+        x += outwardColWidths[i];
       });
 
       y += 18;
@@ -601,13 +608,13 @@ router.get('/kunchinittu/:id/pdf', auth, async (req, res) => {
 
     // Outward Total
     x = 50;
-    doc.rect(50, y, totalWidth, 20).fillAndStroke('#000000');
+    doc.rect(50, y, outwardTotalWidth, 20).fillAndStroke('#000000');
     doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
-    doc.text('Total', x + 2, y + 6, { width: colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6] - 4 });
-    x += colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5] + colWidths[6];
-    doc.text(totals.outward.bags.toString(), x + 2, y + 6, { width: colWidths[7] - 4, align: 'center' });
-    x += colWidths[7] + colWidths[8] + colWidths[9] + colWidths[10];
-    doc.text(totals.outward.netWeight.toFixed(2), x + 2, y + 6, { width: colWidths[11] - 4, align: 'center' });
+    doc.text('Total', x + 2, y + 6, { width: outwardColWidths[0] + outwardColWidths[1] + outwardColWidths[2] + outwardColWidths[3] + outwardColWidths[4] + outwardColWidths[5] + outwardColWidths[6] - 4 });
+    x += outwardColWidths[0] + outwardColWidths[1] + outwardColWidths[2] + outwardColWidths[3] + outwardColWidths[4] + outwardColWidths[5] + outwardColWidths[6];
+    doc.text(totals.outward.bags.toString(), x + 2, y + 6, { width: outwardColWidths[7] - 4, align: 'center' });
+    x += outwardColWidths[7] + outwardColWidths[8] + outwardColWidths[9] + outwardColWidths[10] + outwardColWidths[11];
+    doc.text(totals.outward.netWeight.toFixed(2), x + 2, y + 6, { width: outwardColWidths[12] - 4, align: 'center' });
 
     // Rice Production Date-Wise Section
     if (riceProductionDateWise.length > 0) {
@@ -828,10 +835,10 @@ router.get('/paddy-stock/:id', auth, async (req, res) => {
         (t.movementType === 'production-shifting' || t.movementType === 'for-production')
       );
 
-      // OUTWARD = Only normal shifting between kunchininttus (NOT production-shifting)
+      // OUTWARD = Only normal shifting between kunchininttus (NOT production-shifting) and sales
       const outward = dayTransactions.filter(t =>
         t.fromKunchinintuId == id &&
-        t.movementType === 'shifting'
+        (t.movementType === 'shifting' || t.movementType === 'sale')
       );
 
       // Get all production shifting up to this date (needed for rice production tracking)
@@ -931,28 +938,35 @@ router.get('/paddy-stock/:id', auth, async (req, res) => {
         };
       });
 
-      // Group outward transactions (normal shifting between kunchininttus)
+      // Group outward transactions (normal shifting between kunchininttus and sales)
       const outwardGroups = {};
       outward.forEach(txn => {
         const variety = txn.variety || 'Unknown';
-        const fromKunchinittu = txn.fromKunchinittu?.code || kunchinittu.code;
+        const fromKunchinittu = txn.fromKunchinintuId?.code || kunchinittu.code;
         const fromWarehouse = txn.fromWarehouse?.name || kunchinittu.warehouse.name;
-        const toKunchinittu = txn.toKunchinittu?.code || '';
+        const toKunchinittu = txn.toKunchinintuId?.code || '';
         const toWarehouse = txn.toWarehouseShift?.name || '';
-        const key = `${variety}-${fromKunchinittu}-${toKunchinittu}`;
+        const isSale = txn.movementType === 'sale';
+        
+        // Prevent merging of different sales by using a unique key per sale transaction
+        const key = isSale 
+          ? `sale-${txn.id}` 
+          : `${variety}-${fromKunchinittu}-${toKunchinittu}`;
 
         if (!outwardGroups[key]) {
           outwardGroups[key] = {
             variety,
-            movementType: 'shifting',
+            movementType: txn.movementType || 'shifting',
             bags: 0,
             netWeight: 0,
             from: `${fromKunchinittu} ${fromWarehouse}`,
-            to: `${toKunchinittu} ${toWarehouse}`,
+            to: isSale ? `Sale: ${txn.fromLocation || txn.broker || '-'}` : `${toKunchinittu} ${toWarehouse}`,
             fromKunchinittu,
             fromWarehouse,
             toKunchinittu,
-            toWarehouse
+            toWarehouse,
+            wbNo: txn.wbNo,
+            lorryNumber: txn.lorryNumber
           };
         }
         outwardGroups[key].bags += parseInt(txn.bags || 0);
@@ -1438,7 +1452,8 @@ router.get('/kunchinittus', auth, async (req, res) => {
     const kunchinittus = await Kunchinittu.findAll({
       where: { isActive: true },
       include: [
-        { model: Warehouse, as: 'warehouse', attributes: ['name', 'code'] }
+        { model: Warehouse, as: 'warehouse', attributes: ['id', 'name', 'code'] },
+        { model: Variety, as: 'variety', attributes: ['id', 'name', 'code'] }
       ],
       order: [['isClosed', 'ASC'], ['name', 'ASC']] // Open ones first, then closed
     });
