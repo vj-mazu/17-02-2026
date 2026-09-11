@@ -1,5 +1,6 @@
 const express = require('express');
 const { auth, authorize } = require('../middleware/auth');
+const { sequelize } = require('../config/database');
 const { Warehouse, Kunchinittu, Variety } = require('../models/Location');
 const RiceStockLocation = require('../models/RiceStockLocation');
 const RiceVariety = require('../models/RiceVariety');
@@ -428,53 +429,64 @@ router.delete('/varieties/:id', auth, authorize('manager', 'admin'), async (req,
 // Get all rice stock locations
 router.get('/rice-stock-locations', auth, async (req, res) => {
   try {
-    console.log('📍 Fetching rice stock locations...');
     const { includeInactive } = req.query;
 
-    const where = {};
-    if (!includeInactive) {
-      where.isActive = true;
+    // Self-healing: Ensure table and columns exist in DB (especially on Render/cloud)
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS rice_stock_locations (
+          id SERIAL PRIMARY KEY,
+          code VARCHAR(20) NOT NULL UNIQUE,
+          name VARCHAR(100),
+          is_active BOOLEAN DEFAULT true,
+          is_direct_load BOOLEAN DEFAULT false,
+          created_by INTEGER REFERENCES users(id),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await sequelize.query(`
+        ALTER TABLE rice_stock_locations ADD COLUMN IF NOT EXISTS is_direct_load BOOLEAN DEFAULT false;
+      `);
+      await sequelize.query(`
+        ALTER TABLE rice_stock_locations ALTER COLUMN created_by DROP NOT NULL;
+      `);
+    } catch (tblErr) {
+      console.warn('Rice stock locations table check:', tblErr.message);
     }
 
-    console.log('Query where:', where);
+    const query = `
+      SELECT 
+        rsl.id,
+        rsl.code,
+        rsl.name,
+        COALESCE(rsl.is_active, true) AS "isActive",
+        COALESCE(rsl.is_direct_load, false) AS "isDirectLoad",
+        rsl.created_at AS "createdAt",
+        rsl.created_by AS "createdBy",
+        u.username AS "creatorUsername"
+      FROM rice_stock_locations rsl
+      LEFT JOIN users u ON rsl.created_by = u.id
+      ${!includeInactive ? 'WHERE COALESCE(rsl.is_active, true) = true' : ''}
+      ORDER BY rsl.code ASC
+    `;
+    const [rows] = await sequelize.query(query);
 
-    // Fetch locations without User association to avoid circular dependency issues
-    const locations = await RiceStockLocation.findAll({
-      where,
-      attributes: ['id', 'code', 'name', 'isActive', 'isDirectLoad', 'createdAt', 'createdBy'],
-      order: [['code', 'ASC']],
-      raw: true
-    });
+    const locations = rows.map(r => ({
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      isActive: r.isActive,
+      isDirectLoad: r.isDirectLoad,
+      createdAt: r.createdAt,
+      createdBy: r.createdBy,
+      creator: { username: r.creatorUsername || 'Unknown' }
+    }));
 
-    console.log('✅ Found locations:', locations.length);
-
-    // Manually fetch creator usernames if needed
-    if (locations.length > 0) {
-      const creatorIds = [...new Set(locations.map(l => l.createdBy))];
-      const creators = await User.findAll({
-        where: { id: creatorIds },
-        attributes: ['id', 'username'],
-        raw: true
-      });
-
-      const creatorMap = {};
-      creators.forEach(c => {
-        creatorMap[c.id] = c.username;
-      });
-
-      // Add creator username to each location
-      locations.forEach(loc => {
-        loc.creator = { username: creatorMap[loc.createdBy] || 'Unknown' };
-      });
-    }
-
-    // Disable caching to ensure instant updates
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.json({ locations });
   } catch (error) {
     console.error('❌ Get rice stock locations error:', error);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to fetch rice stock locations' });
   }
 });
@@ -482,64 +494,61 @@ router.get('/rice-stock-locations', auth, async (req, res) => {
 // Create rice stock location (Manager/Admin only)
 router.post('/rice-stock-locations', auth, authorize('manager', 'admin'), async (req, res) => {
   try {
-    console.log('📍 Creating rice stock location...');
-    console.log('Request body:', req.body);
-    console.log('User:', req.user);
-
-    const { code, name } = req.body;
+    const { code, name, isDirectLoad } = req.body;
 
     if (!code) {
-      console.log('❌ No code provided');
       return res.status(400).json({ error: 'Location code is required' });
     }
 
-    // Check if code already exists
-    const existing = await RiceStockLocation.findOne({
-      where: { code: code.trim().toUpperCase() }
-    });
+    const trimmedCode = code.trim().toUpperCase();
 
-    if (existing) {
-      console.log('❌ Code already exists:', code);
+    // Check if code already exists
+    const [existing] = await sequelize.query(
+      `SELECT id FROM rice_stock_locations WHERE code = :code LIMIT 1`,
+      { replacements: { code: trimmedCode } }
+    );
+
+    if (existing && existing.length > 0) {
       return res.status(400).json({ error: 'Location code already exists' });
     }
 
-    console.log('Creating location with:', {
-      code: code.trim().toUpperCase(),
-      name: name ? name.trim() : null,
-      createdBy: req.user.userId
+    const userId = req.user?.userId || req.user?.id || null;
+
+    const [result] = await sequelize.query(`
+      INSERT INTO rice_stock_locations (code, name, is_active, is_direct_load, created_by, created_at, updated_at)
+      VALUES (:code, :name, true, :isDirectLoad, :createdBy, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      RETURNING *
+    `, {
+      replacements: {
+        code: trimmedCode,
+        name: name ? name.trim() : null,
+        isDirectLoad: Boolean(isDirectLoad),
+        createdBy: userId
+      }
     });
 
-    const location = await RiceStockLocation.create({
-      code: code.trim().toUpperCase(),
-      name: name ? name.trim() : null,
-      createdBy: req.user.userId
-    });
-
-    console.log('✅ Location created:', location.id);
-
-    const created = await RiceStockLocation.findByPk(location.id, {
-      attributes: ['id', 'code', 'name', 'isActive', 'createdAt', 'createdBy'],
-      raw: true
-    });
-
-    // Manually add creator username
-    const creator = await User.findByPk(req.user.userId, {
-      attributes: ['username'],
-      raw: true
-    });
-
-    created.creator = { username: creator ? creator.username : 'Unknown' };
-
-    console.log('✅ Returning location:', created);
+    const created = result[0];
+    let username = 'Unknown';
+    if (userId) {
+      const [u] = await sequelize.query(`SELECT username FROM users WHERE id = :id`, { replacements: { id: userId } });
+      if (u.length > 0) username = u[0].username;
+    }
 
     res.status(201).json({
       message: 'Rice stock location created successfully',
-      location: created
+      location: {
+        id: created.id,
+        code: created.code,
+        name: created.name,
+        isActive: created.is_active,
+        isDirectLoad: created.is_direct_load,
+        createdAt: created.created_at,
+        createdBy: created.created_by,
+        creator: { username }
+      }
     });
   } catch (error) {
     console.error('❌ Create rice stock location error:', error);
-    console.error('Error details:', error.message);
-    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Failed to create rice stock location' });
   }
 });
@@ -547,43 +556,71 @@ router.post('/rice-stock-locations', auth, authorize('manager', 'admin'), async 
 // Update rice stock location (Manager/Admin only)
 router.put('/rice-stock-locations/:id', auth, authorize('manager', 'admin'), async (req, res) => {
   try {
-    const { code, name, isActive } = req.body;
+    const { id } = req.params;
+    const { code, name, isActive, isDirectLoad } = req.body;
 
-    const location = await RiceStockLocation.findByPk(req.params.id);
-    if (!location) {
+    const [existing] = await sequelize.query(
+      `SELECT * FROM rice_stock_locations WHERE id = :id`,
+      { replacements: { id } }
+    );
+
+    if (!existing || existing.length === 0) {
       return res.status(404).json({ error: 'Rice stock location not found' });
     }
 
-    // Check if new code already exists (if code is being changed)
-    if (code && code.trim().toUpperCase() !== location.code) {
-      const { Op } = require('sequelize');
-      const existing = await RiceStockLocation.findOne({
-        where: {
-          code: code.trim().toUpperCase(),
-          id: { [Op.ne]: req.params.id }
-        }
-      });
+    const currentLocation = existing[0];
+    const newCode = code ? code.trim().toUpperCase() : currentLocation.code;
 
-      if (existing) {
+    // Check if new code already exists on another location
+    if (newCode !== currentLocation.code) {
+      const [dup] = await sequelize.query(
+        `SELECT id FROM rice_stock_locations WHERE code = :code AND id != :id LIMIT 1`,
+        { replacements: { code: newCode, id } }
+      );
+      if (dup && dup.length > 0) {
         return res.status(400).json({ error: 'Location code already exists' });
       }
     }
 
-    await location.update({
-      code: code ? code.trim().toUpperCase() : location.code,
-      name: name !== undefined ? (name ? name.trim() : null) : location.name,
-      isActive: isActive !== undefined ? isActive : location.isActive
+    const [result] = await sequelize.query(`
+      UPDATE rice_stock_locations 
+      SET 
+        code = :code,
+        name = :name,
+        is_active = :isActive,
+        is_direct_load = :isDirectLoad,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = :id
+      RETURNING *
+    `, {
+      replacements: {
+        id,
+        code: newCode,
+        name: name !== undefined ? (name ? name.trim() : null) : currentLocation.name,
+        isActive: isActive !== undefined ? isActive : currentLocation.is_active,
+        isDirectLoad: isDirectLoad !== undefined ? Boolean(isDirectLoad) : (currentLocation.is_direct_load || false)
+      }
     });
 
-    const updated = await RiceStockLocation.findByPk(location.id, {
-      include: [
-        { model: User, as: 'creator', attributes: ['username'] }
-      ]
-    });
+    const updated = result[0];
+    let username = 'Unknown';
+    if (updated.created_by) {
+      const [u] = await sequelize.query(`SELECT username FROM users WHERE id = :id`, { replacements: { id: updated.created_by } });
+      if (u.length > 0) username = u[0].username;
+    }
 
     res.json({
       message: 'Rice stock location updated successfully',
-      location: updated
+      location: {
+        id: updated.id,
+        code: updated.code,
+        name: updated.name,
+        isActive: updated.is_active,
+        isDirectLoad: updated.is_direct_load,
+        createdAt: updated.created_at,
+        createdBy: updated.created_by,
+        creator: { username }
+      }
     });
   } catch (error) {
     console.error('Update rice stock location error:', error);
@@ -594,13 +631,21 @@ router.put('/rice-stock-locations/:id', auth, authorize('manager', 'admin'), asy
 // Delete rice stock location (Admin only)
 router.delete('/rice-stock-locations/:id', auth, authorize('admin'), async (req, res) => {
   try {
-    const location = await RiceStockLocation.findByPk(req.params.id);
-    if (!location) {
+    const { id } = req.params;
+    const [existing] = await sequelize.query(
+      `SELECT id FROM rice_stock_locations WHERE id = :id`,
+      { replacements: { id } }
+    );
+
+    if (!existing || existing.length === 0) {
       return res.status(404).json({ error: 'Rice stock location not found' });
     }
 
     // Soft delete
-    await location.update({ isActive: false });
+    await sequelize.query(
+      `UPDATE rice_stock_locations SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = :id`,
+      { replacements: { id } }
+    );
 
     res.json({ message: 'Rice stock location deleted successfully' });
   } catch (error) {

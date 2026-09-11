@@ -34,9 +34,14 @@ module.exports = {
           defaultValue: true,
           field: 'is_active'
         },
+        isDirectLoad: {
+          type: sequelize.Sequelize.BOOLEAN,
+          defaultValue: false,
+          field: 'is_direct_load'
+        },
         createdBy: {
           type: sequelize.Sequelize.INTEGER,
-          allowNull: false,
+          allowNull: true,
           field: 'created_by',
           references: {
             model: 'users',

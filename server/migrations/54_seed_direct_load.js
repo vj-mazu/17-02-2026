@@ -25,8 +25,8 @@ module.exports = {
 
                 // Insert DIRECT_LOAD location (using correct column names)
                 await queryInterface.sequelize.query(`
-                  INSERT INTO rice_stock_locations (code, name, "isActive", is_direct_load, "createdBy", "createdAt", "updatedAt")
-                  VALUES ('DIRECT_LOAD', 'Direct Load', true, true, ${createdBy}, NOW(), NOW())
+                  INSERT INTO rice_stock_locations (code, name, is_active, is_direct_load, created_by, created_at, updated_at)
+                  VALUES ('DIRECT_LOAD', 'Direct Load', true, true, ${createdBy}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 `);
                 console.log('✅ DIRECT_LOAD location created successfully');
             } else {
