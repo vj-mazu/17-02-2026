@@ -328,6 +328,7 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
   const [selectedVarietyData, setSelectedVarietyData] = useState<any>(null);
   const [lorryNumber, setLorryNumber] = useState('');
   const [toLocation, setToLocation] = useState('');
+  const [remarks, setRemarks] = useState('');
 
   // Line items
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([
@@ -497,7 +498,8 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
           locationCode: item.locationCode,
           toLocation,
           billNumber,
-          lorryNumber
+          lorryNumber,
+          remarks: remarks?.trim() || null
         }, {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -514,6 +516,7 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
       setSelectedVarietyData(null);
       setLorryNumber('');
       setToLocation('');
+      setRemarks('');
       setLineItems([{ id: '1', locationCode: '', packagingId: '', productType: 'Rice', bags: '', bagSizeKg: '26' }]);
 
     } catch (error: any) {
@@ -587,6 +590,15 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
                     value={toLocation}
                     onChange={(e) => setToLocation(e.target.value.toUpperCase())}
                     placeholder="Customer name"
+                  />
+                </FormGroup>
+                <FormGroup style={{ gridColumn: '1 / -1' }}>
+                  <Label>Remarks (Optional)</Label>
+                  <Input
+                    type="text"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Enter any additional notes/remarks"
                   />
                 </FormGroup>
               </FormGrid>

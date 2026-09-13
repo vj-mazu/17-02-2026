@@ -129,15 +129,15 @@ Arrivals Columns:
     "data_type": "text"
   },
   {
-    "column_name": "bill_no",
-    "data_type": "character varying"
-  },
-  {
     "column_name": "createdAt",
     "data_type": "timestamp with time zone"
   },
   {
     "column_name": "updatedAt",
     "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "bill_no",
+    "data_type": "character varying"
   }
 ]

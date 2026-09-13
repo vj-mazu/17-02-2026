@@ -523,6 +523,7 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
     const [sourcePackagingId, setSourcePackagingId] = useState('');
     const [sourceBags, setSourceBags] = useState('');
     const [locationCode, setLocationCode] = useState('');
+    const [remarks, setRemarks] = useState('');
 
     // Target Conversions - Start with one empty entry
     const [targets, setTargets] = useState<TargetConversion[]>([
@@ -846,7 +847,8 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                     conversionShortageKg: entryShortageKg,
                     conversionShortageBags: entryShortageBags,
                     totalBatchShortageKg: shortageKg,
-                    totalBatchShortageQtl: shortageKg / 100
+                    totalBatchShortageQtl: shortageKg / 100,
+                    remarks: remarks?.trim() || null
                 }, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
@@ -878,6 +880,7 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
         setSourcePackagingId('');
         setSourceBags('');
         setLocationCode('');
+        setRemarks('');
         setTargets([{ id: '1', targetPackagingId: '', bags: '', targetLocationCode: '' }]);
         setErrors({});
     };
@@ -972,6 +975,15 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                                         ))}
                                     </Select>
                                     {errors.location && <ErrorText>{errors.location}</ErrorText>}
+                                </FormGroup>
+                                <FormGroup style={{ gridColumn: '1 / -1' }}>
+                                    <Label>Remarks (Optional)</Label>
+                                    <Input
+                                        type="text"
+                                        value={remarks}
+                                        onChange={(e) => setRemarks(e.target.value)}
+                                        placeholder="Enter any additional notes/remarks"
+                                    />
                                 </FormGroup>
                             </FormGrid>
                         </Section>

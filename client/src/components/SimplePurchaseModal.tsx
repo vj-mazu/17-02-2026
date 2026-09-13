@@ -213,7 +213,8 @@ const SimplePurchaseModal: React.FC<SimplePurchaseModalProps> = ({ isOpen, onClo
     packaging: '',
     from: '',
     to: '',
-    lorryNumber: ''
+    lorryNumber: '',
+    remarks: ''
   });
 
   const [packagings, setPackagings] = useState<any[]>([]);
@@ -336,7 +337,8 @@ const SimplePurchaseModal: React.FC<SimplePurchaseModalProps> = ({ isOpen, onClo
         locationCode: formData.to,
         fromLocation: formData.from,
         billNumber: formData.billNumber,
-        lorryNumber: formData.lorryNumber
+        lorryNumber: formData.lorryNumber,
+        remarks: formData.remarks?.trim() || null
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -356,7 +358,8 @@ const SimplePurchaseModal: React.FC<SimplePurchaseModalProps> = ({ isOpen, onClo
         packaging: '',
         from: '',
         to: '',
-        lorryNumber: ''
+        lorryNumber: '',
+        remarks: ''
       });
       setSelectedVarietyData(null);
 
@@ -494,13 +497,23 @@ const SimplePurchaseModal: React.FC<SimplePurchaseModalProps> = ({ isOpen, onClo
                 />
               </FormGroup>
 
-              <FormGroup style={{ gridColumn: '1 / -1' }}>
+              <FormGroup>
                 <Label>Lorry Number</Label>
                 <Input
                   type="text"
                   value={formData.lorryNumber}
                   onChange={(e) => handleInputChange('lorryNumber', e.target.value)}
                   placeholder="Vehicle number"
+                />
+              </FormGroup>
+
+              <FormGroup style={{ gridColumn: '1 / -1' }}>
+                <Label>Remarks (Optional)</Label>
+                <Input
+                  type="text"
+                  value={formData.remarks}
+                  onChange={(e) => handleInputChange('remarks', e.target.value)}
+                  placeholder="Enter any additional notes/remarks"
                 />
               </FormGroup>
             </FormGrid>

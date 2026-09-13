@@ -58,73 +58,95 @@ export const Tab = styled.button<{ $active: boolean }>`
 
 export const FilterSection = styled.div`
   background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e5e7eb;
 `;
 
 export const FilterRow = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
 `;
 
 export const FormGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.2rem;
+  flex: 1 1 130px;
+  min-width: 110px;
 `;
 
 export const Label = styled.label`
   font-weight: 600;
-  color: #374151;
-  font-size: 0.9rem;
+  color: #4b5563;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
 `;
 
 export const InfoText = styled.p`
   color: #6b7280;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   margin: 0;
 `;
 
 export const Input = styled.input`
-  padding: 0.75rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1rem;
+  padding: 0.35rem 0.6rem;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  height: 32px;
+  box-sizing: border-box;
+  width: 100%;
 
   &:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
   }
 `;
 
 export const Select = styled.select`
-  padding: 0.75rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1rem;
+  padding: 0.35rem 0.6rem;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  height: 32px;
+  box-sizing: border-box;
   background: white;
   cursor: pointer;
+  width: 100%;
 
   &:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
   }
 `;
 
 export const Button = styled.button`
-  padding: 0.75rem 1.5rem;
+  padding: 0.35rem 0.75rem;
+  height: 32px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   font-weight: 600;
+  font-size: 0.82rem;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  box-sizing: border-box;
 
   &.primary {
-    background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
     color: white;
   }
 
@@ -144,8 +166,8 @@ export const Button = styled.button`
   }
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
   }
 
   &:disabled {
@@ -425,24 +447,28 @@ export const EmptyState = styled.div`
 `;
 
 export const PDFButton = styled.button<{ $variant?: 'all' | 'filtered' }>`
-  padding: 0.6rem 1rem;
+  padding: 0.35rem 0.65rem;
+  height: 32px;
+  box-sizing: border-box;
   border: none;
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
+  transition: all 0.2s ease;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
+  justify-content: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
   background: ${props => props.$variant === 'filtered'
         ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
         : 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)'};
   color: white;
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px ${props => props.$variant === 'filtered'
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px ${props => props.$variant === 'filtered'
         ? 'rgba(16, 185, 129, 0.3)'
         : 'rgba(220, 38, 38, 0.3)'};
   }

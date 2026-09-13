@@ -666,19 +666,17 @@ router.get('/stock', auth, async (req, res) => {
       return acc;
     }, {});
 
-    // FIXED: Optimized available months query with caching
+    // Query available months directly (short 10s cache to stay fresh)
     const availableMonths = await cacheService.getOrSet('stock_available_months', async () => {
       const result = await sequelize.query(`
         SELECT DISTINCT 
           TO_CHAR(date, 'YYYY-MM') as month,
-          TO_CHAR(date, 'Month YYYY') as month_label
+          TRIM(TO_CHAR(date, 'Month YYYY')) as month_label
         FROM arrivals
-        WHERE status = 'approved' 
-          AND "adminApprovedBy" IS NOT NULL
         ORDER BY month DESC
       `);
       return result[0];
-    }, 3600); // Cache for 1 hour
+    }, 10); // Cache for 10 seconds only
 
     // Fetch closed kunchinittus with remaining bags for stock deduction
     const closedWhere = {

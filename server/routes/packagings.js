@@ -14,8 +14,8 @@ router.get('/', auth, async (req, res) => {
       raw: true // Faster
     });
 
-    // Cache headers for 10 minutes
-    res.set('Cache-Control', 'public, max-age=600');
+    // Do not cache dynamically edited packagings in browser
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.json({ packagings });
   } catch (error) {
     console.error('Get packagings error:', error);
@@ -90,29 +90,48 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
     await packaging.update({
       brandName: brandName ? brandName.trim() : undefined,
       code,
-      allottedKg: allottedKg ? parseFloat(allottedKg) : undefined
+      allottedKg: allottedKg !== undefined ? parseFloat(allottedKg) : undefined
     });
+
+    // Reload packaging to get latest values from database
+    await packaging.reload();
 
     // If allottedKg changed, recalculate all rice production records using this packaging
     if (allottedKg && parseFloat(allottedKg) !== parseFloat(oldAllottedKg)) {
-      const RiceProduction = require('../models/RiceProduction');
-      const { sequelize } = require('../config/database');
-
-      // Update all rice production records with this packaging
-      // quantityQuintals = (bags × allottedKg) / 100
-      await sequelize.query(`
-        UPDATE rice_productions
-        SET "quantityQuintals" = (bags * :allottedKg) / 100.0,
-            "updatedAt" = NOW()
-        WHERE "packagingId" = :packagingId
-      `, {
-        replacements: {
-          allottedKg: parseFloat(allottedKg),
-          packagingId: req.params.id
+      try {
+        const { sequelize } = require('../config/database');
+        // Update all rice production records with this packaging (handle column naming safely)
+        await sequelize.query(`
+          UPDATE rice_productions
+          SET "quantityQuintals" = (bags * :allottedKg) / 100.0,
+              "updatedAt" = NOW()
+          WHERE "packagingId" = :packagingId
+        `, {
+          replacements: {
+            allottedKg: parseFloat(allottedKg),
+            packagingId: req.params.id
+          }
+        });
+        console.log(`✅ Recalculated quantities for all rice productions using packaging ID ${req.params.id}`);
+      } catch (recalcErr) {
+        console.warn('⚠️ Could not recalculate rice_productions with camelCase, trying fallback:', recalcErr.message);
+        try {
+          const { sequelize } = require('../config/database');
+          await sequelize.query(`
+            UPDATE rice_productions
+            SET quantity_quintals = (bags * :allottedKg) / 100.0,
+                updated_at = NOW()
+            WHERE packaging_id = :packagingId
+          `, {
+            replacements: {
+              allottedKg: parseFloat(allottedKg),
+              packagingId: req.params.id
+            }
+          });
+        } catch (fallbackErr) {
+          console.error('Recalculate fallback error:', fallbackErr.message);
         }
-      });
-
-      console.log(`✅ Recalculated quantities for all rice productions using packaging ID ${req.params.id}`);
+      }
     }
 
     res.json({

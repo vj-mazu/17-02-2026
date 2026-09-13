@@ -32,19 +32,19 @@ const TabContainer = styled.div`
   border-bottom: 2px solid #e5e7eb;
 `;
 
-const Tab = styled.button<{ active: boolean }>`
+const Tab = styled.button<{ $active: boolean }>`
   padding: 1rem 2rem;
   border: none;
-  background: ${props => props.active ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'transparent'};
-  color: ${props => props.active ? 'white' : '#6b7280'};
+  background: ${props => props.$active ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'transparent'};
+  color: ${props => props.$active ? 'white' : '#6b7280'};
   font-weight: 600;
   cursor: pointer;
   border-radius: 8px 8px 0 0;
   transition: all 0.3s ease;
   
   &:hover {
-    background: ${props => props.active ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#f3f4f6'};
-    color: ${props => props.active ? 'white' : '#374151'};
+    background: ${props => props.$active ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#f3f4f6'};
+    color: ${props => props.$active ? 'white' : '#374151'};
   }
 `;
 
@@ -651,7 +651,12 @@ const Locations: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get<{ packagings: any[] }>('/packagings', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        params: { _t: Date.now() }
       });
       setPackagings(response.data.packagings || []);
     } catch (error) {
@@ -985,34 +990,34 @@ const Locations: React.FC = () => {
       <Title>📍 Location Management</Title>
 
       <TabContainer>
-        <Tab active={activeTab === 'warehouse'} onClick={() => setActiveTab('warehouse')}>
+        <Tab $active={activeTab === 'warehouse'} onClick={() => setActiveTab('warehouse')}>
           Warehouse
         </Tab>
-        <Tab active={activeTab === 'variety'} onClick={() => setActiveTab('variety')}>
+        <Tab $active={activeTab === 'variety'} onClick={() => setActiveTab('variety')}>
           Variety
         </Tab>
-        <Tab active={activeTab === 'kunchinittu'} onClick={() => setActiveTab('kunchinittu')}>
+        <Tab $active={activeTab === 'kunchinittu'} onClick={() => setActiveTab('kunchinittu')}>
           KanchiNittu
         </Tab>
-        <Tab active={activeTab === 'production'} onClick={() => setActiveTab('production')}>
+        <Tab $active={activeTab === 'production'} onClick={() => setActiveTab('production')}>
           Production
         </Tab>
-        <Tab active={activeTab === 'packaging'} onClick={() => setActiveTab('packaging')}>
+        <Tab $active={activeTab === 'packaging'} onClick={() => setActiveTab('packaging')}>
           Packaging
         </Tab>
-        <Tab active={activeTab === 'riceStockLocation'} onClick={() => setActiveTab('riceStockLocation')}>
+        <Tab $active={activeTab === 'riceStockLocation'} onClick={() => setActiveTab('riceStockLocation')}>
           Rice Stock Locations
         </Tab>
-        <Tab active={activeTab === 'riceVariety'} onClick={() => setActiveTab('riceVariety')}>
+        <Tab $active={activeTab === 'riceVariety'} onClick={() => setActiveTab('riceVariety')}>
           Rice Varieties
         </Tab>
-        <Tab active={activeTab === 'broker'} onClick={() => setActiveTab('broker')}>
+        <Tab $active={activeTab === 'broker'} onClick={() => setActiveTab('broker')}>
           Brokers
         </Tab>
-        <Tab active={activeTab === 'hamali'} onClick={() => setActiveTab('hamali')}>
+        <Tab $active={activeTab === 'hamali'} onClick={() => setActiveTab('hamali')}>
           Paddy Hamali
         </Tab>
-        <Tab active={activeTab === 'riceHamali'} onClick={() => setActiveTab('riceHamali')}>
+        <Tab $active={activeTab === 'riceHamali'} onClick={() => setActiveTab('riceHamali')}>
           Rice Hamali
         </Tab>
       </TabContainer>

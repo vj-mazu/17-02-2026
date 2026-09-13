@@ -138,6 +138,8 @@ router.get('/movements', auth, async (req, res) => {
                 rsm.target_packaging_id as "targetPackagingId",
                 rsm.conversion_shortage_kg as "conversionShortageKg",
                 rsm.conversion_shortage_bags as "conversionShortageBags",
+                rsm.remarks as "remarks",
+                rsm.party_name as "partyName",
                 rsm.status as "status",
                 rsm.created_at as "createdAt",
                 rsm.updated_at as "updatedAt",
@@ -1206,7 +1208,9 @@ router.post('/movements', auth, async (req, res) => {
             targetPackagingKg,
             targetPackagingId, // Frontend sends ID, need to resolve
             conversionShortageKg: requestedShortageKg, // Direct from frontend
-            conversionShortageBags: requestedShortageBags // Direct from frontend
+            conversionShortageBags: requestedShortageBags, // Direct from frontend
+            remarks,
+            partyName
         } = req.body;
 
         // PRODUCT TYPE MAPPING: Map frontend display names to database enum values
@@ -1793,6 +1797,8 @@ router.post('/movements', auth, async (req, res) => {
                 target_packaging_id,
                 conversion_shortage_kg,
                 conversion_shortage_bags,
+                remarks,
+                party_name,
                 status,
                 created_by,
                 created_at,
@@ -1816,6 +1822,8 @@ router.post('/movements', auth, async (req, res) => {
                 :targetPackagingId,
                 :conversionShortageKg,
                 :conversionShortageBags,
+                :remarks,
+                :partyName,
                 :status,
                 :createdBy,
                 NOW(),
@@ -1852,6 +1860,8 @@ router.post('/movements', auth, async (req, res) => {
                         (sourcePackagingKg && targetPackagingKg ?
                             ((parseInt(sourceBags || finalBags) * parseFloat(sourcePackagingKg)) - (parseInt(finalBags) * parseFloat(targetPackagingKg))) / parseFloat(targetPackagingKg) : null)
                 ) : null,
+                remarks: remarks || null,
+                partyName: partyName || null,
                 createdBy: req.user.userId,
                 status
             },
@@ -1949,6 +1959,8 @@ router.put('/movements/:id', auth, async (req, res) => {
             targetPackagingId,
             shortageKg,
             shortageBags,
+            remarks,
+            partyName,
             status
         } = req.body;
 
@@ -2305,6 +2317,8 @@ router.put('/movements/:id', auth, async (req, res) => {
                 target_packaging_id = COALESCE(:targetPackagingId, target_packaging_id),
                 conversion_shortage_kg = COALESCE(:shortageKg, conversion_shortage_kg),
                 conversion_shortage_bags = COALESCE(:shortageBags, conversion_shortage_bags),
+                remarks = COALESCE(:remarks, remarks),
+                party_name = COALESCE(:partyName, party_name),
                 status = COALESCE(:status, status),
                 updated_at = NOW()
             WHERE id = :id
@@ -2329,6 +2343,8 @@ router.put('/movements/:id', auth, async (req, res) => {
                 targetPackagingId: targetPackagingId ? parseInt(targetPackagingId) : null,
                 shortageKg: shortageKg !== undefined && shortageKg !== null ? parseFloat(shortageKg) : null,
                 shortageBags: shortageBags !== undefined && shortageBags !== null ? parseFloat(shortageBags) : null,
+                remarks: remarks !== undefined ? remarks : null,
+                partyName: partyName !== undefined ? partyName : null,
                 status: status || null
             },
             type: sequelize.QueryTypes.UPDATE

@@ -123,7 +123,19 @@ const Records: React.FC = () => {
 
   // Month-wise pagination state
   const [selectedMonth, setSelectedMonth] = useState<string>('');
-  const [availableMonths, setAvailableMonths] = useState<MonthOption[]>([]);
+  const [availableMonths, setAvailableMonths] = useState<MonthOption[]>(() => {
+    const list: MonthOption[] = [];
+    const d = new Date();
+    for (let i = 0; i < 24; i++) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const monthKey = `${y}-${m}`;
+      const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      list.push({ month: monthKey, month_label: label });
+      d.setMonth(d.getMonth() - 1);
+    }
+    return list;
+  });
   const [lastToastMessage, setLastToastMessage] = useState<string>(''); // Prevent duplicate toasts
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingAdminCount, setPendingAdminCount] = useState(0);
@@ -268,6 +280,7 @@ const Records: React.FC = () => {
   const [showPendingMovements, setShowPendingMovements] = useState(false);
   const [selectedMovementIds, setSelectedMovementIds] = useState<Set<number>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [viewingRemarks, setViewingRemarks] = useState<{ title: string; text: string; date?: string } | null>(null);
 
   // Helper function to navigate to outturn
   const navigateToOutturn = (outturnCode: string) => {
@@ -321,19 +334,54 @@ const Records: React.FC = () => {
     console.log('🚀 Processing rice stock data for rendering...');
     const startTime = performance.now();
 
+    const effectiveSearch = (search || riceReportSearch || '').trim().toLowerCase();
+
     // Step 1: Filter the data
     const filteredData = riceStockData.filter((item: any) => {
       if (item.locationCode === 'CLEARING') return false;
-      if (!riceReportSearch) return true;
-      const searchLower = riceReportSearch.toLowerCase();
-      return (
-        item.outturn?.code?.toLowerCase().includes(searchLower) ||
-        item.billNumber?.toLowerCase().includes(searchLower) ||
-        item.locationCode?.toLowerCase().includes(searchLower) ||
-        item.lorryNumber?.toLowerCase().includes(searchLower) ||
-        item.partyName?.toLowerCase().includes(searchLower) ||
-        item.variety?.toLowerCase().includes(searchLower)
-      );
+
+      const itemDate = item.date ? (item.date.includes('T') ? item.date.split('T')[0] : item.date) : '';
+
+      // Date From filter
+      if (dateFrom) {
+        const fFrom = convertDateFormat(dateFrom);
+        if (itemDate && itemDate < fFrom) return false;
+      }
+
+      // Date To filter
+      if (dateTo) {
+        const fTo = convertDateFormat(dateTo);
+        if (itemDate && itemDate > fTo) return false;
+      }
+
+      // Month filter with smart current-month capping
+      if (selectedMonth) {
+        if (itemDate && !itemDate.startsWith(selectedMonth)) return false;
+        const bDate = getBusinessDate();
+        const currentYearMonth = `${new Date(bDate).getFullYear()}-${String(new Date(bDate).getMonth() + 1).padStart(2, '0')}`;
+        if (selectedMonth === currentYearMonth && itemDate > bDate) return false;
+      }
+
+      // Product Type filter
+      if (riceStockProductType) {
+        const pType = (item.productType || item.product || '').toLowerCase();
+        if (pType !== riceStockProductType.toLowerCase()) return false;
+      }
+
+      // Search matching
+      if (effectiveSearch) {
+        const match =
+          item.outturn?.code?.toLowerCase().includes(effectiveSearch) ||
+          item.billNumber?.toLowerCase().includes(effectiveSearch) ||
+          item.locationCode?.toLowerCase().includes(effectiveSearch) ||
+          item.lorryNumber?.toLowerCase().includes(effectiveSearch) ||
+          item.partyName?.toLowerCase().includes(effectiveSearch) ||
+          item.variety?.toLowerCase().includes(effectiveSearch) ||
+          item.productType?.toLowerCase().includes(effectiveSearch);
+        if (!match) return false;
+      }
+
+      return true;
     });
 
     // Step 2: Process data (keep individual rows for hamali matching)
@@ -854,9 +902,16 @@ const Records: React.FC = () => {
         toast.warning(`Data truncated. Showing first ${data.pagination.limit} records. Please refine your filters.`);
       }
 
-      // Update available months from pagination data
+      // Update available months from pagination data (always ensure current month is included)
       if (data.pagination?.availableMonths) {
-        setAvailableMonths(data.pagination.availableMonths);
+        const currentD = new Date();
+        const currentKey = `${currentD.getFullYear()}-${String(currentD.getMonth() + 1).padStart(2, '0')}`;
+        const currentLabel = currentD.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        
+        const incoming = data.pagination.availableMonths;
+        const exists = incoming.some(m => m.month === currentKey);
+        const merged = exists ? incoming : [{ month: currentKey, month_label: currentLabel }, ...incoming];
+        setAvailableMonths(merged);
       }
 
       // Fetch hamali entries for all records
@@ -1105,6 +1160,7 @@ const Records: React.FC = () => {
           billNumber: updatedData.billNumber || updatedData.bill_number,
           lorryNumber: updatedData.lorryNumber || updatedData.lorry_number,
           quantityQuintals: (updatedData.bags || 0) * (finalBagKg / 100),
+          remarks: updatedData.remarks !== undefined ? updatedData.remarks : editingRiceMovement.remarks,
           // Palti specific fields
           sourceBags: updatedData.sourceBags || updatedData.source_bags,
           fromLocation: updatedData.fromLocation || updatedData.from_location,
@@ -1630,7 +1686,8 @@ const Records: React.FC = () => {
             toLocation: prod.locationCode || prod.location_code || prod.location || '-',
             partyName: null,
             billNumber: prod.billNumber,
-            lorryNumber: prod.lorryNumber
+            lorryNumber: prod.lorryNumber,
+            remarks: prod.remarks || null
           })),
 
           // Purchase/Sale/Palti entries
@@ -1734,7 +1791,8 @@ const Records: React.FC = () => {
               billNumber: movement.billNumber || movement.bill_number,
               lorryNumber: movement.lorryNumber || movement.lorry_number,
               ratePerBag: movement.ratePerBag || movement.rate_per_bag,
-              totalAmount: movement.totalAmount || movement.total_amount
+              totalAmount: movement.totalAmount || movement.total_amount,
+              remarks: movement.remarks || movement.REMARKS || null
             };
           })
         ];
@@ -2186,21 +2244,21 @@ const Records: React.FC = () => {
         </Tab>
       </TabContainer>
 
-      {/* Filters - Show for ALL tabs */}
+      {/* Filters - Show for ALL tabs (Ultra-Compact 70% Space Saving Layout) */}
       <FilterSection>
-        {/* Unified Business Date & Toggle Row */}
+        {/* Compact Business Date & Toggle Sub-bar */}
         {activeTab !== 'outturn-report' && (
           <div style={{
-            marginBottom: '1rem',
-            padding: '0.75rem',
+            marginBottom: '0.4rem',
+            padding: '0.3rem 0.6rem',
             backgroundColor: showAllRecords ? '#FEF3C7' : '#D1FAE5',
-            borderRadius: '8px',
+            borderRadius: '6px',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            border: showAllRecords ? '2px solid #F59E0B' : '2px solid #10B981'
+            border: showAllRecords ? '1px solid #F59E0B' : '1px solid #10B981'
           }}>
-            <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
               <strong style={{ color: showAllRecords ? '#D97706' : '#059669' }}>
                 {showAllRecords ? '📋 Showing All Records' : `📅 Business Date: ${(() => {
                   const businessDate = getBusinessDate();
@@ -2211,22 +2269,20 @@ const Records: React.FC = () => {
                   });
                 })()}`}
               </strong>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>
-                {showAllRecords
-                  ? 'Viewing all historical records with current filters'
-                  : 'Showing only today\'s records (Business day starts at 6 AM)'}
-              </p>
+              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                {showAllRecords ? '(All historical records)' : '(Today starts at 6 AM)'}
+              </span>
             </div>
             <Button
               className={showAllRecords ? 'secondary' : 'primary'}
               onClick={() => {
-                setShowAllRecords(!showAllRecords);
-                if (!showAllRecords) {
-                  // If switching TO "Show All", clear month to avoid conflicts
+                const nextState = !showAllRecords;
+                setShowAllRecords(nextState);
+                if (nextState) {
                   setSelectedMonth('');
                 }
               }}
-              style={{ minWidth: '150px' }}
+              style={{ height: '26px', padding: '0.15rem 0.6rem', fontSize: '0.75rem', minWidth: 'auto' }}
             >
               {showAllRecords ? '📅 Today Only' : '📋 Show All'}
             </Button>
@@ -2234,17 +2290,16 @@ const Records: React.FC = () => {
         )}
 
         <FilterRow>
-          {/* Month Selector - Enabled for all tabs including Paddy Stock */}
+          {/* Month Selector */}
           {(activeTab === 'arrivals' || activeTab === 'purchase' || activeTab === 'shifting' || activeTab === 'stock' || activeTab === 'rice-stock' || activeTab === 'rice-outturn-report') && (
-            <FormGroup>
-              <Label>Month Filter</Label>
+            <FormGroup style={{ flex: '1 1 140px' }}>
+              <Label>Month</Label>
               <Select
                 value={selectedMonth}
                 onChange={(e) => {
                   setSelectedMonth(e.target.value);
-                  if (e.target.value) setShowAllRecords(false); // Month filter takes precedence over "Show All"
+                  if (e.target.value) setShowAllRecords(false);
                 }}
-                disabled={availableMonths.length === 0}
               >
                 <option value="">All Months</option>
                 {availableMonths.map((m) => (
@@ -2256,11 +2311,11 @@ const Records: React.FC = () => {
             </FormGroup>
           )}
 
-          {/* Date Range - enabled for all tabs as requested */}
+          {/* Date Range */}
           {(activeTab === 'arrivals' || activeTab === 'purchase' || activeTab === 'shifting' || activeTab === 'stock' || activeTab === 'rice-stock' || activeTab === 'rice-outturn-report') && (
             <>
-              <FormGroup>
-                <Label>Date From</Label>
+              <FormGroup style={{ flex: '1 1 110px' }}>
+                <Label>From</Label>
                 <Input
                   type="text"
                   value={dateFrom}
@@ -2269,8 +2324,8 @@ const Records: React.FC = () => {
                 />
               </FormGroup>
 
-              <FormGroup>
-                <Label>Date To</Label>
+              <FormGroup style={{ flex: '1 1 110px' }}>
+                <Label>To</Label>
                 <Input
                   type="text"
                   value={dateTo}
@@ -2281,88 +2336,92 @@ const Records: React.FC = () => {
             </>
           )}
 
-          {/* Rice Specific Filters - Only for Rice Outturn Report tab */}
-          {activeTab === 'rice-outturn-report' && (
-            <>
-              <FormGroup>
-                <Label>Product Type</Label>
-                <Select
-                  value={riceStockProductType}
-                  onChange={(e) => setRiceStockProductType(e.target.value)}
-                >
-                  <option value="">All Products</option>
-                  <option value="Rice">Rice</option>
-                  <option value="Bran">Bran</option>
-                  <option value="Farm Bran">Farm Bran</option>
-                  <option value="Rejection Rice">Rejection Rice</option>
-                  <option value="Sizer Broken">Sizer Broken</option>
-                  <option value="RJ Broken">RJ Broken</option>
-                  <option value="Broken">Broken</option>
-                  <option value="Zero Broken">Zero Broken</option>
-                  <option value="Faram">Faram</option>
-                  <option value="Unpolished">Unpolished</option>
-                  <option value="RJ Rice 1">RJ Rice 1</option>
-                  <option value="RJ Rice 2">RJ Rice 2</option>
-                </Select>
-              </FormGroup>
-            </>
+          {/* Rice Product Type Filter */}
+          {(activeTab === 'rice-outturn-report' || activeTab === 'rice-stock') && (
+            <FormGroup style={{ flex: '1 1 130px' }}>
+              <Label>Product Type</Label>
+              <Select
+                value={riceStockProductType}
+                onChange={(e) => setRiceStockProductType(e.target.value)}
+              >
+                <option value="">All Products</option>
+                <option value="Rice">Rice</option>
+                <option value="Bran">Bran</option>
+                <option value="Farm Bran">Farm Bran</option>
+                <option value="Rejection Rice">Rejection Rice</option>
+                <option value="Sizer Broken">Sizer Broken</option>
+                <option value="RJ Broken">RJ Broken</option>
+                <option value="Broken">Broken</option>
+                <option value="Zero Broken">Zero Broken</option>
+                <option value="Faram">Faram</option>
+                <option value="Unpolished">Unpolished</option>
+                <option value="RJ Rice 1">RJ Rice 1</option>
+                <option value="RJ Rice 2">RJ Rice 2</option>
+              </Select>
+            </FormGroup>
           )}
-
 
           {/* Grouping Selector */}
           {(activeTab === 'arrivals' || activeTab === 'purchase' || activeTab === 'shifting' || activeTab === 'stock' || activeTab === 'rice-outturn-report') && (
-            <FormGroup>
-              <Label>Report Grouping</Label>
+            <FormGroup style={{ flex: '1 1 120px' }}>
+              <Label>View</Label>
               <Select
                 value={groupBy}
                 onChange={(e) => setGroupBy(e.target.value as 'week' | 'date')}
               >
-                <option value="date">📅 Daily View</option>
-                <option value="week">📅 Weekly View</option>
+                <option value="date">📅 Daily</option>
+                <option value="week">📅 Weekly</option>
               </Select>
             </FormGroup>
           )}
 
           {/* Search */}
-          <FormGroup>
+          <FormGroup style={{ flex: '2 1 160px' }}>
             <Label>Search</Label>
             <Input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="SL No, WB No, Lorry..."
+              placeholder="SL No, WB No, Lorry, Bill, Variety..."
             />
           </FormGroup>
 
-          {/* Actions Row */}
-          <div style={{ display: 'flex', gap: '0.5rem', gridColumn: '1 / -1', marginTop: '1rem', borderTop: '1px solid #f3f4f6', paddingTop: '1rem' }}>
-            <Button className="primary" onClick={fetchRecords} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Actions Block */}
+          <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
+            <Button
+              className="primary"
+              onClick={() => {
+                if (activeTab === 'rice-stock' || activeTab === 'rice-outturn-report') {
+                  fetchRiceStock();
+                } else {
+                  fetchRecords();
+                }
+              }}
+            >
               🔍 Search
             </Button>
 
-            <Button className="secondary" onClick={() => {
-              if (activeTab === 'rice-stock' || activeTab === 'rice-outturn-report') {
-                setDateFrom('');
-                setDateTo('');
-                setRiceStockProductType('');
-                setRiceStockLocationCode('');
-              } else {
+            <Button
+              className="secondary"
+              onClick={() => {
                 setDateFrom('');
                 setDateTo('');
                 setSearch('');
                 setSelectedMonth('');
+                setRiceStockProductType('');
+                setRiceStockLocationCode('');
                 setShowAllRecords(false);
-              }
-              fetchRecords();
-            }}>
+                if (activeTab === 'rice-stock' || activeTab === 'rice-outturn-report') {
+                  fetchRiceStock();
+                } else {
+                  fetchRecords();
+                }
+              }}
+            >
               🔄 Reset
             </Button>
 
-            <div style={{ flex: 1 }} />
-
-            {/* Export CSV removed as per user request */}
-
-            {/* Professional PDF Download Buttons - Hide All PDF and Day/Week PDF for rice-outturn-report */}
+            {/* Professional PDF Download Buttons */}
             {activeTab !== 'rice-outturn-report' && (
               <>
                 <PDFButton
@@ -2496,17 +2555,19 @@ const Records: React.FC = () => {
                 </PDFButton>
 
                 {/* Date-wise PDF Export */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1rem', borderLeft: '2px solid #e5e7eb', paddingLeft: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginLeft: '0.5rem', borderLeft: '1.5px solid #e5e7eb', paddingLeft: '0.5rem' }}>
                   <input
                     type="date"
                     value={singleDatePdf}
                     onChange={(e) => setSingleDatePdf(e.target.value)}
                     style={{
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
+                      height: '32px',
+                      padding: '0.2rem 0.4rem',
+                      border: '1.5px solid #d1d5db',
                       borderRadius: '6px',
-                      fontSize: '0.85rem',
-                      width: '140px'
+                      fontSize: '0.8rem',
+                      width: '130px',
+                      boxSizing: 'border-box'
                     }}
                     title="Select a specific date for PDF export"
                   />
@@ -2820,6 +2881,7 @@ const Records: React.FC = () => {
                     <th className="hide-mobile">From</th>
                     <th className="hide-mobile">To</th>
                     <th className="hide-mobile">Lorry Number</th>
+                    <th className="hide-mobile">Remarks</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -2987,6 +3049,20 @@ const Records: React.FC = () => {
                           </td>
                           <td className="hide-mobile">{item.to || item.locationCode || '-'}</td>
                           <td className="hide-mobile" style={{ textTransform: 'uppercase' }}>{item.movementType === 'palti' ? (item.lorryNumber || '-') : (item.lorryNumber || item.billNumber || '-')}</td>
+                          <td className="hide-mobile" style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.remarks || ''}>
+                            {item.remarks ? (
+                              <span
+                                onClick={() => setViewingRemarks({
+                                  title: `${(item.movementType || 'MOVEMENT').toUpperCase()} - ${item.variety || item.productType || 'Rice'}`,
+                                  text: item.remarks,
+                                  date: item.date
+                                })}
+                                style={{ cursor: 'pointer', color: '#2563eb', fontWeight: '500', textDecoration: 'underline' }}
+                              >
+                                {item.remarks}
+                              </span>
+                            ) : '-'}
+                          </td>
                           <td>
                             <div style={{
                               padding: '4px 8px',
@@ -3130,7 +3206,7 @@ const Records: React.FC = () => {
                         {/* Inline Delete Confirmation underneath this row */}
                         {isDeletingThisRow && deleteConfirmation.item && (
                           <tr key={`inline-delete-${item.id}`} style={{ backgroundColor: '#fff1f2' }}>
-                            <td colSpan={15} style={{ padding: '0', borderBottom: '3px solid #ef4444', borderTop: 'none' }}>
+                            <td colSpan={16} style={{ padding: '0', borderBottom: '3px solid #ef4444', borderTop: 'none' }}>
                               <div style={{
                                 backgroundColor: '#ffffff',
                                 border: '2px solid #ef4444',
@@ -3220,7 +3296,7 @@ const Records: React.FC = () => {
                         {/* Solution 2: Inline Row Edit expanded underneath this row */}
                         {isEditingThisRow && editingRiceMovement && (
                           <tr key={`inline-edit-${item.id}`} style={{ backgroundColor: '#f8fafc' }}>
-                            <td colSpan={15} style={{ padding: '0', borderBottom: '3px solid #3b82f6', borderTop: 'none' }}>
+                            <td colSpan={16} style={{ padding: '0', borderBottom: '3px solid #3b82f6', borderTop: 'none' }}>
                               <div style={{
                                 backgroundColor: '#ffffff',
                                 border: '2px solid #3b82f6',
@@ -3423,6 +3499,17 @@ const Records: React.FC = () => {
                                       </div>
                                     </>
                                   )}
+
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Remarks (Optional)</label>
+                                    <input
+                                      type="text"
+                                      value={editingRiceMovement.remarks || ''}
+                                      onChange={(e) => setEditingRiceMovement({ ...editingRiceMovement, remarks: e.target.value })}
+                                      placeholder="Remarks"
+                                      style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem' }}
+                                    />
+                                  </div>
                                 </div>
 
                                 {/* Palti Specific Configuration */}
@@ -4142,7 +4229,8 @@ const Records: React.FC = () => {
                   targetPackaging: (item.targetPackaging?.brandName || item.target_packaging_brand) ? {
                     brandName: item.targetPackaging?.brandName || item.target_packaging_brand,
                     allottedKg: item.targetPackaging?.allottedKg || item.target_packaging_kg || item.targetPackagingKg || 26
-                  } : null
+                  } : null,
+                  remarks: item.remarks || null
                 });
               });
 
@@ -4696,9 +4784,18 @@ const Records: React.FC = () => {
                 }
               }
 
-              // Apply month filter (YYYY-MM format)
-              if (selectedMonth && !itemDate.startsWith(selectedMonth)) {
-                return false;
+              // Apply month filter (YYYY-MM format) with smart current-month capping
+              if (selectedMonth) {
+                if (!itemDate.startsWith(selectedMonth)) return false;
+                const bDate = getBusinessDate();
+                const currentYearMonth = `${new Date(bDate).getFullYear()}-${String(new Date(bDate).getMonth() + 1).padStart(2, '0')}`;
+                if (selectedMonth === currentYearMonth && itemDate > bDate) return false;
+              }
+
+              // If "Today Only" is active without explicit date/month filters, show today only
+              if (!showAllRecords && !dateFrom && !dateTo && !selectedMonth) {
+                const bDate = getBusinessDate();
+                if (itemDate !== bDate) return false;
               }
 
               console.log(`🔍 DEBUG - Date ${dayData.date}: hasData=${hasData}, passed filters=true`);
@@ -5042,7 +5139,8 @@ const Records: React.FC = () => {
                                 sourceVariety: palti.variety || palti.sourceVariety || 'Unknown',
                                 sourceLocation: palti.fromLocation || palti.locationCode || 'Unknown',
                                 sourcePackaging: palti.sourcePackaging?.brandName || palti.sourcePackagingBrand || palti.source_packaging_brand || 'Unknown',
-                                sourceBagSizeKg: palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26
+                                sourceBagSizeKg: palti.sourcePackaging?.allottedKg || palti.source_packaging_kg || palti.sourcePackagingKg || 26,
+                                remarks: palti.remarks || null
                                 });
                               });
                               const hasData = (
@@ -5365,8 +5463,39 @@ return (
                                                                 <div style={{ textAlign: 'center', color: '#9a3412' }}>
                                                                   {split.bags}/{split.targetBagSizeKg}kg
                                                                 </div>
-                                                                <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                                  <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                                <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                                  </div>
+                                                                  {split.remarks && (
+                                                                    <button
+                                                                      type="button"
+                                                                      onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setViewingRemarks({
+                                                                          title: `PALTI - ${split.variety || 'Rice'}`,
+                                                                          text: split.remarks,
+                                                                          date: dayData.date
+                                                                        });
+                                                                      }}
+                                                                      style={{
+                                                                        background: '#eff6ff',
+                                                                        color: '#2563eb',
+                                                                        border: '1px solid #bfdbfe',
+                                                                        borderRadius: '4px',
+                                                                        padding: '1px 5px',
+                                                                        fontSize: '7pt',
+                                                                        fontWeight: '600',
+                                                                        cursor: 'pointer',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '2px'
+                                                                      }}
+                                                                      title="Click to view remarks"
+                                                                    >
+                                                                      💬 Remarks
+                                                                    </button>
+                                                                  )}
                                                                 </div>
                                                                 <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
                                                                 <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
@@ -5497,6 +5626,36 @@ return (
                                                           <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(prod.outturn.code)}>→ {prod.outturn.code}</span>
                                                         )}
                                                       </div>
+                                                      {prod.remarks && (
+                                                        <button
+                                                          type="button"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setViewingRemarks({
+                                                              title: `${(prod.movementType || 'MOVEMENT').toUpperCase()} - ${prod.variety || prod.product || 'Rice'}`,
+                                                              text: prod.remarks,
+                                                              date: dayData.date
+                                                            });
+                                                          }}
+                                                          style={{
+                                                            background: '#eff6ff',
+                                                            color: '#2563eb',
+                                                            border: '1px solid #bfdbfe',
+                                                            borderRadius: '4px',
+                                                            padding: '1px 5px',
+                                                            fontSize: '7pt',
+                                                            fontWeight: '600',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '2px',
+                                                            marginTop: '2px'
+                                                          }}
+                                                          title="Click to view remarks"
+                                                        >
+                                                          💬 Remarks
+                                                        </button>
+                                                      )}
                                                       {hasSplits && totalShortage > 0 && (
                                                         <div style={{
                                                           background: '#fee2e2',
@@ -5557,8 +5716,39 @@ return (
                                                           <div style={{ textAlign: 'center', color: '#9a3412' }}>
                                                             {split.bags}/{split.targetBagSizeKg}kg
                                                           </div>
-                                                          <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                            <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                              <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                            </div>
+                                                            {split.remarks && (
+                                                              <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setViewingRemarks({
+                                                                    title: `PALTI - ${split.variety || 'Rice'}`,
+                                                                    text: split.remarks,
+                                                                    date: dayData.date
+                                                                  });
+                                                                }}
+                                                                style={{
+                                                                  background: '#eff6ff',
+                                                                  color: '#2563eb',
+                                                                  border: '1px solid #bfdbfe',
+                                                                  borderRadius: '4px',
+                                                                  padding: '1px 5px',
+                                                                  fontSize: '7pt',
+                                                                  fontWeight: '600',
+                                                                  cursor: 'pointer',
+                                                                  display: 'inline-flex',
+                                                                  alignItems: 'center',
+                                                                  gap: '2px'
+                                                                }}
+                                                                title="Click to view remarks"
+                                                              >
+                                                                💬 Remarks
+                                                              </button>
+                                                            )}
                                                           </div>
                                                           <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
                                                           <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
@@ -5670,8 +5860,39 @@ return (
                                                         <div style={{ textAlign: 'center', color: '#9a3412' }}>
                                                           {split.bags}/{split.targetBagSizeKg}kg
                                                         </div>
-                                                        <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                          <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                          </div>
+                                                          {split.remarks && (
+                                                            <button
+                                                              type="button"
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setViewingRemarks({
+                                                                  title: `PALTI - ${split.variety || 'Rice'}`,
+                                                                  text: split.remarks,
+                                                                  date: dayData.date
+                                                                });
+                                                              }}
+                                                              style={{
+                                                                background: '#eff6ff',
+                                                                color: '#2563eb',
+                                                                border: '1px solid #bfdbfe',
+                                                                borderRadius: '4px',
+                                                                padding: '1px 5px',
+                                                                fontSize: '7pt',
+                                                                fontWeight: '600',
+                                                                cursor: 'pointer',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '2px'
+                                                              }}
+                                                              title="Click to view remarks"
+                                                            >
+                                                              💬 Remarks
+                                                            </button>
+                                                          )}
                                                         </div>
                                                         <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
                                                         <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
@@ -8000,11 +8221,22 @@ return (
                     const [year, monthNum] = selectedMonth.split('-');
                     const monthStart = `${year}-${monthNum.padStart(2, '0')}-01`;
                     const lastDay = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
-                    const monthEnd = `${year}-${monthNum.padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
+                    let monthEnd = `${year}-${monthNum.padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
+
+                    // SMART CAP: If current active month, stop at today (no future days)
+                    const bDate = getBusinessDate();
+                    const currentYearMonth = `${new Date(bDate).getFullYear()}-${String(new Date(bDate).getMonth() + 1).padStart(2, '0')}`;
+                    if (selectedMonth === currentYearMonth) {
+                      monthEnd = bDate < monthEnd ? bDate : monthEnd;
+                    }
 
                     // Take the most restrictive bounds (Intersection)
                     rangeStart = rangeStart > monthStart ? rangeStart : monthStart;
                     rangeEnd = rangeEnd < monthEnd ? rangeEnd : monthEnd;
+                  } else if (!dateTo) {
+                    // If only dateFrom is provided without dateTo, default rangeEnd to today
+                    const bDate = getBusinessDate();
+                    rangeEnd = rangeEnd < bDate ? rangeEnd : bDate;
                   }
 
                   startDateStr = rangeStart;
@@ -10859,6 +11091,96 @@ return (
         initialDate={paltiDate}
         onDateChange={setPaltiDate}
       />
+
+      {/* Remarks View Modal / Popover */}
+      {viewingRemarks && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+          onClick={() => setViewingRemarks(null)}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              maxWidth: '450px',
+              width: '100%',
+              padding: '22px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              border: '1px solid #e2e8f0'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>💬</span> Remarks
+              </h3>
+              <button
+                onClick={() => setViewingRemarks(null)}
+                style={{
+                  background: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  color: '#64748b'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            {viewingRemarks.title && (
+              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginBottom: '12px' }}>
+                {viewingRemarks.title} {viewingRemarks.date && `• ${new Date(viewingRemarks.date).toLocaleDateString('en-GB')}`}
+              </div>
+            )}
+            <div style={{
+              backgroundColor: '#f8fafc',
+              padding: '14px',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              fontSize: '0.95rem',
+              color: '#334155',
+              lineHeight: 1.6,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              minHeight: '60px'
+            }}>
+              {viewingRemarks.text}
+            </div>
+            <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setViewingRemarks(null)}
+                style={{
+                  padding: '7px 18px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Container>
   );
 };
