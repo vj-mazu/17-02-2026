@@ -29,8 +29,8 @@ const ModalOverlay = styled.div`
 
 const ModalContent = styled.div<{ $x: number; $y: number }>`
   background: white;
-  width: 95%;
-  max-width: 900px;
+  width: 96%;
+  max-width: 1080px;
   border-radius: 12px;
   overflow: visible;
   box-shadow: 0 10px 50px rgba(0,0,0,0.3);
@@ -101,36 +101,28 @@ const SectionTitle = styled.h3`
 
 const FormGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
 `;
 
 const FormGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 `;
 
 const Label = styled.label`
+  font-size: 0.85rem;
   font-weight: 600;
   color: #374151;
-  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
 `;
 
 const Input = styled.input`
-  width: 100%;
-  box-sizing: border-box;
   padding: 0.75rem 1rem;
   border: 2px solid #e5e7eb;
   border-radius: 10px;
   font-size: 1rem;
   transition: all 0.2s;
-  
-  text-transform: uppercase;
-  
-  &::placeholder {
-    text-transform: none;
-  }
   
   &:focus {
     outline: none;
@@ -140,18 +132,18 @@ const Input = styled.input`
 `;
 
 const Select = styled.select`
-  width: 100%;
-  box-sizing: border-box;
   padding: 0.75rem 1rem;
   border: 2px solid #e5e7eb;
   border-radius: 10px;
   font-size: 1rem;
   background: white;
   cursor: pointer;
+  transition: all 0.2s;
   
   &:focus {
     outline: none;
     border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
   }
 `;
 
@@ -169,11 +161,11 @@ const LineItem = styled.div`
   padding: 1rem;
   margin-bottom: 0.75rem;
   display: grid;
-  grid-template-columns: 50px 1fr 1fr 1fr 100px 60px 40px;
+  grid-template-columns: 36px 1.4fr 1fr 1fr 1.2fr 90px 70px 36px;
   gap: 0.75rem;
   align-items: end;
   
-  @media (max-width: 900px) {
+  @media (max-width: 1024px) {
     grid-template-columns: 1fr 1fr;
   }
 `;
@@ -307,6 +299,8 @@ const PRODUCT_TYPES = [
 
 interface SaleLineItem {
   id: string;
+  outturnId: number | null;
+  variety: string;
   locationCode: string;
   packagingId: string;
   productType: string;
@@ -324,15 +318,13 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
   // Common fields
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [billNumber, setBillNumber] = useState('');
-  const [outturnId, setOutturnId] = useState<number | null>(null);
-  const [selectedVarietyData, setSelectedVarietyData] = useState<any>(null);
   const [lorryNumber, setLorryNumber] = useState('');
   const [toLocation, setToLocation] = useState('');
   const [remarks, setRemarks] = useState('');
 
   // Line items
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([
-    { id: '1', locationCode: '', packagingId: '', productType: 'Rice', bags: '', bagSizeKg: '26' }
+    { id: '1', outturnId: null, variety: '', locationCode: '', packagingId: '', productType: 'Rice', bags: '', bagSizeKg: '26' }
   ]);
 
   const [packagings, setPackagings] = useState<any[]>([]);
@@ -399,16 +391,26 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
     }
   };
 
-  // Handle variety selection from RiceStockVarietyDropdown
-  const handleVarietyChange = (selectedOutturnId: number | null, varietyData: any) => {
-    setOutturnId(selectedOutturnId);
-    setSelectedVarietyData(varietyData);
+  // Handle variety selection for an individual line item
+  const handleLineItemVarietyChange = (id: string, selectedOutturnId: number | null, varietyData: any) => {
+    setLineItems(prev => prev.map(item => {
+      if (item.id === id) {
+        return {
+          ...item,
+          outturnId: selectedOutturnId,
+          variety: varietyData?.standardized_variety || ''
+        };
+      }
+      return item;
+    }));
   };
 
   const addLineItem = () => {
     const newId = String(Date.now());
     setLineItems([...lineItems, {
       id: newId,
+      outturnId: null,
+      variety: '',
       locationCode: '',
       packagingId: '',
       productType: 'Rice',
@@ -423,7 +425,7 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
     }
   };
 
-  const updateLineItem = (id: string, field: keyof SaleLineItem, value: string) => {
+  const updateLineItem = (id: string, field: keyof SaleLineItem, value: any) => {
     setLineItems(lineItems.map(item => {
       if (item.id === id) {
         const updated = { ...item, [field]: value };
@@ -460,18 +462,27 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!date || !billNumber || (!outturnId && !selectedVarietyData)) {
-      toast.error('Please fill in Date, Bill Number and Variety');
+    if (!date || !billNumber) {
+      toast.error('Please fill in Date and Bill Number');
       return;
     }
 
     // Validate line items
+    const invalidItems = lineItems.filter(item =>
+      !item.locationCode || !item.packagingId || !(parseInt(item.bags) > 0) || !item.variety
+    );
+
+    if (invalidItems.length > 0 && lineItems.length === invalidItems.length) {
+      toast.error('Please complete all required fields (Variety, Location, Packaging, Bags) for your sale items');
+      return;
+    }
+
     const validItems = lineItems.filter(item =>
-      item.locationCode && item.packagingId && parseInt(item.bags) > 0
+      item.locationCode && item.packagingId && parseInt(item.bags) > 0 && item.variety
     );
 
     if (validItems.length === 0) {
-      toast.error('Please add at least one valid sale item');
+      toast.error('Please add at least one valid sale item with Variety, Location, Packaging, and Bags');
       return;
     }
 
@@ -489,8 +500,8 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
           date,
           movementType: 'sale',
           productType: item.productType,
-          outturnId: outturnId,
-          variety: selectedVarietyData?.standardized_variety || 'UNKNOWN',
+          outturnId: item.outturnId,
+          variety: item.variety,
           bags,
           bagSizeKg: bagSize,
           quantityQuintals: qtls,
@@ -512,16 +523,14 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
       // Reset form
       setDate(new Date().toISOString().split('T')[0]);
       setBillNumber('');
-      setOutturnId(null);
-      setSelectedVarietyData(null);
       setLorryNumber('');
       setToLocation('');
       setRemarks('');
-      setLineItems([{ id: '1', locationCode: '', packagingId: '', productType: 'Rice', bags: '', bagSizeKg: '26' }]);
+      setLineItems([{ id: '1', outturnId: null, variety: '', locationCode: '', packagingId: '', productType: 'Rice', bags: '', bagSizeKg: '26' }]);
 
     } catch (error: any) {
       console.error('Error adding sale:', error);
-      toast.error(error.response?.data?.error || 'Failed to add sale');
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to add sale');
     } finally {
       setSaving(false);
     }
@@ -563,18 +572,6 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
                   />
                 </FormGroup>
                 <FormGroup>
-                  <RiceStockVarietyDropdown
-                    value={outturnId}
-                    varietyName={selectedVarietyData?.standardized_variety}
-                    onChange={handleVarietyChange}
-                    label="Rice Variety *"
-                    placeholder="Select variety..."
-                    required={true}
-                    showVarietyInfo={true}
-                    processingTypeFilter="all"
-                  />
-                </FormGroup>
-                <FormGroup>
                   <Label>Lorry Number</Label>
                   <Input
                     type="text"
@@ -611,6 +608,19 @@ const SimpleSaleModal: React.FC<SimpleSaleModalProps> = ({ isOpen, onClose, onSu
                 {lineItems.map((item, index) => (
                   <LineItem key={item.id}>
                     <LineNumber>{index + 1}</LineNumber>
+
+                    <FormGroup>
+                      <RiceStockVarietyDropdown
+                        value={item.outturnId}
+                        varietyName={item.variety}
+                        onChange={(selectedId, vData) => handleLineItemVarietyChange(item.id, selectedId, vData)}
+                        label="Rice Variety"
+                        placeholder="Select variety..."
+                        required={true}
+                        showVarietyInfo={false}
+                        processingTypeFilter="all"
+                      />
+                    </FormGroup>
 
                     <FormGroup>
                       <Label>Location *</Label>

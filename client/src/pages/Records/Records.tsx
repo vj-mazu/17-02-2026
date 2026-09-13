@@ -4234,6 +4234,41 @@ const Records: React.FC = () => {
                 });
               });
 
+              // Ensure continuous date timeline up to today / selected range
+              const bDate = getBusinessDate();
+              const datesInData = Object.keys(dailyData);
+              const minDate = datesInData.length > 0 ? datesInData.sort()[0] : bDate;
+              let maxDate = bDate;
+              if (dateTo) {
+                const convertedTo = convertDateFormat(dateTo);
+                if (convertedTo > maxDate) maxDate = convertedTo;
+              }
+              if (datesInData.length > 0) {
+                const latestInData = datesInData.sort()[datesInData.length - 1];
+                if (latestInData > maxDate) maxDate = latestInData;
+              }
+
+              if (minDate && maxDate) {
+                const cur = new Date(minDate + 'T00:00:00');
+                const end = new Date(maxDate + 'T00:00:00');
+                while (cur <= end) {
+                  const y = cur.getFullYear();
+                  const m = String(cur.getMonth() + 1).padStart(2, '0');
+                  const d = String(cur.getDate()).padStart(2, '0');
+                  const dStr = `${y}-${m}-${d}`;
+                  if (!dailyData[dStr]) {
+                    dailyData[dStr] = {
+                      date: dStr,
+                      openingStock: [],
+                      productions: [],
+                      openingStockTotal: 0,
+                      closingStockTotal: 0
+                    };
+                  }
+                  cur.setDate(cur.getDate() + 1);
+                }
+              }
+
               // Get ALL unique dates from the data, sorted chronologically
               const sortedDates = Object.keys(dailyData).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
@@ -4753,11 +4788,8 @@ const Records: React.FC = () => {
             console.log('🔍 DEBUG - Processed data:', processedData);
             console.log('🔍 DEBUG - Dates in processed data:', processedData.map((d: any) => d.date));
 
-            // Filter data - show only dates that have data AND match filters
+            // Filter data - show dates matching filters (including 0-movement days with opening/closing stock)
             const filteredData = processedData.filter((dayData: any) => {
-              const hasData = dayData.productions && dayData.productions.length > 0;
-              if (!hasData) return false;
-
               const itemDate = dayData.date; // YYYY-MM-DD format
 
               // Apply dateFrom filter
@@ -4798,7 +4830,7 @@ const Records: React.FC = () => {
                 if (itemDate !== bDate) return false;
               }
 
-              console.log(`🔍 DEBUG - Date ${dayData.date}: hasData=${hasData}, passed filters=true`);
+              console.log(`🔍 DEBUG - Date ${dayData.date}: passed filters=true`);
               return true;
             });
 
