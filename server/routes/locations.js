@@ -431,26 +431,10 @@ router.get('/rice-stock-locations', auth, async (req, res) => {
   try {
     const { includeInactive } = req.query;
 
-    // Self-healing: Ensure table exists in DB
+    // Self-healing: Ensure table and columns exist in DB (especially on Render/cloud)
     try {
-      await sequelize.query(`
-        CREATE TABLE IF NOT EXISTS rice_stock_locations (
-          id SERIAL PRIMARY KEY,
-          code VARCHAR(20) NOT NULL UNIQUE,
-          name VARCHAR(100),
-          is_active BOOLEAN DEFAULT true,
-          is_direct_load BOOLEAN DEFAULT false,
-          created_by INTEGER,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      await sequelize.query(`
-        ALTER TABLE rice_stock_locations ADD COLUMN IF NOT EXISTS is_direct_load BOOLEAN DEFAULT false;
-      `);
-      await sequelize.query(`
-        ALTER TABLE rice_stock_locations ALTER COLUMN created_by DROP NOT NULL;
-      `);
+      const migration84 = require('../migrations/84_fix_rice_stock_locations_columns');
+      await migration84.up();
     } catch (tblErr) {
       console.warn('Rice stock locations table check:', tblErr.message);
     }

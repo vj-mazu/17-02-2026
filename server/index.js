@@ -1412,6 +1412,15 @@ const startServer = async () => {
         console.log('⚠️ Auto-migration Food hamali rate warning:', error.message);
       }
 
+      // Migration 84: Standardize rice_stock_locations columns and DIRECT_LOAD
+      try {
+        const migration84 = require('./migrations/84_fix_rice_stock_locations_columns');
+        await migration84.up();
+        console.log('✅ Migration 84: rice_stock_locations columns standardized');
+      } catch (error) {
+        console.log('⚠️ Migration 84 warning:', error.message);
+      }
+
       console.log('✅ Migrations completed.');
 
       // DIAGNOSTIC CHECK FOR ARRIVALS COLUMNS
