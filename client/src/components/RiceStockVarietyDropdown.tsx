@@ -15,29 +15,34 @@ import axios from 'axios';
 const Container = styled.div`
   position: relative;
   width: 100%;
+  min-width: 0;
 `;
 
 const Label = styled.label`
   font-weight: 600;
   color: #374151;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   display: block;
   margin-bottom: 0.5rem;
+  white-space: nowrap;
 `;
 
 const Select = styled.select`
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
   background: white;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   cursor: pointer;
+  transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
   }
 
   &:disabled {
@@ -206,29 +211,6 @@ const RiceStockVarietyDropdown: React.FC<RiceStockVarietyDropdownProps> = ({
 
       const fetchedVarieties = response.data.varieties || [];
       setVarieties(fetchedVarieties);
-
-      // If there's a selected value or name, find the corresponding variety data
-      if (value && value > 0 && fetchedVarieties.length > 0) {
-        const selected = fetchedVarieties.find(v => v.id === value);
-        setSelectedVariety(selected || null);
-      } else if (varietyName) {
-        const selectedOutturn = fetchedVarieties.find(v => v.standardized_variety === varietyName);
-        if (selectedOutturn) {
-          setSelectedVariety(selectedOutturn);
-        } else if (fetchedRiceVarieties.length > 0) {
-          const selectedGeneric = fetchedRiceVarieties.find(v => v.name === varietyName);
-          if (selectedGeneric) {
-            setSelectedVariety({
-              id: null as any,
-              code: selectedGeneric.code,
-              standardized_variety: selectedGeneric.name,
-              allotted_variety: selectedGeneric.name,
-              processing_type: selectedGeneric.name.toUpperCase().includes('STEAM') ? 'Steam' : 'Raw'
-            });
-          }
-        }
-      }
-
     } catch (error) {
       console.error('❌ RiceStockVarietyDropdown: Error fetching rice stock varieties:', error);
       
@@ -252,7 +234,31 @@ const RiceStockVarietyDropdown: React.FC<RiceStockVarietyDropdownProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [processingTypeFilter, showVarietyInfo, value]);
+  }, [processingTypeFilter, showVarietyInfo]);
+
+  // Sync selected variety when value or varietyName changes without re-fetching
+  useEffect(() => {
+    if (value && value > 0 && varieties.length > 0) {
+      const selected = varieties.find(v => v.id === value);
+      setSelectedVariety(selected || null);
+    } else if (varietyName) {
+      const selectedOutturn = varieties.find(v => v.standardized_variety === varietyName);
+      if (selectedOutturn) {
+        setSelectedVariety(selectedOutturn);
+      } else if (genericVarieties.length > 0) {
+        const selectedGeneric = genericVarieties.find(v => v.name === varietyName);
+        if (selectedGeneric) {
+          setSelectedVariety({
+            id: null as any,
+            code: selectedGeneric.code,
+            standardized_variety: selectedGeneric.name,
+            allotted_variety: selectedGeneric.name,
+            processing_type: selectedGeneric.name.toUpperCase().includes('STEAM') ? 'Steam' : 'Raw'
+          });
+        }
+      }
+    }
+  }, [value, varietyName, varieties, genericVarieties]);
 
   // Filter varieties based on search and filter criteria
   const filterVarieties = useCallback(() => {

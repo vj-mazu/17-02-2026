@@ -30,7 +30,7 @@ const ModalOverlay = styled.div`
 const ModalContent = styled.div<{ $x: number; $y: number }>`
   background: white;
   width: 96%;
-  max-width: 1080px;
+  max-width: 1200px;
   border-radius: 12px;
   overflow: visible;
   box-shadow: 0 10px 50px rgba(0,0,0,0.3);
@@ -108,6 +108,8 @@ const FormGrid = styled.div`
 const FormGroup = styled.div`
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  width: 100%;
 `;
 
 const Label = styled.label`
@@ -161,7 +163,7 @@ const LineItem = styled.div`
   padding: 1rem;
   margin-bottom: 0.75rem;
   display: grid;
-  grid-template-columns: 36px 1.4fr 1fr 1fr 1.2fr 90px 70px 36px;
+  grid-template-columns: 32px minmax(180px, 2fr) minmax(120px, 1.2fr) minmax(100px, 1fr) minmax(140px, 1.3fr) 85px 75px 36px;
   gap: 0.75rem;
   align-items: end;
   

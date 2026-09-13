@@ -2492,11 +2492,20 @@ const Records: React.FC = () => {
                 <PDFButton
                   $variant="filtered"
                   onClick={() => {
-                    const allRecords = Object.values(records).flat();
-                    if (allRecords.length === 0) {
-                      toast.error('No records to export');
-                      return;
+                    if (activeTab === 'rice-stock') {
+                      if (!riceStockData || riceStockData.length === 0) {
+                        toast.error('No rice stock records to export');
+                        return;
+                      }
+                    } else {
+                      const allRecords = Object.values(records).flat();
+                      if (allRecords.length === 0) {
+                        toast.error('No records to export');
+                        return;
+                      }
                     }
+
+                    const allRecords = Object.values(records).flat();
 
                     // Determine filter type based on groupBy and current selection
                     const filterType = groupBy === 'week' ? 'week' : (selectedMonth ? 'month' : 'day');
