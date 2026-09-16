@@ -644,6 +644,22 @@ function renderDateHeader(doc: jsPDF, dateStr: string, yPos: number, isContinuat
 }
 
 /**
+ * Helper to ensure text strictly fits on a single line and never wraps or overflows
+ */
+function fitSingleLine(doc: jsPDF, text: string, maxWidth: number): string {
+    if (!text) return '';
+    let clean = String(text).replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (clean.toUpperCase() === 'DIRECT_LOAD') clean = 'DIRECT LOAD';
+    if (doc.getTextWidth(clean) <= maxWidth) return clean;
+
+    let truncated = clean;
+    while (truncated.length > 3 && doc.getTextWidth(truncated + '…') > maxWidth) {
+        truncated = truncated.slice(0, -1);
+    }
+    return truncated + '…';
+}
+
+/**
  * Render Column Headers
  */
 function renderColumnHeaders(doc: jsPDF, x: number, y: number, width: number): number {
@@ -655,12 +671,12 @@ function renderColumnHeaders(doc: jsPDF, x: number, y: number, width: number): n
     doc.setTextColor(95, 99, 104);
 
     const cols = [
-        { text: 'Qtls', xOff: 2, align: 'left' },
-        { text: 'Bags', xOff: width * 0.16, align: 'left' },
-        { text: 'Product', xOff: width * 0.33, align: 'left' },
-        { text: 'Variety', xOff: width * 0.52, align: 'left' },
-        { text: 'Packaging', xOff: width * 0.74, align: 'left' },
-        { text: 'L', xOff: width * 0.92, align: 'left' }
+        { text: 'Qtls', xOff: 1.5, maxW: width * 0.12 },
+        { text: 'Bags', xOff: width * 0.13, maxW: width * 0.12 },
+        { text: 'Product', xOff: width * 0.25, maxW: width * 0.16 },
+        { text: 'Variety', xOff: width * 0.41, maxW: width * 0.23 },
+        { text: 'Packaging', xOff: width * 0.64, maxW: width * 0.18 },
+        { text: 'Location', xOff: width * 0.82, maxW: width * 0.17 }
     ];
 
     cols.forEach(c => {
@@ -711,7 +727,7 @@ function renderProductCard(
         doc.setFontSize(CONTENT_SIZE);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(55, 65, 81);
-        doc.text('📋 Variety-wise Opening Stock', x + 2, currentY + 2.5);
+        doc.text('Variety-wise Opening Stock', x + 2, currentY + 2.5);
         currentY += 4;
 
         bifItems.forEach((item: any) => {
@@ -808,7 +824,7 @@ function renderProductCard(
 }
 
 /**
- * Render single data row
+ * Render single data row with single-line fit protection
  */
 function renderDataRow(
     doc: jsPDF,
@@ -826,16 +842,17 @@ function renderDataRow(
     doc.setTextColor(0, 0, 0);
 
     const cols = [
-        { text: String(row.qtls || '0'), xOff: 2, maxW: width * 0.13 },
-        { text: String(row.bags || '0'), xOff: width * 0.16, maxW: width * 0.15 },
-        { text: String(row.product || ''), xOff: width * 0.33, maxW: width * 0.18 },
-        { text: String(row.variety || ''), xOff: width * 0.52, maxW: width * 0.21 },
-        { text: String(row.packaging || ''), xOff: width * 0.74, maxW: width * 0.17 },
-        { text: String(row.location || ''), xOff: width * 0.92, maxW: width * 0.08 }
+        { text: String(row.qtls || '0'), xOff: 1.5, maxW: width * 0.12 },
+        { text: String(row.bags || '0'), xOff: width * 0.13, maxW: width * 0.12 },
+        { text: String(row.product || ''), xOff: width * 0.25, maxW: width * 0.16 },
+        { text: String(row.variety || ''), xOff: width * 0.41, maxW: width * 0.23 },
+        { text: String(row.packaging || ''), xOff: width * 0.64, maxW: width * 0.18 },
+        { text: String(row.location || ''), xOff: width * 0.82, maxW: width * 0.17 }
     ];
 
     cols.forEach(c => {
-        doc.text(c.text, x + c.xOff, y + 2.7, { maxWidth: c.maxW });
+        const singleLine = fitSingleLine(doc, c.text, c.maxW);
+        doc.text(singleLine, x + c.xOff, y + 2.7);
     });
 
     return y + 4;
@@ -878,7 +895,7 @@ function renderPaltiRow(
     currentY = renderDataRow(doc, {
         qtls: `+${targetQtls.toFixed(2)}`,
         bags: `${targetBags}/${targetPkgKg}k`,
-        product: '↳ Target',
+        product: 'Target',
         variety: m.variety || '-',
         packaging: targetPkg,
         location: m.toLocation || m.location || 'A1'
@@ -889,7 +906,7 @@ function renderPaltiRow(
         currentY = renderDataRow(doc, {
             qtls: `S: ${(shortageKg / 100).toFixed(2)}`,
             bags: '-',
-            product: '⚠️ Shortage',
+            product: 'Shortage',
             variety: '-',
             packaging: '-',
             location: `${shortageKg}kg`
