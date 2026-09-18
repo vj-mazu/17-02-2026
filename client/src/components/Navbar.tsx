@@ -393,62 +393,6 @@ const Navbar: React.FC = () => {
 
           <NavLink to="/hamali" $active={isActive('/hamali')}>Hamali</NavLink>
 
-          {/* Workflow Dropdown */}
-          {user && (
-            <DropdownWrapper ref={workflowRef}>
-              <DropdownTrigger
-                $active={isWorkflowActive}
-                onClick={() => {
-                  setWorkflowDropdownOpen(!workflowDropdownOpen);
-                  setLedgersDropdownOpen(false);
-                }}
-              >
-                Workflow ▾
-                {pendingCount > 0 && (user.role === 'manager' || user.role === 'admin') && (
-                  <NotificationBadge>{pendingCount}</NotificationBadge>
-                )}
-              </DropdownTrigger>
-              {workflowDropdownOpen && (
-                <DropdownMenu>
-                  <DropdownLink to="/sample-entry" $active={isActive('/sample-entry')}>Sample Entry</DropdownLink>
-                  {(user.role === 'manager' || user.role === 'admin') && (
-                    <>
-                      <DropdownLink to="/sample-workflow" $active={isActive('/sample-workflow')}>Workflow Board</DropdownLink>
-                      <DropdownLink to="/pending-approvals" $active={isActive('/pending-approvals')}>
-                        Pending Approvals {pendingCount > 0 ? `(${pendingCount})` : ''}
-                      </DropdownLink>
-                    </>
-                  )}
-                  <DropdownDivider />
-                  {(user.role === 'inventory_staff' || user.role === 'admin') && (
-                    <DropdownLink to="/inventory-entry" $active={isActive('/inventory-entry')}>Inventory Entry</DropdownLink>
-                  )}
-                  {user.role === 'physical_supervisor' && (
-                    <DropdownLink to="/physical-inspection" $active={isActive('/physical-inspection')}>Lots Allotted</DropdownLink>
-                  )}
-                  {user.role === 'admin' && (
-                    <DropdownLink to="/owner-financial" $active={isActive('/owner-financial')}>Owner Financial</DropdownLink>
-                  )}
-                  {(user.role === 'manager' || user.role === 'admin') && (
-                    <>
-                      {user.role === 'manager' && (
-                        <DropdownLink to="/allotting-supervisors" $active={isActive('/allotting-supervisors')}>Allotting Supervisors</DropdownLink>
-                      )}
-                      <DropdownLink to="/manager-financial" $active={isActive('/manager-financial')}>Manager Financial</DropdownLink>
-                      <DropdownLink to="/final-review" $active={isActive('/final-review')}>Final Review</DropdownLink>
-                    </>
-                  )}
-                  {user.role === 'admin' && (
-                    <>
-                      <DropdownDivider />
-                      <DropdownLink to="/owner-sample-reports" $active={isActive('/owner-sample-reports')}>Owner Reports</DropdownLink>
-                    </>
-                  )}
-                </DropdownMenu>
-              )}
-            </DropdownWrapper>
-          )}
-
           {/* Admin Tools */}
           {user && user.role === 'admin' && (
             <>

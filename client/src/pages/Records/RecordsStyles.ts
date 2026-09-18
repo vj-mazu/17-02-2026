@@ -70,6 +70,10 @@ export const FilterRow = styled.div`
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: flex-end;
+
+  @media (max-width: 768px) {
+    gap: 0.5rem;
+  }
 `;
 
 export const FormGroup = styled.div`
@@ -78,6 +82,16 @@ export const FormGroup = styled.div`
   gap: 0.2rem;
   flex: 1 1 130px;
   min-width: 110px;
+
+  @media (max-width: 768px) {
+    flex: 1 1 calc(50% - 0.5rem);
+    min-width: 130px;
+  }
+
+  @media (max-width: 480px) {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
 `;
 
 export const Label = styled.label`
@@ -100,9 +114,14 @@ export const Input = styled.input`
   border: 1.5px solid #d1d5db;
   border-radius: 6px;
   font-size: 0.82rem;
-  height: 32px;
+  height: 34px;
   box-sizing: border-box;
   width: 100%;
+
+  @media (max-width: 768px) {
+    height: 38px;
+    font-size: 16px !important;
+  }
 
   &:focus {
     outline: none;
@@ -116,11 +135,16 @@ export const Select = styled.select`
   border: 1.5px solid #d1d5db;
   border-radius: 6px;
   font-size: 0.82rem;
-  height: 32px;
+  height: 34px;
   box-sizing: border-box;
   background: white;
   cursor: pointer;
   width: 100%;
+
+  @media (max-width: 768px) {
+    height: 38px;
+    font-size: 16px !important;
+  }
 
   &:focus {
     outline: none;
@@ -131,7 +155,7 @@ export const Select = styled.select`
 
 export const Button = styled.button`
   padding: 0.35rem 0.75rem;
-  height: 32px;
+  height: 34px;
   border: none;
   border-radius: 6px;
   font-weight: 600;
@@ -144,6 +168,12 @@ export const Button = styled.button`
   gap: 0.35rem;
   white-space: nowrap;
   box-sizing: border-box;
+
+  @media (max-width: 768px) {
+    height: 38px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.85rem;
+  }
 
   &.primary {
     background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);

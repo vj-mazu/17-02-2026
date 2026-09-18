@@ -41,6 +41,11 @@ const FormCard = styled.div`
   padding: 2rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
   border: 2px solid #f3f4f6;
+
+  @media (max-width: 768px) {
+    padding: 1.25rem 1rem;
+    border-radius: 12px;
+  }
 `;
 
 const InfoPanel = styled.div`
@@ -171,10 +176,21 @@ const TopSection = styled.div`
   margin-bottom: 2rem;
   padding-bottom: 2rem;
   border-bottom: 2px solid #e5e7eb;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
 `;
 
 const FormSection = styled.div`
   margin-bottom: 2rem;
+
+  @media (max-width: 768px) {
+    margin-bottom: 1.25rem;
+  }
 `;
 
 const SectionTitle = styled.h3`
@@ -186,6 +202,12 @@ const SectionTitle = styled.h3`
   padding: 0.75rem 1rem;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+
+  @media (max-width: 768px) {
+    font-size: 0.9rem;
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 0.75rem;
+  }
 `;
 
 const FormRow = styled.div`
@@ -193,6 +215,12 @@ const FormRow = styled.div`
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
   margin-bottom: 1rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
 `;
 
 const TwoColumnRow = styled.div`
@@ -200,6 +228,12 @@ const TwoColumnRow = styled.div`
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   margin-bottom: 1.5rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
 `;
 
 const FormGroup = styled.div`
@@ -271,6 +305,13 @@ const ButtonGroup = styled.div`
   margin-top: 2rem;
   padding-top: 2rem;
   border-top: 2px solid #e5e7eb;
+
+  @media (max-width: 768px) {
+    flex-direction: column-reverse;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+  }
 `;
 
 const Button = styled.button`
@@ -281,6 +322,12 @@ const Button = styled.button`
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
+  min-height: 44px;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    padding: 0.75rem 1.5rem;
+  }
 
   &.primary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
