@@ -25,13 +25,23 @@ const Title = styled.h1`
 
 const TabContainer = styled.div`
   display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
   border-bottom: 2px solid #e5e7eb;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 0.25rem;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 `;
 
 const Tab = styled.button<{ $active: boolean }>`
-  padding: 1rem 2rem;
+  padding: 0.75rem 1.25rem;
   border: none;
   background: ${props => props.$active ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'transparent'};
   color: ${props => props.$active ? 'white' : '#6b7280'};
@@ -39,7 +49,13 @@ const Tab = styled.button<{ $active: boolean }>`
   cursor: pointer;
   border-radius: 8px 8px 0 0;
   transition: all 0.3s ease;
-  font-size: 1.1rem;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+  }
 
   &:hover {
     background: ${props => props.$active ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#f3f4f6'};
@@ -63,6 +79,11 @@ const FilterSection = styled.div`
   border-radius: 12px;
   margin-bottom: 2rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+
+  @media (max-width: 768px) {
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+  }
 `;
 
 const FilterRow = styled.div`
@@ -70,6 +91,11 @@ const FilterRow = styled.div`
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
   align-items: end;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
 `;
 
 const FormGroup = styled.div`
