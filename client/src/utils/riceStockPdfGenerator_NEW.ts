@@ -50,6 +50,7 @@ interface PDFOptions {
     subtitle?: string;
     dateRange?: string;
     filterType?: string;
+    targetDate?: string;
 }
 
 /**
@@ -391,11 +392,26 @@ export const generateRiceStockPDF = (
         format: 'a4'
     });
 
-    console.log(`📅 Processing ${processedData.length} date(s)`);
+    let datesToRender = processedData;
+    if (options.targetDate) {
+        const targetClean = options.targetDate.includes('T') ? options.targetDate.split('T')[0] : options.targetDate;
+        datesToRender = processedData.filter((d: any) => {
+            const dayClean = d.date ? (d.date.includes('T') ? d.date.split('T')[0] : d.date) : '';
+            return dayClean === targetClean;
+        });
+
+        if (datesToRender.length === 0) {
+            console.warn(`No computed stock data found for target date: ${options.targetDate}`);
+            alert(`No rice stock data found for date: ${options.targetDate}`);
+            return;
+        }
+    }
+
+    console.log(`📅 Processing ${datesToRender.length} date(s) to render`);
 
     let isVeryFirstPage = true;
 
-    processedData.forEach((dayData: any) => {
+    datesToRender.forEach((dayData: any) => {
         if (!isVeryFirstPage) {
             doc.addPage();
         }

@@ -2656,26 +2656,17 @@ const Records: React.FC = () => {
                             }, allRiceProductions, closedKunchinittus);
                           }
                         } else if (activeTab === 'rice-stock') {
-                          // Rice stock uses 'riceStockData' which has different date format
-                          console.log('🔍 Date filter: riceStockData sample:', riceStockData.slice(0, 2));
-
-                          const dateRiceData = riceStockData.filter((r: any) => {
-                            // Try multiple date formats
-                            const itemDate = r.date?.split('T')[0] || r.date;
-                            return itemDate === singleDatePdf;
-                          });
-
-                          console.log('🔍 Date filter: Found rice records:', dateRiceData.length, 'for date:', singleDatePdf);
-
-                          if (dateRiceData.length === 0) {
-                            toast.error(`No rice records for ${dateDisplay}. Check if data is loaded.`);
+                          if (!riceStockData || riceStockData.length === 0) {
+                            toast.error('No rice stock data available.');
                             return;
                           }
 
-                          generateRiceStockPDF(dateRiceData, {
+                          // Pass full riceStockData so running stock and yesterday's bifurcation can be computed accurately across historical days
+                          generateRiceStockPDF(riceStockData, {
                             title: `Rice Stock - ${dateDisplay}`,
                             dateRange: dateDisplay,
-                            filterType: 'day'
+                            filterType: 'day',
+                            targetDate: singleDatePdf
                           });
                         }
 
@@ -5215,7 +5206,7 @@ return (
                                     {/* Column Headers */}
                                     <div style={{
                                       display: 'grid',
-                                      gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                      gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                       gap: '8px',
                                       padding: '6px 12px',
                                       background: '#f1f3f4',
@@ -5228,7 +5219,7 @@ return (
                                       <div style={{ textAlign: 'center' }}>Product</div>
                                       <div style={{ textAlign: 'center' }}>Variety</div>
                                       <div style={{ textAlign: 'center' }}>Packaging</div>
-                                      <div style={{ textAlign: 'center' }}>L</div>
+                                      <div style={{ textAlign: 'center' }}>Location</div>
                                     </div>
 
                                     {/* Content */}
@@ -5425,7 +5416,7 @@ return (
                                                         {/* Main Opening Stock Entry - Highlighted Yellow if has Palti splits */}
                                                         <div style={{
                                                           display: 'grid',
-                                                          gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                          gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                           gap: '8px',
                                                           padding: '3px 0',
                                                           fontSize: '9pt',
@@ -5489,7 +5480,7 @@ return (
                                                             {splits.map((split: any, splitIdx: number) => (
                                                               <div key={`split-${splitIdx}`} style={{
                                                                 display: 'grid',
-                                                                gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                                gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                                 gap: '8px',
                                                                 padding: '4px 12px',
                                                                 fontSize: '8.5pt',
@@ -5548,7 +5539,7 @@ return (
                                                             {totalShortage > 0 && (
                                                               <div style={{
                                                                 display: 'grid',
-                                                                gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                                gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                                 gap: '8px',
                                                                 padding: '5px 12px',
                                                                 fontSize: '8.5pt',
@@ -5580,7 +5571,7 @@ return (
                                             {hasData && openingGroups[productType]?.length > 0 && (
                                               <div style={{
                                                 display: 'grid',
-                                                gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                 gap: '8px',
                                                 padding: '3px 0',
                                                 fontSize: '9pt',
@@ -5648,7 +5639,7 @@ return (
                                                   {/* Main Daily Movement Row - Highlighted Yellow if has Palti splits */}
                                                   <div style={{
                                                     display: 'grid',
-                                                    gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                    gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                     gap: '8px',
                                                     padding: '3px 0',
                                                     fontSize: '9pt',
@@ -5742,7 +5733,7 @@ return (
                                                       {splits.map((split: any, splitIdx: number) => (
                                                         <div key={`split-${splitIdx}`} style={{
                                                           display: 'grid',
-                                                          gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                          gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                           gap: '8px',
                                                           padding: '4px 12px',
                                                           fontSize: '8.5pt',
@@ -5801,7 +5792,7 @@ return (
                                                       {totalShortage > 0 && (
                                                         <div style={{
                                                           display: 'grid',
-                                                          gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                          gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                           gap: '8px',
                                                           padding: '5px 12px',
                                                           fontSize: '8.5pt',
@@ -5839,7 +5830,7 @@ return (
                                                   {/* Source Row */}
                                                   <div style={{
                                                     display: 'grid',
-                                                    gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                    gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                     gap: '8px',
                                                     padding: '3px 0',
                                                     fontSize: '9pt',
@@ -5886,7 +5877,7 @@ return (
                                                     {splits.map((split, splitIdx) => (
                                                       <div key={`split-${splitIdx}`} style={{
                                                         display: 'grid',
-                                                        gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                        gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                         gap: '8px',
                                                         padding: '4px 12px',
                                                         fontSize: '8.5pt',
@@ -5943,7 +5934,7 @@ return (
                                                     {totalShortage > 0 && (
                                                       <div style={{
                                                         display: 'grid',
-                                                        gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                        gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                         gap: '8px',
                                                         padding: '5px 12px',
                                                         fontSize: '8.5pt',
@@ -5971,7 +5962,7 @@ return (
                                             {hasData && (
                                               <div style={{
                                                 display: 'grid',
-                                                gridTemplateColumns: '60px 80px 1fr 120px 100px 60px',
+                                                gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                 gap: '8px',
                                                 padding: '3px 0',
                                                 fontSize: '9pt',
@@ -6086,7 +6077,7 @@ return (
                                     {/* Column Headers */}
                                     <div style={{
                                       display: 'grid',
-                                      gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                      gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                       gap: '6px',
                                       padding: '3px 8px',
                                       background: '#f1f3f4',
@@ -6099,7 +6090,7 @@ return (
                                       <div style={{ textAlign: 'center' }}>Product</div>
                                       <div style={{ textAlign: 'center' }}>Variety</div>
                                       <div style={{ textAlign: 'center' }}>Packaging</div>
-                                      <div style={{ textAlign: 'center' }}>L</div>
+                                      <div style={{ textAlign: 'center' }}>Location</div>
                                     </div>
 
                                     {/* Content */}
@@ -6173,7 +6164,7 @@ return (
                                                 <React.Fragment key={`bifurcation-${productType}-${idx}`}>
                                                   <div style={{
                                                     display: 'grid',
-                                                    gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                    gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                     gap: '6px',
                                                     padding: '2px 0',
                                                     fontSize: '8pt',
@@ -6237,7 +6228,7 @@ return (
                                                       {splits.map((split: any, splitIdx: number) => (
                                                         <div key={`split-${splitIdx}`} style={{
                                                           display: 'grid',
-                                                          gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                          gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                           gap: '6px',
                                                           padding: '3px 8px',
                                                           fontSize: '7.5pt',
@@ -6265,7 +6256,7 @@ return (
                                                       {totalShortage > 0 && (
                                                         <div style={{
                                                           display: 'grid',
-                                                          gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                          gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                           gap: '6px',
                                                           padding: '4px 8px',
                                                           fontSize: '7.5pt',
@@ -6297,7 +6288,7 @@ return (
                                       {hasData && openingGroups[productType]?.length > 0 && (
                                         <div style={{
                                           display: 'grid',
-                                          gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                          gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                           gap: '6px',
                                           padding: '2px 0',
                                           fontSize: '8pt',
@@ -6388,7 +6379,7 @@ return (
                                             <React.Fragment key={`${productType.toLowerCase().replace(/\s+/g, '-')}-prod-${idx}`}>
                                               <div style={{
                                                 display: 'grid',
-                                                gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                 gap: '6px',
                                                 padding: '2px 0',
                                                 fontSize: '8pt',
@@ -6494,7 +6485,7 @@ return (
                                                   {splits.map((split: any, splitIdx: number) => (
                                                     <div key={`split-${splitIdx}`} style={{
                                                       display: 'grid',
-                                                      gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                      gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                       gap: '6px',
                                                       padding: '3px 8px',
                                                       fontSize: '7.5pt',
@@ -6522,7 +6513,7 @@ return (
                                                   {totalShortage > 0 && (
                                                     <div style={{
                                                       display: 'grid',
-                                                      gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                      gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                       gap: '6px',
                                                       padding: '4px 8px',
                                                       fontSize: '7.5pt',
@@ -6560,7 +6551,7 @@ return (
                                             {/* Source Row */}
                                             <div style={{
                                               display: 'grid',
-                                              gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                              gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                               gap: '6px',
                                               padding: '3px 0',
                                               fontSize: '8.5pt',
@@ -6607,7 +6598,7 @@ return (
                                               {splits.map((split, splitIdx) => (
                                                 <div key={`split-${splitIdx}`} style={{
                                                   display: 'grid',
-                                                  gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                  gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                   gap: '6px',
                                                   padding: '4px 12px',
                                                   fontSize: '8pt',
@@ -6633,7 +6624,7 @@ return (
                                               {totalShortage > 0 && (
                                                 <div style={{
                                                   display: 'grid',
-                                                  gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                  gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                   gap: '6px',
                                                   padding: '5px 12px',
                                                   fontSize: '8pt',
@@ -6661,7 +6652,7 @@ return (
                                       {hasData && (
                                         <div style={{
                                           display: 'grid',
-                                          gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                          gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                           gap: '6px',
                                           padding: '3px 0',
                                           fontSize: '8pt',
@@ -6792,7 +6783,7 @@ return (
                                   {/* Column Headers */}
                                   <div style={{
                                     display: 'grid',
-                                    gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                    gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                     gap: '6px',
                                     padding: '3px 8px',
                                     background: '#f1f3f4',
@@ -6805,7 +6796,7 @@ return (
                                     <div style={{ textAlign: 'center' }}>Product</div>
                                     <div style={{ textAlign: 'center' }}>Variety</div>
                                     <div style={{ textAlign: 'center' }}>Packaging</div>
-                                    <div style={{ textAlign: 'center' }}>L</div>
+                                    <div style={{ textAlign: 'center' }}>Location</div>
                                   </div>
 
                                   {/* Content */}
@@ -6879,7 +6870,7 @@ return (
                                               <React.Fragment key={`bifurcation-${productType}-${idx}`}>
                                                 <div style={{
                                                   display: 'grid',
-                                                  gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                  gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                   gap: '6px',
                                                   padding: '2px 0',
                                                   fontSize: '8pt',
@@ -6943,7 +6934,7 @@ return (
                                                     {splits.map((split: any, splitIdx: number) => (
                                                       <div key={`split-${splitIdx}`} style={{
                                                         display: 'grid',
-                                                        gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                        gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                         gap: '6px',
                                                         padding: '3px 8px',
                                                         fontSize: '7.5pt',
@@ -6971,7 +6962,7 @@ return (
                                                     {totalShortage > 0 && (
                                                       <div style={{
                                                         display: 'grid',
-                                                        gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                        gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                         gap: '6px',
                                                         padding: '4px 8px',
                                                         fontSize: '7.5pt',
@@ -7003,7 +6994,7 @@ return (
                                     {hasData && openingGroups[productType]?.length > 0 && (
                                       <div style={{
                                         display: 'grid',
-                                        gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                        gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                         gap: '6px',
                                         padding: '2px 0',
                                         fontSize: '9pt',
@@ -7093,7 +7084,7 @@ return (
                                           <React.Fragment key={`${productType.toLowerCase().replace(/\s+/g, '-')}-prod-${idx}`}>
                                             <div style={{
                                               display: 'grid',
-                                              gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                              gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                               gap: '6px',
                                               padding: '2px 0',
                                               fontSize: '8pt',
@@ -7167,7 +7158,7 @@ return (
                                                 {splits.map((split: any, splitIdx: number) => (
                                                   <div key={`split-${splitIdx}`} style={{
                                                     display: 'grid',
-                                                    gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                    gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                     gap: '6px',
                                                     padding: '3px 8px',
                                                     fontSize: '7.5pt',
@@ -7195,7 +7186,7 @@ return (
                                                 {totalShortage > 0 && (
                                                   <div style={{
                                                     display: 'grid',
-                                                    gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                    gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                     gap: '6px',
                                                     padding: '4px 8px',
                                                     fontSize: '7.5pt',
@@ -7233,7 +7224,7 @@ return (
                                           {/* Source Row */}
                                           <div style={{
                                             display: 'grid',
-                                            gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                            gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                             gap: '6px',
                                             padding: '3px 0',
                                             fontSize: '8.5pt',
@@ -7280,7 +7271,7 @@ return (
                                             {splits.map((split, splitIdx) => (
                                               <div key={`split-${splitIdx}`} style={{
                                                 display: 'grid',
-                                                gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                 gap: '6px',
                                                 padding: '4px 12px',
                                                 fontSize: '8pt',
@@ -7306,7 +7297,7 @@ return (
                                             {totalShortage > 0 && (
                                               <div style={{
                                                 display: 'grid',
-                                                gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                                gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                 gap: '6px',
                                                 padding: '5px 12px',
                                                 fontSize: '8pt',
@@ -7334,7 +7325,7 @@ return (
                                     {hasData && (
                                       <div style={{
                                         display: 'grid',
-                                        gridTemplateColumns: '50px 60px 1fr 100px 80px 50px',
+                                        gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                         gap: '6px',
                                         padding: '3px 0',
                                         fontSize: '8pt',
