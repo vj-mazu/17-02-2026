@@ -32,6 +32,7 @@ class LocationBifurcationService {
     }
 
     try {
+      const productTypeList = this._getProductTypeAliases(productType);
       // Get all source varieties (varieties that have been used as palti sources)
       // CRITICAL FIX: Use GROUP BY without source_location to prevent duplicate entries
       // when the same variety is used as palti source from multiple locations
@@ -48,7 +49,7 @@ class LocationBifurcationService {
         WHERE rsm.status = 'approved'
           AND rsm.movement_type = 'palti'
           AND rsm.date <= :date
-          AND rsm.product_type = :productType
+          AND rsm.product_type IN (:productTypeList)
           AND rsm.source_packaging_id IS NOT NULL
           AND rsm.variety IS NOT NULL 
           AND TRIM(rsm.variety) != ''
@@ -61,7 +62,7 @@ class LocationBifurcationService {
       `;
 
       const sourceVarieties = await sequelize.query(sourceVarietiesQuery, {
-        replacements: { productType, date },
+        replacements: { productTypeList, date },
         type: sequelize.QueryTypes.SELECT
       });
 
@@ -89,7 +90,7 @@ class LocationBifurcationService {
               AND rsm.date < :date
               AND rsm.movement_type = 'purchase'
               AND LOWER(TRIM(REGEXP_REPLACE(rsm.variety, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
-              AND rsm.product_type = :productType
+              AND rsm.product_type IN (:productTypeList)
               AND p."brandName" = :sourcePackagingName
               AND p."allottedKg" = :sourceBagSizeKg
               AND rsm.variety IS NOT NULL 
@@ -109,7 +110,7 @@ class LocationBifurcationService {
               AND rsm.date < :date
               AND rsm.movement_type = 'sale'
               AND LOWER(TRIM(REGEXP_REPLACE(rsm.variety, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
-              AND rsm.product_type = :productType
+              AND rsm.product_type IN (:productTypeList)
               AND p."brandName" = :sourcePackagingName
               AND p."allottedKg" = :sourceBagSizeKg
               AND rsm.variety IS NOT NULL 
@@ -130,7 +131,7 @@ class LocationBifurcationService {
               AND rsm.movement_type = 'palti'
               AND rsm.source_packaging_id IS NOT NULL
               AND LOWER(TRIM(REGEXP_REPLACE(rsm.variety, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
-              AND rsm.product_type = :productType
+              AND rsm.product_type IN (:productTypeList)
               AND sp."brandName" = :sourcePackagingName
               AND sp."allottedKg" = :sourceBagSizeKg
               AND rsm.variety IS NOT NULL 
@@ -151,7 +152,7 @@ class LocationBifurcationService {
               AND rsm.movement_type = 'palti'
               AND rsm.target_packaging_id IS NOT NULL
               AND LOWER(TRIM(REGEXP_REPLACE(rsm.variety, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
-              AND rsm.product_type = :productType
+              AND rsm.product_type IN (:productTypeList)
               AND tp."brandName" = :sourcePackagingName
               AND tp."allottedKg" = :sourceBagSizeKg
               AND rsm.variety IS NOT NULL 
@@ -171,7 +172,7 @@ class LocationBifurcationService {
             WHERE rp.status = 'approved'
               AND rp.date < :date
               AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || ' ' || o.type, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
-              AND rp."productType" = :productType
+              AND rp."productType" IN (:productTypeList)
               AND p."brandName" = :sourcePackagingName
               AND p."allottedKg" = :sourceBagSizeKg
             GROUP BY rp."locationCode"
@@ -188,7 +189,7 @@ class LocationBifurcationService {
         const currentStock = await sequelize.query(currentStockQuery, {
           replacements: {
             sourceVariety: sourceVar.source_variety,
-            productType: sourceVar.product_type,
+            productTypeList: this._getProductTypeAliases(sourceVar.product_type),
             sourcePackagingName: sourceVar.source_packaging_name,
             sourceBagSizeKg: sourceVar.source_bag_size_kg,
             date
@@ -218,7 +219,7 @@ class LocationBifurcationService {
             AND rsm.movement_type = 'palti'
             AND rsm.date <= :date
             AND LOWER(TRIM(REGEXP_REPLACE(rsm.variety, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
-            AND rsm.product_type = :productType
+            AND rsm.product_type IN (:productTypeList)
             AND sp."brandName" = :sourcePackagingName
             AND sp."allottedKg" = :sourceBagSizeKg
             AND rsm.variety IS NOT NULL 
@@ -359,6 +360,9 @@ class LocationBifurcationService {
       // 2. Build variety matching
       const varietyConditions = this._buildVarietyMatching(variety, null);
       
+      // 2b. Build product type aliases for robust matching
+      const productTypeList = this._getProductTypeAliases(productType);
+      
       // 3. Calculate opening stock (date <= saleDate) - CRITICAL FIX
       const openingStockQuery = `
         WITH stock_calculation AS (
@@ -372,7 +376,7 @@ class LocationBifurcationService {
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'purchase'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
-            AND rsm.product_type = :productType
+            AND rsm.product_type IN (:productTypeList)
             AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
             AND p."allottedKg" = :bagSizeKg
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
@@ -388,7 +392,7 @@ class LocationBifurcationService {
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'sale'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
-            AND rsm.product_type = :productType
+            AND rsm.product_type IN (:productTypeList)
             AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
             AND p."allottedKg" = :bagSizeKg
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
@@ -404,7 +408,7 @@ class LocationBifurcationService {
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
-            AND rsm.product_type = :productType
+            AND rsm.product_type IN (:productTypeList)
             AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand))
             AND sp."allottedKg" = :bagSizeKg
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
@@ -421,7 +425,7 @@ class LocationBifurcationService {
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
             AND (COALESCE(rsm.to_location, rsm.location_code) = :locationCode OR (:locationCode = 'NULL' AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = '' OR UPPER(COALESCE(rsm.to_location, rsm.location_code)) = 'NULL')))
-            AND rsm.product_type = :productType
+            AND rsm.product_type IN (:productTypeList)
             AND LOWER(TRIM(tp."brandName")) = LOWER(TRIM(:packagingBrand))
             AND tp."allottedKg" = :bagSizeKg
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
@@ -437,7 +441,7 @@ class LocationBifurcationService {
           WHERE rp.status = 'approved'
             AND rp.date <= :saleDate
             AND (rp."locationCode" = :locationCode OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL')))
-            AND rp."productType" = :productType
+            AND rp."productType" IN (:productTypeList)
             AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
             AND p."allottedKg" = :bagSizeKg
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
@@ -457,7 +461,7 @@ class LocationBifurcationService {
           AND rsm.movement_type = 'palti'
           ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
           AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
-          AND rsm.product_type = :productType
+          AND rsm.product_type IN (:productTypeList)
           AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand))
           AND sp."allottedKg" = :bagSizeKg
           ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
@@ -467,7 +471,7 @@ class LocationBifurcationService {
       const replacements = {
         saleDate,
         locationCode,
-        productType,
+        productTypeList,
         packagingBrand: packagingInfo.brand,
         bagSizeKg: packagingInfo.sizeKg,
         excludeMovementId: excludeMovementId ? parseInt(excludeMovementId) : null,
@@ -553,6 +557,7 @@ class LocationBifurcationService {
 
       // Build variety matching conditions
       const varietyConditions = this._buildVarietyMatching(variety, outturnId);
+      const productTypeList = this._getProductTypeAliases(productType);
 
       if (debugMode) {
         console.log('📦 Resolved Packaging Info:', packagingInfo);
@@ -592,7 +597,7 @@ class LocationBifurcationService {
           LEFT JOIN rice_stock_locations rsl ON LOWER(REPLACE(rsm.location_code, '_', ' ')) = LOWER(REPLACE(rsl.code, '_', ' '))
           WHERE rsm.status = 'approved'
             AND rsm.date <= :date
-            AND rsm.product_type = :productType
+            AND rsm.product_type IN (:productTypeList)
             ${packagingInfo.brand ? 'AND p."brandName" = :packagingBrand' : ''}
             ${packagingInfo.sizeKg ? 'AND p."allottedKg" = :bagSizeKg' : ''}
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
@@ -626,7 +631,7 @@ class LocationBifurcationService {
           LEFT JOIN rice_stock_locations rsl ON LOWER(REPLACE(rp."locationCode", '_', ' ')) = LOWER(REPLACE(rsl.code, '_', ' '))
           WHERE rp.status = 'approved'
             AND rp.date <= :date
-            AND rp."productType" = :productType
+            AND rp."productType" IN (:productTypeList)
             ${packagingInfo.brand ? 'AND p."brandName" = :packagingBrand' : ''}
             ${packagingInfo.sizeKg ? 'AND p."allottedKg" = :bagSizeKg' : ''}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
@@ -670,7 +675,7 @@ class LocationBifurcationService {
 
       // Build replacements
       const replacements = {
-        productType,
+        productTypeList,
         date
       };
 
@@ -1171,6 +1176,32 @@ class LocationBifurcationService {
   /**
    * Utility methods
    */
+
+  /**
+   * Product Type Aliasing for flexible matching
+   */
+  static _getProductTypeAliases(productType) {
+    if (!productType) return [];
+    const normalized = String(productType).trim();
+    const productTypeAliases = {
+      'RJ Rice 1': ['RJ Rice 1', 'Rejection Rice 1', 'rj rice 1', 'rejection rice 1'],
+      'RJ Rice (2)': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2'],
+      'RJ Rice 2': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2'],
+      'RJ Broken': ['RJ Broken', 'Rejection Broken', 'rj broken', 'rejection broken'],
+      'Rejection Broken': ['Rejection Broken', 'RJ Broken', 'rejection broken', 'rj broken'],
+      '0 Broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken'],
+      'Zero Broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken'],
+      'Unpolish': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished'],
+      'Unpolished': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished'],
+      'Sizer Broken': ['Sizer Broken', 'sizer broken'],
+      'Faram': ['Faram', 'faram', 'Farm', 'farm'],
+      'Broken': ['Broken', 'broken'],
+      'Rice': ['Rice', 'rice'],
+      'Bran': ['Bran', 'bran', 'Farm Bran']
+    };
+    return productTypeAliases[normalized] || [normalized];
+  }
+
   static _toTitleCase(str) {
     return str.replace(/\w+/g, (word) =>
       word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()

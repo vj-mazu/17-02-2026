@@ -54,6 +54,7 @@ class RiceStockCalculationService {
 
       // Build variety matching conditions
       const varietyConditions = this._buildEnhancedVarietyMatching(variety, outturnId);
+      const productTypeList = this._getProductTypeAliases(productType);
 
       if (debugMode) {
         console.log('🎯 Variety Matching Conditions:', varietyConditions);
@@ -104,7 +105,7 @@ class RiceStockCalculationService {
           WHERE rsm.status = 'approved'
             AND rsm.date <= :date
             AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
-            AND rsm.product_type = :productType
+            AND rsm.product_type IN (:productTypeList)
             ${packagingInfo.brand && packagingInfo.sizeKg ? `
             AND (
               -- Match regular packaging
@@ -155,7 +156,7 @@ class RiceStockCalculationService {
           WHERE rp.status = 'approved'
             AND rp.date <= :date
             AND rp."locationCode" = :locationCode
-            AND rp."productType" = :productType
+            AND rp."productType" IN (:productTypeList)
             ${packagingInfo.brand ? 'AND p."brandName" = :packagingBrand' : ''}
             ${packagingInfo.sizeKg ? 'AND p."allottedKg" = :bagSizeKg' : ''}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
@@ -188,7 +189,7 @@ class RiceStockCalculationService {
       // Build replacements
       const replacements = {
         locationCode,
-        productType,
+        productTypeList,
         date
       };
 
@@ -312,6 +313,7 @@ class RiceStockCalculationService {
     try {
       // Build variety matching conditions (exact matching for bifurcation)
       const varietyConditions = this._buildExactVarietyMatching(variety, outturnId);
+      const productTypeList = this._getProductTypeAliases(productType);
 
       if (debugMode) {
         console.log('🎯 Exact Variety Matching:', varietyConditions);
@@ -347,7 +349,7 @@ class RiceStockCalculationService {
           LEFT JOIN packagings p ON rsm.packaging_id = p.id
           WHERE rsm.status = 'approved'
             AND rsm.date <= :date
-            AND rsm.product_type = :productType
+            AND rsm.product_type IN (:productTypeList)
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -368,7 +370,7 @@ class RiceStockCalculationService {
           LEFT JOIN packagings p ON rp."packagingId" = p.id
           WHERE rp.status = 'approved'
             AND rp.date <= :date
-            AND rp."productType" = :productType
+            AND rp."productType" IN (:productTypeList)
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
             ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])' : ''}
         )
@@ -399,7 +401,7 @@ class RiceStockCalculationService {
 
       // Build replacements
       const replacements = {
-        productType,
+        productTypeList,
         date
       };
 
@@ -716,6 +718,32 @@ class RiceStockCalculationService {
   /**
    * Convert string to title case
    */
+
+  /**
+   * Product Type Aliasing for flexible matching
+   */
+  static _getProductTypeAliases(productType) {
+    if (!productType) return [];
+    const normalized = String(productType).trim();
+    const productTypeAliases = {
+      'RJ Rice 1': ['RJ Rice 1', 'Rejection Rice 1', 'rj rice 1', 'rejection rice 1'],
+      'RJ Rice (2)': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2'],
+      'RJ Rice 2': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2'],
+      'RJ Broken': ['RJ Broken', 'Rejection Broken', 'rj broken', 'rejection broken'],
+      'Rejection Broken': ['Rejection Broken', 'RJ Broken', 'rejection broken', 'rj broken'],
+      '0 Broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken'],
+      'Zero Broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken'],
+      'Unpolish': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished'],
+      'Unpolished': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished'],
+      'Sizer Broken': ['Sizer Broken', 'sizer broken'],
+      'Faram': ['Faram', 'faram', 'Farm', 'farm'],
+      'Broken': ['Broken', 'broken'],
+      'Rice': ['Rice', 'rice'],
+      'Bran': ['Bran', 'bran', 'Farm Bran']
+    };
+    return productTypeAliases[normalized] || [normalized];
+  }
+
   static _toTitleCase(str) {
     return str.replace(/\w+/g, (word) =>
       word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()

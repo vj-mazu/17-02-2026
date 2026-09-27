@@ -418,7 +418,9 @@ router.post('/', auth, async (req, res) => {
     const PRODUCT_TYPE_MAPPING = {
       'RJ Rice 2': 'RJ Rice 2',
       'RJ Rice 1': 'RJ Rice 1',
-      '0 Broken': 'Zero Broken'
+      '0 Broken': 'Zero Broken',
+      'RJ Broken': 'Rejection Broken',
+      'Unpolish': 'Unpolished'
     };
 
     // Map the product type if needed
