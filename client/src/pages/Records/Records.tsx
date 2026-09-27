@@ -5478,61 +5478,47 @@ return (
                                                             overflow: 'hidden'
                                                           }}>
                                                             {splits.map((split: any, splitIdx: number) => (
-                                                              <div key={`split-${splitIdx}`} style={{
-                                                                display: 'grid',
-                                                                gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
-                                                                gap: '8px',
-                                                                padding: '4px 12px',
-                                                                fontSize: '8.5pt',
-                                                                background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
-                                                                color: '#7c2d12',
-                                                                borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
-                                                                position: 'relative'
-                                                              }}>
-                                                                <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
-                                                                  {split.qtls.toFixed(2)}
-                                                                </div>
-                                                                <div style={{ textAlign: 'center', color: '#9a3412' }}>
-                                                                  {split.bags}/{split.targetBagSizeKg}kg
-                                                                </div>
-                                                                <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
-                                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                              <React.Fragment key={`opening-split-${splitIdx}`}>
+                                                                <div style={{
+                                                                  display: 'grid',
+                                                                  gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
+                                                                  gap: '8px',
+                                                                  padding: '4px 12px',
+                                                                  fontSize: '8.5pt',
+                                                                  background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
+                                                                  color: '#7c2d12',
+                                                                  borderBottom: (split.remarks || splitIdx < splits.length - 1) ? '1px solid #fed7aa' : 'none',
+                                                                  position: 'relative'
+                                                                }}>
+                                                                  <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
+                                                                    {split.qtls.toFixed(2)}
+                                                                  </div>
+                                                                  <div style={{ textAlign: 'center', color: '#9a3412' }}>
+                                                                    {split.bags}/{split.targetBagSizeKg}kg
+                                                                  </div>
+                                                                  <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                                                                     <span style={{ color: '#f97316' }}>↳</span> Palti Target
                                                                   </div>
-                                                                  {split.remarks && (
-                                                                    <button
-                                                                      type="button"
-                                                                      onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setViewingRemarks({
-                                                                          title: `PALTI - ${split.variety || 'Rice'}`,
-                                                                          text: split.remarks,
-                                                                          date: dayData.date
-                                                                        });
-                                                                      }}
-                                                                      style={{
-                                                                        background: '#eff6ff',
-                                                                        color: '#2563eb',
-                                                                        border: '1px solid #bfdbfe',
-                                                                        borderRadius: '4px',
-                                                                        padding: '1px 5px',
-                                                                        fontSize: '7pt',
-                                                                        fontWeight: '600',
-                                                                        cursor: 'pointer',
-                                                                        display: 'inline-flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '2px'
-                                                                      }}
-                                                                      title="Click to view remarks"
-                                                                    >
-                                                                      💬 Remarks
-                                                                    </button>
-                                                                  )}
+                                                                  <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
+                                                                  <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
+                                                                  <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
                                                                 </div>
-                                                                <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
-                                                                <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
-                                                                <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
-                                                              </div>
+                                                                {split.remarks && (
+                                                                  <div style={{
+                                                                    background: '#eff6ff',
+                                                                    padding: '3px 12px 4px 24px',
+                                                                    fontSize: '7.5pt',
+                                                                    color: '#1e40af',
+                                                                    borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px'
+                                                                  }}>
+                                                                    <span style={{ fontWeight: 'bold' }}>💬 Remarks:</span>
+                                                                    <span style={{ fontStyle: 'italic' }}>{split.remarks}</span>
+                                                                  </div>
+                                                                )}
+                                                              </React.Fragment>
                                                             ))}
 
                                                             {/* Total shortage row - Matching Red reference style */}
@@ -5658,36 +5644,7 @@ return (
                                                           <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(prod.outturn.code)}>→ {prod.outturn.code}</span>
                                                         )}
                                                       </div>
-                                                      {prod.remarks && (
-                                                        <button
-                                                          type="button"
-                                                          onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setViewingRemarks({
-                                                              title: `${(prod.movementType || 'MOVEMENT').toUpperCase()} - ${prod.variety || prod.product || 'Rice'}`,
-                                                              text: prod.remarks,
-                                                              date: dayData.date
-                                                            });
-                                                          }}
-                                                          style={{
-                                                            background: '#eff6ff',
-                                                            color: '#2563eb',
-                                                            border: '1px solid #bfdbfe',
-                                                            borderRadius: '4px',
-                                                            padding: '1px 5px',
-                                                            fontSize: '7pt',
-                                                            fontWeight: '600',
-                                                            cursor: 'pointer',
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '2px',
-                                                            marginTop: '2px'
-                                                          }}
-                                                          title="Click to view remarks"
-                                                        >
-                                                          💬 Remarks
-                                                        </button>
-                                                      )}
+
                                                       {hasSplits && totalShortage > 0 && (
                                                         <div style={{
                                                           background: '#fee2e2',
@@ -5721,6 +5678,26 @@ return (
                                                     <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{prod.locationCode || prod.location || ''}</div>
                                                   </div>
 
+                                                  {/* Inline Remarks for main movement if present */}
+                                                  {prod.remarks && (
+                                                    <div style={{
+                                                      background: '#eff6ff',
+                                                      padding: '3px 12px 4px 20px',
+                                                      fontSize: '7.5pt',
+                                                      color: '#1e40af',
+                                                      border: '1px solid #bfdbfe',
+                                                      borderTop: 'none',
+                                                      borderRadius: hasSplits ? '0' : '0 0 4px 4px',
+                                                      marginBottom: hasSplits ? '0' : '3px',
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      gap: '6px'
+                                                    }}>
+                                                      <span style={{ fontWeight: 'bold' }}>💬 Remarks:</span>
+                                                      <span style={{ fontStyle: 'italic' }}>{prod.remarks}</span>
+                                                    </div>
+                                                  )}
+
                                                   {/* Palti Splits - Shown below the source entry with reference-accurate styling */}
                                                   {hasSplits && (
                                                     <div style={{
@@ -5731,61 +5708,47 @@ return (
                                                       overflow: 'hidden'
                                                     }}>
                                                       {splits.map((split: any, splitIdx: number) => (
-                                                        <div key={`split-${splitIdx}`} style={{
-                                                          display: 'grid',
-                                                          gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
-                                                          gap: '8px',
-                                                          padding: '4px 12px',
-                                                          fontSize: '8.5pt',
-                                                          background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
-                                                          color: '#7c2d12',
-                                                          borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
-                                                          position: 'relative'
-                                                        }}>
-                                                          <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
-                                                            {split.qtls.toFixed(2)}
-                                                          </div>
-                                                          <div style={{ textAlign: 'center', color: '#9a3412' }}>
-                                                            {split.bags}/{split.targetBagSizeKg}kg
-                                                          </div>
-                                                          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <React.Fragment key={`prod-split-${splitIdx}`}>
+                                                          <div style={{
+                                                            display: 'grid',
+                                                            gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
+                                                            gap: '8px',
+                                                            padding: '4px 12px',
+                                                            fontSize: '8.5pt',
+                                                            background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
+                                                            color: '#7c2d12',
+                                                            borderBottom: (split.remarks || splitIdx < splits.length - 1) ? '1px solid #fed7aa' : 'none',
+                                                            position: 'relative'
+                                                          }}>
+                                                            <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
+                                                              {split.qtls.toFixed(2)}
+                                                            </div>
+                                                            <div style={{ textAlign: 'center', color: '#9a3412' }}>
+                                                              {split.bags}/{split.targetBagSizeKg}kg
+                                                            </div>
+                                                            <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                                                               <span style={{ color: '#f97316' }}>↳</span> Palti Target
                                                             </div>
-                                                            {split.remarks && (
-                                                              <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                  e.stopPropagation();
-                                                                  setViewingRemarks({
-                                                                    title: `PALTI - ${split.variety || 'Rice'}`,
-                                                                    text: split.remarks,
-                                                                    date: dayData.date
-                                                                  });
-                                                                }}
-                                                                style={{
-                                                                  background: '#eff6ff',
-                                                                  color: '#2563eb',
-                                                                  border: '1px solid #bfdbfe',
-                                                                  borderRadius: '4px',
-                                                                  padding: '1px 5px',
-                                                                  fontSize: '7pt',
-                                                                  fontWeight: '600',
-                                                                  cursor: 'pointer',
-                                                                  display: 'inline-flex',
-                                                                  alignItems: 'center',
-                                                                  gap: '2px'
-                                                                }}
-                                                                title="Click to view remarks"
-                                                              >
-                                                                💬 Remarks
-                                                              </button>
-                                                            )}
+                                                            <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
+                                                            <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
+                                                            <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
                                                           </div>
-                                                          <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
-                                                          <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
-                                                          <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
-                                                        </div>
+                                                          {split.remarks && (
+                                                            <div style={{
+                                                              background: '#eff6ff',
+                                                              padding: '3px 12px 4px 24px',
+                                                              fontSize: '7.5pt',
+                                                              color: '#1e40af',
+                                                              borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
+                                                              display: 'flex',
+                                                              alignItems: 'center',
+                                                              gap: '6px'
+                                                            }}>
+                                                              <span style={{ fontWeight: 'bold' }}>💬 Remarks:</span>
+                                                              <span style={{ fontStyle: 'italic' }}>{split.remarks}</span>
+                                                            </div>
+                                                          )}
+                                                        </React.Fragment>
                                                       ))}
 
                                                       {/* Total shortage row - Matching Red reference style */}
@@ -5875,61 +5838,47 @@ return (
                                                     overflow: 'hidden'
                                                   }}>
                                                     {splits.map((split, splitIdx) => (
-                                                      <div key={`split-${splitIdx}`} style={{
-                                                        display: 'grid',
-                                                        gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
-                                                        gap: '8px',
-                                                        padding: '4px 12px',
-                                                        fontSize: '8.5pt',
-                                                        background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
-                                                        color: '#7c2d12',
-                                                        borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
-                                                        position: 'relative'
-                                                      }}>
-                                                        <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
-                                                          {split.qtls.toFixed(2)}
-                                                        </div>
-                                                        <div style={{ textAlign: 'center', color: '#9a3412' }}>
-                                                          {split.bags}/{split.targetBagSizeKg}kg
-                                                        </div>
-                                                        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
-                                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                      <React.Fragment key={`yesterday-split-${splitIdx}`}>
+                                                        <div style={{
+                                                          display: 'grid',
+                                                          gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
+                                                          gap: '8px',
+                                                          padding: '4px 12px',
+                                                          fontSize: '8.5pt',
+                                                          background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
+                                                          color: '#7c2d12',
+                                                          borderBottom: (split.remarks || splitIdx < splits.length - 1) ? '1px solid #fed7aa' : 'none',
+                                                          position: 'relative'
+                                                        }}>
+                                                          <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
+                                                            {split.qtls.toFixed(2)}
+                                                          </div>
+                                                          <div style={{ textAlign: 'center', color: '#9a3412' }}>
+                                                            {split.bags}/{split.targetBagSizeKg}kg
+                                                          </div>
+                                                          <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                                                             <span style={{ color: '#f97316' }}>↳</span> Palti Target
                                                           </div>
-                                                          {split.remarks && (
-                                                            <button
-                                                              type="button"
-                                                              onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setViewingRemarks({
-                                                                  title: `PALTI - ${split.variety || 'Rice'}`,
-                                                                  text: split.remarks,
-                                                                  date: dayData.date
-                                                                });
-                                                              }}
-                                                              style={{
-                                                                background: '#eff6ff',
-                                                                color: '#2563eb',
-                                                                border: '1px solid #bfdbfe',
-                                                                borderRadius: '4px',
-                                                                padding: '1px 5px',
-                                                                fontSize: '7pt',
-                                                                fontWeight: '600',
-                                                                cursor: 'pointer',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: '2px'
-                                                              }}
-                                                              title="Click to view remarks"
-                                                            >
-                                                              💬 Remarks
-                                                            </button>
-                                                          )}
+                                                          <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
+                                                          <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
+                                                          <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
                                                         </div>
-                                                        <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
-                                                        <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
-                                                        <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
-                                                      </div>
+                                                        {split.remarks && (
+                                                          <div style={{
+                                                            background: '#eff6ff',
+                                                            padding: '3px 12px 4px 24px',
+                                                            fontSize: '7.5pt',
+                                                            color: '#1e40af',
+                                                            borderBottom: splitIdx < splits.length - 1 ? '1px solid #fed7aa' : 'none',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px'
+                                                          }}>
+                                                            <span style={{ fontWeight: 'bold' }}>💬 Remarks:</span>
+                                                            <span style={{ fontStyle: 'italic' }}>{split.remarks}</span>
+                                                          </div>
+                                                        )}
+                                                      </React.Fragment>
                                                     ))}
                                                     {totalShortage > 0 && (
                                                       <div style={{
