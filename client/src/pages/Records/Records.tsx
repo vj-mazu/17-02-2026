@@ -281,6 +281,19 @@ const Records: React.FC = () => {
   const [selectedMovementIds, setSelectedMovementIds] = useState<Set<number>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [viewingRemarks, setViewingRemarks] = useState<{ title: string; text: string; date?: string } | null>(null);
+  const [expandedRemarksKeys, setExpandedRemarksKeys] = useState<Set<string>>(new Set());
+
+  const toggleRemarkKey = (key: string) => {
+    setExpandedRemarksKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   // Helper function to navigate to outturn
   const navigateToOutturn = (outturnCode: string) => {
@@ -5477,7 +5490,10 @@ return (
                                                             marginBottom: '6px',
                                                             overflow: 'hidden'
                                                           }}>
-                                                            {splits.map((split: any, splitIdx: number) => (
+                                                            {splits.map((split: any, splitIdx: number) => {
+                                                              const splitKey = `open-split-${dayData.date}-${idx}-${splitIdx}`;
+                                                              const isExpanded = expandedRemarksKeys.has(splitKey);
+                                                              return (
                                                               <React.Fragment key={`opening-split-${splitIdx}`}>
                                                                 <div style={{
                                                                   display: 'grid',
@@ -5487,7 +5503,7 @@ return (
                                                                   fontSize: '8.5pt',
                                                                   background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
                                                                   color: '#7c2d12',
-                                                                  borderBottom: (split.remarks || splitIdx < splits.length - 1) ? '1px solid #fed7aa' : 'none',
+                                                                  borderBottom: (splitIdx < splits.length - 1 || (split.remarks && isExpanded)) ? '1px solid #fed7aa' : 'none',
                                                                   position: 'relative'
                                                                 }}>
                                                                   <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
@@ -5496,14 +5512,41 @@ return (
                                                                   <div style={{ textAlign: 'center', color: '#9a3412' }}>
                                                                     {split.bags}/{split.targetBagSizeKg}kg
                                                                   </div>
-                                                                  <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                                    <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                                  <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                      <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                                    </div>
+                                                                    {split.remarks && (
+                                                                      <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                          e.stopPropagation();
+                                                                          toggleRemarkKey(splitKey);
+                                                                        }}
+                                                                        style={{
+                                                                          background: isExpanded ? '#dbeafe' : '#eff6ff',
+                                                                          color: '#2563eb',
+                                                                          border: '1px solid #bfdbfe',
+                                                                          borderRadius: '4px',
+                                                                          padding: '1px 5px',
+                                                                          fontSize: '7pt',
+                                                                          fontWeight: '600',
+                                                                          cursor: 'pointer',
+                                                                          display: 'inline-flex',
+                                                                          alignItems: 'center',
+                                                                          gap: '2px'
+                                                                        }}
+                                                                        title="Click to toggle remarks inline"
+                                                                      >
+                                                                        💬 Remarks {isExpanded ? '▲' : '▼'}
+                                                                      </button>
+                                                                    )}
                                                                   </div>
                                                                   <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
                                                                   <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
                                                                   <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
                                                                 </div>
-                                                                {split.remarks && (
+                                                                {split.remarks && isExpanded && (
                                                                   <div style={{
                                                                     background: '#eff6ff',
                                                                     padding: '3px 12px 4px 24px',
@@ -5519,7 +5562,7 @@ return (
                                                                   </div>
                                                                 )}
                                                               </React.Fragment>
-                                                            ))}
+                                                            );})}
 
                                                             {/* Total shortage row - Matching Red reference style */}
                                                             {totalShortage > 0 && (
@@ -5644,6 +5687,31 @@ return (
                                                           <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(prod.outturn.code)}>→ {prod.outturn.code}</span>
                                                         )}
                                                       </div>
+                                                      {prod.remarks && (
+                                                        <button
+                                                          type="button"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleRemarkKey(`prod-main-${prod.id || (dayData.date + '-' + idx)}`);
+                                                          }}
+                                                          style={{
+                                                            background: expandedRemarksKeys.has(`prod-main-${prod.id || (dayData.date + '-' + idx)}`) ? '#dbeafe' : '#eff6ff',
+                                                            color: '#2563eb',
+                                                            border: '1px solid #bfdbfe',
+                                                            borderRadius: '4px',
+                                                            padding: '1px 5px',
+                                                            fontSize: '7pt',
+                                                            fontWeight: '600',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '2px'
+                                                          }}
+                                                          title="Click to toggle remarks inline"
+                                                        >
+                                                          💬 Remarks {expandedRemarksKeys.has(`prod-main-${prod.id || (dayData.date + '-' + idx)}`) ? '▲' : '▼'}
+                                                        </button>
+                                                      )}
 
                                                       {hasSplits && totalShortage > 0 && (
                                                         <div style={{
@@ -5679,7 +5747,7 @@ return (
                                                   </div>
 
                                                   {/* Inline Remarks for main movement if present */}
-                                                  {prod.remarks && (
+                                                  {prod.remarks && expandedRemarksKeys.has(`prod-main-${prod.id || (dayData.date + '-' + idx)}`) && (
                                                     <div style={{
                                                       background: '#eff6ff',
                                                       padding: '3px 12px 4px 20px',
@@ -5707,7 +5775,10 @@ return (
                                                       marginBottom: '6px',
                                                       overflow: 'hidden'
                                                     }}>
-                                                      {splits.map((split: any, splitIdx: number) => (
+                                                      {splits.map((split: any, splitIdx: number) => {
+                                                        const splitKey = `prod-split-${prod.id || (dayData.date + '-' + idx)}-${splitIdx}`;
+                                                        const isExpanded = expandedRemarksKeys.has(splitKey);
+                                                        return (
                                                         <React.Fragment key={`prod-split-${splitIdx}`}>
                                                           <div style={{
                                                             display: 'grid',
@@ -5717,7 +5788,7 @@ return (
                                                             fontSize: '8.5pt',
                                                             background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
                                                             color: '#7c2d12',
-                                                            borderBottom: (split.remarks || splitIdx < splits.length - 1) ? '1px solid #fed7aa' : 'none',
+                                                            borderBottom: (splitIdx < splits.length - 1 || (split.remarks && isExpanded)) ? '1px solid #fed7aa' : 'none',
                                                             position: 'relative'
                                                           }}>
                                                             <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
@@ -5726,14 +5797,41 @@ return (
                                                             <div style={{ textAlign: 'center', color: '#9a3412' }}>
                                                               {split.bags}/{split.targetBagSizeKg}kg
                                                             </div>
-                                                            <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                              <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                              </div>
+                                                              {split.remarks && (
+                                                                <button
+                                                                  type="button"
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    toggleRemarkKey(splitKey);
+                                                                  }}
+                                                                  style={{
+                                                                    background: isExpanded ? '#dbeafe' : '#eff6ff',
+                                                                    color: '#2563eb',
+                                                                    border: '1px solid #bfdbfe',
+                                                                    borderRadius: '4px',
+                                                                    padding: '1px 5px',
+                                                                    fontSize: '7pt',
+                                                                    fontWeight: '600',
+                                                                    cursor: 'pointer',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '2px'
+                                                                  }}
+                                                                  title="Click to toggle remarks inline"
+                                                                >
+                                                                  💬 Remarks {isExpanded ? '▲' : '▼'}
+                                                                </button>
+                                                              )}
                                                             </div>
                                                             <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
                                                             <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
                                                             <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
                                                           </div>
-                                                          {split.remarks && (
+                                                          {split.remarks && isExpanded && (
                                                             <div style={{
                                                               background: '#eff6ff',
                                                               padding: '3px 12px 4px 24px',
@@ -5749,7 +5847,7 @@ return (
                                                             </div>
                                                           )}
                                                         </React.Fragment>
-                                                      ))}
+                                                      );})}
 
                                                       {/* Total shortage row - Matching Red reference style */}
                                                       {totalShortage > 0 && (
@@ -5837,7 +5935,10 @@ return (
                                                     marginBottom: '6px',
                                                     overflow: 'hidden'
                                                   }}>
-                                                    {splits.map((split, splitIdx) => (
+                                                    {splits.map((split, splitIdx) => {
+                                                      const splitKey = `yesterday-split-${dayData.date}-${key}-${splitIdx}`;
+                                                      const isExpanded = expandedRemarksKeys.has(splitKey);
+                                                      return (
                                                       <React.Fragment key={`yesterday-split-${splitIdx}`}>
                                                         <div style={{
                                                           display: 'grid',
@@ -5847,7 +5948,7 @@ return (
                                                           fontSize: '8.5pt',
                                                           background: splitIdx % 2 === 0 ? '#fff7ed' : '#ffedd5',
                                                           color: '#7c2d12',
-                                                          borderBottom: (split.remarks || splitIdx < splits.length - 1) ? '1px solid #fed7aa' : 'none',
+                                                          borderBottom: (splitIdx < splits.length - 1 || (split.remarks && isExpanded)) ? '1px solid #fed7aa' : 'none',
                                                           position: 'relative'
                                                         }}>
                                                           <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#ea580c' }}>
@@ -5856,14 +5957,41 @@ return (
                                                           <div style={{ textAlign: 'center', color: '#9a3412' }}>
                                                             {split.bags}/{split.targetBagSizeKg}kg
                                                           </div>
-                                                          <div style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                            <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                              <span style={{ color: '#f97316' }}>↳</span> Palti Target
+                                                            </div>
+                                                            {split.remarks && (
+                                                              <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  toggleRemarkKey(splitKey);
+                                                                }}
+                                                                style={{
+                                                                  background: isExpanded ? '#dbeafe' : '#eff6ff',
+                                                                  color: '#2563eb',
+                                                                  border: '1px solid #bfdbfe',
+                                                                  borderRadius: '4px',
+                                                                  padding: '1px 5px',
+                                                                  fontSize: '7pt',
+                                                                  fontWeight: '600',
+                                                                  cursor: 'pointer',
+                                                                  display: 'inline-flex',
+                                                                  alignItems: 'center',
+                                                                  gap: '2px'
+                                                                }}
+                                                                title="Click to toggle remarks inline"
+                                                              >
+                                                                💬 Remarks {isExpanded ? '▲' : '▼'}
+                                                              </button>
+                                                            )}
                                                           </div>
                                                           <div style={{ textAlign: 'center', fontWeight: '500', color: '#7c3aed' }}>{split.variety}</div>
                                                           <div style={{ textAlign: 'center', fontWeight: 'bold' }}>{split.targetPackaging}</div>
                                                           <div style={{ textAlign: 'center' }}>{split.targetLocation}</div>
                                                         </div>
-                                                        {split.remarks && (
+                                                        {split.remarks && isExpanded && (
                                                           <div style={{
                                                             background: '#eff6ff',
                                                             padding: '3px 12px 4px 24px',
@@ -5879,7 +6007,7 @@ return (
                                                           </div>
                                                         )}
                                                       </React.Fragment>
-                                                    ))}
+                                                    );})}
                                                     {totalShortage > 0 && (
                                                       <div style={{
                                                         display: 'grid',
