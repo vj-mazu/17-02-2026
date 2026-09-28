@@ -463,16 +463,16 @@ const Arrivals: React.FC = () => {
     });
 
     return allocatedKunchinittus.map(k => {
-      const allocatedWarehouse = warehouses.find(w => w.id === k.warehouseId);
+      const allocatedWarehouse = k.warehouse || warehouses.find(w => w.id === k.warehouseId);
       return {
         kunchinintuId: k.id,
         kunchinintuName: k.name,
         kunchinintuCode: k.code,
         warehouseName: allocatedWarehouse?.name || '',
         warehouseCode: allocatedWarehouse?.code || '',
-        warehouseId: allocatedWarehouse?.id || ''
+        warehouseId: allocatedWarehouse?.id || k.warehouseId || ''
       };
-    }).filter(item => item.warehouseName);
+    }).filter(item => item.warehouseName || item.warehouseId);
   }, [variety, kunchinittus, warehouses]);
 
   // Get first allocation for backward compatibility
@@ -595,6 +595,83 @@ const Arrivals: React.FC = () => {
     if (!selectedKunchinittu) return warehouses;
     return warehouses.filter(w => String(w.id) === String(selectedKunchinittu.warehouseId));
   }, [warehouses, kunchinittus, toKunchinintuId]);
+
+  // Target locations available for shifting (includes all configured kunchinittus for variety + stock locations + all active kunchinittus)
+  const availableToShiftingLocations = useMemo(() => {
+    const stockMap = new Map<string, number>();
+    stockLocations.forEach(loc => {
+      stockMap.set(`${loc.kunchinintuId}-${loc.warehouseId}`, loc.stockBags || 0);
+    });
+
+    const locationsList: Array<{
+      kunchinintuId: number | string;
+      kunchinintuCode: string;
+      kunchinintuName: string;
+      warehouseId: number | string;
+      warehouseName: string;
+      warehouseCode: string;
+      stockBags: number;
+    }> = [];
+
+    const seenKeys = new Set<string>();
+
+    // 1. First add all varietyAllocations (configured Kunchinittus for this variety, like newly created ones)
+    varietyAllocations.forEach(alloc => {
+      const key = `${alloc.kunchinintuId}-${alloc.warehouseId}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        locationsList.push({
+          kunchinintuId: alloc.kunchinintuId,
+          kunchinintuCode: alloc.kunchinintuCode || alloc.kunchinintuName,
+          kunchinintuName: alloc.kunchinintuName,
+          warehouseId: alloc.warehouseId,
+          warehouseName: alloc.warehouseName,
+          warehouseCode: alloc.warehouseCode,
+          stockBags: stockMap.get(key) || 0
+        });
+      }
+    });
+
+    // 2. Add any stock locations that currently hold this variety
+    stockLocations.forEach(loc => {
+      const key = `${loc.kunchinintuId}-${loc.warehouseId}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        locationsList.push({
+          kunchinintuId: loc.kunchinintuId,
+          kunchinintuCode: loc.kunchinintuCode || loc.kunchinintuName || '',
+          kunchinintuName: loc.kunchinintuName || '',
+          warehouseId: loc.warehouseId,
+          warehouseName: loc.warehouseName || loc.warehouseCode || '',
+          warehouseCode: loc.warehouseCode || '',
+          stockBags: loc.stockBags || 0
+        });
+      }
+    });
+
+    // 3. Add all other active Kunchinittus
+    activeKunchinittus.forEach(k => {
+      const wId = k.warehouseId || k.warehouse?.id;
+      if (!wId) return;
+      const wName = k.warehouse?.name || warehouses.find(w => w.id === wId)?.name || '';
+      const wCode = k.warehouse?.code || warehouses.find(w => w.id === wId)?.code || '';
+      const key = `${k.id}-${wId}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        locationsList.push({
+          kunchinintuId: k.id,
+          kunchinintuCode: k.code || k.name,
+          kunchinintuName: k.name,
+          warehouseId: wId,
+          warehouseName: wName,
+          warehouseCode: wCode,
+          stockBags: stockMap.get(key) || 0
+        });
+      }
+    });
+
+    return locationsList;
+  }, [varietyAllocations, stockLocations, activeKunchinittus, warehouses]);
 
   // Determine which fields to show based on stock locations count
   const shouldShowSingleLocationFields = useMemo(() => {
@@ -1279,13 +1356,13 @@ const Arrivals: React.FC = () => {
                                 value={toKunchinintuId ? `${toKunchinintuId}-${toWarehouseShiftId}` : ''}
                                 onChange={(e) => {
                                   const [kId, wId] = e.target.value.split('-');
-                                  setToKunchinintuId(kId);
-                                  setToWarehouseShiftId(wId);
+                                  setToKunchinintuId(kId || '');
+                                  setToWarehouseShiftId(wId || '');
                                 }}
                                 required
                               >
                                 <option value="">Select To Location</option>
-                                {stockLocations.map((loc) => (
+                                {availableToShiftingLocations.map((loc) => (
                                   <option
                                     key={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                     value={`${loc.kunchinintuId}-${loc.warehouseId}`}
