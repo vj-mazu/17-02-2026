@@ -596,7 +596,7 @@ const Arrivals: React.FC = () => {
     return warehouses.filter(w => String(w.id) === String(selectedKunchinittu.warehouseId));
   }, [warehouses, kunchinittus, toKunchinintuId]);
 
-  // Target locations available for shifting (includes all configured kunchinittus for variety + stock locations + all active kunchinittus)
+  // Target locations available for shifting (strictly Kunchinittus allocated to the same variety + stock locations for this variety)
   const availableToShiftingLocations = useMemo(() => {
     const stockMap = new Map<string, number>();
     stockLocations.forEach(loc => {
@@ -623,7 +623,7 @@ const Arrivals: React.FC = () => {
         locationsList.push({
           kunchinintuId: alloc.kunchinintuId,
           kunchinintuCode: alloc.kunchinintuCode || alloc.kunchinintuName,
-          kunchinintuName: alloc.kunchinintuName,
+          kunchinintuName: alloc.kunchinintuName || alloc.kunchinintuCode,
           warehouseId: alloc.warehouseId,
           warehouseName: alloc.warehouseName,
           warehouseCode: alloc.warehouseCode,
@@ -640,7 +640,7 @@ const Arrivals: React.FC = () => {
         locationsList.push({
           kunchinintuId: loc.kunchinintuId,
           kunchinintuCode: loc.kunchinintuCode || loc.kunchinintuName || '',
-          kunchinintuName: loc.kunchinintuName || '',
+          kunchinintuName: loc.kunchinintuName || loc.kunchinintuCode || '',
           warehouseId: loc.warehouseId,
           warehouseName: loc.warehouseName || loc.warehouseCode || '',
           warehouseCode: loc.warehouseCode || '',
@@ -649,29 +649,8 @@ const Arrivals: React.FC = () => {
       }
     });
 
-    // 3. Add all other active Kunchinittus
-    activeKunchinittus.forEach(k => {
-      const wId = k.warehouseId || k.warehouse?.id;
-      if (!wId) return;
-      const wName = k.warehouse?.name || warehouses.find(w => w.id === wId)?.name || '';
-      const wCode = k.warehouse?.code || warehouses.find(w => w.id === wId)?.code || '';
-      const key = `${k.id}-${wId}`;
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key);
-        locationsList.push({
-          kunchinintuId: k.id,
-          kunchinintuCode: k.code || k.name,
-          kunchinintuName: k.name,
-          warehouseId: wId,
-          warehouseName: wName,
-          warehouseCode: wCode,
-          stockBags: stockMap.get(key) || 0
-        });
-      }
-    });
-
     return locationsList;
-  }, [varietyAllocations, stockLocations, activeKunchinittus, warehouses]);
+  }, [varietyAllocations, stockLocations]);
 
   // Determine which fields to show based on stock locations count
   const shouldShowSingleLocationFields = useMemo(() => {
@@ -1248,7 +1227,7 @@ const Arrivals: React.FC = () => {
                                 <option value="">Select Kunchinittu</option>
                                 {stockLocations.map((loc) => (
                                   <option key={loc.kunchinintuId} value={loc.kunchinintuId}>
-                                    {loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1336,7 +1315,7 @@ const Arrivals: React.FC = () => {
                                     key={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                     value={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                   >
-                                    {loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1367,7 +1346,7 @@ const Arrivals: React.FC = () => {
                                     key={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                     value={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                   >
-                                    {loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1526,7 +1505,7 @@ const Arrivals: React.FC = () => {
                                 <option value="">Select Kunchinittu</option>
                                 {stockLocations.map((loc) => (
                                   <option key={loc.kunchinintuId} value={loc.kunchinintuId}>
-                                    {loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1576,7 +1555,7 @@ const Arrivals: React.FC = () => {
                                     key={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                     value={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                   >
-                                    {loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1843,7 +1822,7 @@ const Arrivals: React.FC = () => {
                         <InfoTableLabel>Option {index + 1}:</InfoTableLabel>
                         <InfoTableValue>
                           <div style={{ fontSize: '0.85rem' }}>
-                            <div style={{ fontWeight: 'bold', color: '#667eea' }}>{loc.kunchinintuCode}</div>
+                            <div style={{ fontWeight: 'bold', color: '#667eea' }}>{loc.kunchinintuName || loc.kunchinintuCode}</div>
                             <div style={{ color: '#6b7280' }}>{loc.warehouseName}</div>
                             <div style={{ fontSize: '0.85rem', color: '#10b981', marginTop: '0.25rem' }}>
                               {loc.stockBags} bags
