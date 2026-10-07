@@ -436,7 +436,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
-            AND ${rsmPkgCondition}
+            AND (${rsmPkgCondition} OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.packaging_id IS NULL OR rsm.packaging_id = 0)))
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -455,7 +455,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
-            AND ${paltiSrcPkgCondition}
+            AND (${paltiSrcPkgCondition} OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.source_packaging_id IS NULL OR rsm.source_packaging_id = 0)))
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -474,7 +474,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = '' OR UPPER(COALESCE(rsm.to_location, rsm.location_code)) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
-            AND ${paltiTgtPkgCondition}
+            AND (${paltiTgtPkgCondition} OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.target_packaging_id IS NULL OR rsm.target_packaging_id = 0)))
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -515,7 +515,7 @@ class LocationBifurcationService {
             OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
           )
           AND rsm.product_type IN (:productTypeList)
-          AND ${paltiSrcPkgCondition}
+          AND (${paltiSrcPkgCondition} OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.source_packaging_id IS NULL OR rsm.source_packaging_id = 0)))
           ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
       `;
       
