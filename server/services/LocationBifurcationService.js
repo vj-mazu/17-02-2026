@@ -122,7 +122,7 @@ class LocationBifurcationService {
             -- PALTI SOURCE: Deduct source_bags + shortage from source location (opening stock only - date < current_date)
             SELECT 
               rsm.location_code,
-              SUM(-(COALESCE(rsm.source_bags, rsm.bags) + COALESCE(rsm.conversion_shortage_bags, 0))) as movement_bags,
+              SUM(-COALESCE(rsm.source_bags, rsm.bags)) as movement_bags,
               SUM(-(rsm.quantity_quintals + COALESCE(rsm.conversion_shortage_kg, 0) / 100)) as movement_qtls
             FROM rice_stock_movements rsm
             LEFT JOIN packagings sp ON rsm.source_packaging_id = sp.id
@@ -443,7 +443,7 @@ class LocationBifurcationService {
           UNION ALL
           
           -- PALTI SOURCE (deduct source_bags + shortage from opening stock)
-          SELECT SUM(-(COALESCE(rsm.source_bags, rsm.bags) + COALESCE(rsm.conversion_shortage_bags, 0))) as movement_bags
+          SELECT SUM(-COALESCE(rsm.source_bags, rsm.bags)) as movement_bags
           FROM rice_stock_movements rsm
           LEFT JOIN packagings sp ON rsm.source_packaging_id = sp.id
           WHERE rsm.status = 'approved'
@@ -507,7 +507,7 @@ class LocationBifurcationService {
       
       // 4. Get palti operations ON saleDate (before this sale)
       const paltiOnDateQuery = `
-        SELECT COALESCE(SUM(COALESCE(rsm.source_bags, rsm.bags) + COALESCE(rsm.conversion_shortage_bags, 0)), 0) as palti_deductions
+        SELECT COALESCE(SUM(COALESCE(rsm.source_bags, rsm.bags)), 0) as palti_deductions
         FROM rice_stock_movements rsm
         LEFT JOIN packagings sp ON rsm.source_packaging_id = sp.id
         WHERE rsm.status = 'approved'
