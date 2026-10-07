@@ -144,7 +144,7 @@ class RiceStockCalculationService {
           -- Rice Productions with outturn complete variety text
           SELECT 
             rp."locationCode" as location_code,
-            UPPER(o."allottedVariety" || ' ' || o.type) as complete_variety_text,
+            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as complete_variety_text,
             rp."productType" as product_type,
             p."brandName" as packaging_name,
             p."allottedKg" as bag_size_kg,
@@ -357,7 +357,7 @@ class RiceStockCalculationService {
           -- Rice Productions for this specific variety (outturn-based)
           SELECT 
             rp."locationCode" as location_code,
-            UPPER(o."allottedVariety" || ' ' || o.type) as complete_variety_text,
+            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as complete_variety_text,
             rp."productType" as product_type,
             p."brandName" as packaging_name,
             p."allottedKg" as bag_size_kg,
@@ -724,24 +724,25 @@ class RiceStockCalculationService {
    */
   static _getProductTypeAliases(productType) {
     if (!productType) return [];
-    const normalized = String(productType).trim();
+    const normalized = String(productType).trim().toLowerCase();
     const productTypeAliases = {
-      'RJ Rice 1': ['RJ Rice 1', 'Rejection Rice 1', 'rj rice 1', 'rejection rice 1'],
-      'RJ Rice (2)': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2'],
-      'RJ Rice 2': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2'],
-      'RJ Broken': ['RJ Broken', 'Rejection Broken', 'rj broken', 'rejection broken'],
-      'Rejection Broken': ['Rejection Broken', 'RJ Broken', 'rejection broken', 'rj broken'],
-      '0 Broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken'],
-      'Zero Broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken'],
-      'Unpolish': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished'],
-      'Unpolished': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished'],
-      'Sizer Broken': ['Sizer Broken', 'sizer broken'],
-      'Faram': ['Faram', 'faram', 'Farm', 'farm'],
-      'Broken': ['Broken', 'broken'],
-      'Rice': ['Rice', 'rice'],
-      'Bran': ['Bran', 'bran', 'Farm Bran']
+      'rj rice 1': ['RJ Rice 1', 'Rejection Rice 1', 'rj rice 1', 'rejection rice 1', 'RJ RICE 1'],
+      'rj rice (2)': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2', 'RJ RICE 2'],
+      'rj rice 2': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2', 'RJ RICE 2'],
+      'rj broken': ['RJ Broken', 'Rejection Broken', 'rj broken', 'rejection broken', 'RJ BROKEN'],
+      'rejection broken': ['Rejection Broken', 'RJ Broken', 'rejection broken', 'rj broken', 'REJECTION BROKEN'],
+      '0 broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken', '0 BROKEN', 'ZERO BROKEN'],
+      'zero broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken', '0 BROKEN', 'ZERO BROKEN'],
+      'unpolish': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished', 'UNPOLISH', 'UNPOLISHED'],
+      'unpolished': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished', 'UNPOLISH', 'UNPOLISHED'],
+      'sizer broken': ['Sizer Broken', 'sizer broken', 'SIZER BROKEN'],
+      'faram': ['Faram', 'faram', 'Farm', 'farm', 'FARAM', 'FARM'],
+      'broken': ['Broken', 'broken', 'BROKEN'],
+      'rice': ['Rice', 'rice', 'RICE'],
+      'bran': ['Bran', 'bran', 'Farm Bran', 'farm bran', 'BRAN', 'FARM BRAN'],
+      'farm bran': ['Bran', 'bran', 'Farm Bran', 'farm bran', 'BRAN', 'FARM BRAN']
     };
-    return productTypeAliases[normalized] || [normalized];
+    return productTypeAliases[normalized] || [productType, productType.toLowerCase(), productType.toUpperCase()];
   }
 
   static _toTitleCase(str) {

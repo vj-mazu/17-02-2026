@@ -321,7 +321,7 @@ class LocationStockQueryEngine {
           rp."locationCode" as location_code,
           rsl.name as location_name,
           rsl.is_direct_load,
-          UPPER(o."allottedVariety" || ' ' || o.type) as complete_variety_text,
+          UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as complete_variety_text,
           rp."outturnId" as outturn_id,
           rp."productType" as product_type,
           p."brandName" as packaging_name,

@@ -171,7 +171,7 @@ class LocationBifurcationService {
             LEFT JOIN packagings p ON rp."packagingId" = p.id
             WHERE rp.status = 'approved'
               AND rp.date < :date
-              AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || ' ' || o.type, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
+              AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
               AND rp."productType" IN (:productTypeList)
               AND p."brandName" = :sourcePackagingName
               AND p."allottedKg" = :sourceBagSizeKg
@@ -363,11 +363,10 @@ class LocationBifurcationService {
       // 2b. Build product type aliases for robust matching
       const productTypeList = this._getProductTypeAliases(productType);
       
-      // 3. Calculate opening stock (date <= saleDate) - CRITICAL FIX
+      // 3. Calculate opening stock (date <= saleDate) - Enhanced with robust location & outturn matching
       const openingStockQuery = `
         WITH stock_calculation AS (
           -- PURCHASES (opening stock - include same-date purchases)
-          -- CRITICAL FIX: Include same-date purchases (date <= saleDate) because purchase happens BEFORE sale
           SELECT SUM(rsm.bags) as movement_bags
           FROM rice_stock_movements rsm
           LEFT JOIN packagings p ON rsm.packaging_id = p.id
@@ -375,10 +374,16 @@ class LocationBifurcationService {
             AND rsm.date <= :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'purchase'
-            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
+            AND (
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = ''))
+              OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
+            )
             AND rsm.product_type IN (:productTypeList)
-            AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
-            AND p."allottedKg" = :bagSizeKg
+            AND (
+              (:packagingId IS NOT NULL AND (rsm.packaging_id = :packagingId OR p.id = :packagingId))
+              OR (LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
+            )
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -391,10 +396,16 @@ class LocationBifurcationService {
             AND rsm.date < :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'sale'
-            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
+            AND (
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = ''))
+              OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
+            )
             AND rsm.product_type IN (:productTypeList)
-            AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
-            AND p."allottedKg" = :bagSizeKg
+            AND (
+              (:packagingId IS NOT NULL AND (rsm.packaging_id = :packagingId OR p.id = :packagingId))
+              OR (LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
+            )
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -407,16 +418,21 @@ class LocationBifurcationService {
             AND rsm.date < :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
-            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
+            AND (
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = ''))
+              OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
+            )
             AND rsm.product_type IN (:productTypeList)
-            AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand))
-            AND sp."allottedKg" = :bagSizeKg
+            AND (
+              (:packagingId IS NOT NULL AND (rsm.source_packaging_id = :packagingId OR sp.id = :packagingId))
+              OR (LOWER(TRIM(COALESCE(sp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (sp."allottedKg" = :bagSizeKg OR CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
+            )
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
           
           -- PALTI TARGET (add target bags to opening stock)
-          -- CRITICAL FIX: Include same-date palti targets (date <= saleDate) because palti happens BEFORE sale
           SELECT SUM(rsm.bags) as movement_bags
           FROM rice_stock_movements rsm
           LEFT JOIN packagings tp ON rsm.target_packaging_id = tp.id
@@ -424,28 +440,39 @@ class LocationBifurcationService {
             AND rsm.date <= :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
-            AND (COALESCE(rsm.to_location, rsm.location_code) = :locationCode OR (:locationCode = 'NULL' AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = '' OR UPPER(COALESCE(rsm.to_location, rsm.location_code)) = 'NULL')))
+            AND (
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = ''))
+              OR (:locationCode = 'NULL' AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = '' OR UPPER(COALESCE(rsm.to_location, rsm.location_code)) = 'NULL'))
+            )
             AND rsm.product_type IN (:productTypeList)
-            AND LOWER(TRIM(tp."brandName")) = LOWER(TRIM(:packagingBrand))
-            AND tp."allottedKg" = :bagSizeKg
+            AND (
+              (:packagingId IS NOT NULL AND (rsm.target_packaging_id = :packagingId OR tp.id = :packagingId))
+              OR (LOWER(TRIM(COALESCE(tp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (tp."allottedKg" = :bagSizeKg OR CAST(tp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
+            )
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
           
           -- PRODUCTION (add to opening stock)
-          -- CRITICAL FIX: Include same-date productions (date <= saleDate) because production happens BEFORE sale
           SELECT SUM(rp.bags) as movement_bags
           FROM rice_productions rp
           LEFT JOIN outturns o ON rp."outturnId" = o.id
           LEFT JOIN packagings p ON rp."packagingId" = p.id
           WHERE rp.status = 'approved'
             AND rp.date <= :saleDate
-            AND (rp."locationCode" = :locationCode OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL')))
+            AND (
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rp."locationCode", ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = ''))
+              OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL'))
+            )
             AND rp."productType" IN (:productTypeList)
-            AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))
-            AND p."allottedKg" = :bagSizeKg
+            AND (
+              (:packagingId IS NOT NULL AND (rp."packagingId" = :packagingId OR p.id = :packagingId))
+              OR (LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
+            )
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
-            ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])' : ''}
+            ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(COALESCE(o."allottedVariety", '') || ' ' || COALESCE(o.type, '')), '[_\\s-]+', ' ', 'g'))) = ANY(ARRAY[:varietyAliases])` : ''}
         )
         SELECT COALESCE(SUM(movement_bags), 0) as opening_stock
         FROM stock_calculation
@@ -460,10 +487,16 @@ class LocationBifurcationService {
           AND rsm.date = :saleDate
           AND rsm.movement_type = 'palti'
           ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
-          AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL')))
+          AND (
+            LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+            OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = ''))
+            OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
+          )
           AND rsm.product_type IN (:productTypeList)
-          AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand))
-          AND sp."allottedKg" = :bagSizeKg
+          AND (
+            (:packagingId IS NOT NULL AND (rsm.source_packaging_id = :packagingId OR sp.id = :packagingId))
+            OR (LOWER(TRIM(COALESCE(sp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (sp."allottedKg" = :bagSizeKg OR CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
+          )
           ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
       `;
       
@@ -471,6 +504,7 @@ class LocationBifurcationService {
       const replacements = {
         saleDate,
         locationCode,
+        packagingId: packagingId ? parseInt(packagingId) : null,
         productTypeList,
         packagingBrand: packagingInfo.brand,
         bagSizeKg: packagingInfo.sizeKg,
@@ -617,7 +651,7 @@ class LocationBifurcationService {
             rp."locationCode" as location_code,
             rsl.name as location_name,
             rsl.is_direct_load,
-            UPPER(o."allottedVariety" || ' ' || o.type) as complete_variety_text,
+            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as complete_variety_text,
             rp."productType" as product_type,
             p."brandName" as packaging_name,
             p."allottedKg" as bag_size_kg,
@@ -1182,24 +1216,25 @@ class LocationBifurcationService {
    */
   static _getProductTypeAliases(productType) {
     if (!productType) return [];
-    const normalized = String(productType).trim();
+    const normalized = String(productType).trim().toLowerCase();
     const productTypeAliases = {
-      'RJ Rice 1': ['RJ Rice 1', 'Rejection Rice 1', 'rj rice 1', 'rejection rice 1'],
-      'RJ Rice (2)': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2'],
-      'RJ Rice 2': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2'],
-      'RJ Broken': ['RJ Broken', 'Rejection Broken', 'rj broken', 'rejection broken'],
-      'Rejection Broken': ['Rejection Broken', 'RJ Broken', 'rejection broken', 'rj broken'],
-      '0 Broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken'],
-      'Zero Broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken'],
-      'Unpolish': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished'],
-      'Unpolished': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished'],
-      'Sizer Broken': ['Sizer Broken', 'sizer broken'],
-      'Faram': ['Faram', 'faram', 'Farm', 'farm'],
-      'Broken': ['Broken', 'broken'],
-      'Rice': ['Rice', 'rice'],
-      'Bran': ['Bran', 'bran', 'Farm Bran']
+      'rj rice 1': ['RJ Rice 1', 'Rejection Rice 1', 'rj rice 1', 'rejection rice 1', 'RJ RICE 1'],
+      'rj rice (2)': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2', 'RJ RICE 2'],
+      'rj rice 2': ['RJ Rice (2)', 'RJ Rice 2', 'Rejection Rice 2', 'rj rice 2', 'rejection rice 2', 'RJ RICE 2'],
+      'rj broken': ['RJ Broken', 'Rejection Broken', 'rj broken', 'rejection broken', 'RJ BROKEN'],
+      'rejection broken': ['Rejection Broken', 'RJ Broken', 'rejection broken', 'rj broken', 'REJECTION BROKEN'],
+      '0 broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken', '0 BROKEN', 'ZERO BROKEN'],
+      'zero broken': ['0 Broken', 'Zero Broken', '0broken', 'zero broken', '0 BROKEN', 'ZERO BROKEN'],
+      'unpolish': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished', 'UNPOLISH', 'UNPOLISHED'],
+      'unpolished': ['Unpolish', 'Unpolished', 'unpolish', 'unpolished', 'UNPOLISH', 'UNPOLISHED'],
+      'sizer broken': ['Sizer Broken', 'sizer broken', 'SIZER BROKEN'],
+      'faram': ['Faram', 'faram', 'Farm', 'farm', 'FARAM', 'FARM'],
+      'broken': ['Broken', 'broken', 'BROKEN'],
+      'rice': ['Rice', 'rice', 'RICE'],
+      'bran': ['Bran', 'bran', 'Farm Bran', 'farm bran', 'BRAN', 'FARM BRAN'],
+      'farm bran': ['Bran', 'bran', 'Farm Bran', 'farm bran', 'BRAN', 'FARM BRAN']
     };
-    return productTypeAliases[normalized] || [normalized];
+    return productTypeAliases[normalized] || [productType, productType.toLowerCase(), productType.toUpperCase()];
   }
 
   static _toTitleCase(str) {

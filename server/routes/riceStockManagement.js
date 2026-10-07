@@ -465,13 +465,13 @@ router.get('/varieties-with-stock', auth, async (req, res) => {
                     lower(trim(regexp_replace(
                         CASE 
                             WHEN o.type IS NULL THEN TRIM(o."allottedVariety")
-                            ELSE TRIM(o."allottedVariety" || ' ' || o.type)
+                            ELSE TRIM(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))))
                         END, 
                         '[_\\s-]+', ' ', 'g'
                     ))) as normalized_variety,
                     UPPER(CASE 
                         WHEN o.type IS NULL THEN TRIM(o."allottedVariety")
-                        ELSE TRIM(o."allottedVariety" || ' ' || o.type)
+                        ELSE TRIM(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))))
                     END) as original_variety,
                     SUM(rp."quantityQuintals") as stock_qtls
                 FROM rice_productions rp
@@ -650,7 +650,7 @@ router.get('/opening-balance', auth, async (req, res) => {
                 
                 -- Production movements (addition with outturn variety integration)
                 SELECT 
-                    UPPER(o."allottedVariety" || ' ' || o.type) as variety,
+                    UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as variety,
                     rp."productType"::text as product_type,
                     rp."packagingId" as packaging_id,
                     rp."locationCode" as location_code,
@@ -660,7 +660,7 @@ router.get('/opening-balance', auth, async (req, res) => {
                 JOIN outturns o ON rp."outturnId" = o.id
                 WHERE rp.date < :beforeDate
                   AND rp.status = 'approved'
-                GROUP BY UPPER(o."allottedVariety" || ' ' || o.type), rp."productType", rp."packagingId", rp."locationCode"
+                GROUP BY UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))), rp."productType", rp."packagingId", rp."locationCode"
             )
             SELECT 
                 ms.variety,
@@ -902,7 +902,7 @@ router.get('/ledger', auth, async (req, res) => {
                     rp.date as "date",
                     'production' as "movementType",
                     rp."productType"::text as "productType",
-                    UPPER(o."allottedVariety" || ' ' || o.type) as "variety",
+                    UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as "variety",
                     rp.bags as "bags",
                     NULL::integer as "sourceBags",
                     rp."quantityQuintals" as "quantityQuintals",
