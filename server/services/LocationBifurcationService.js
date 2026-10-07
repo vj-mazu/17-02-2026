@@ -362,6 +362,43 @@ class LocationBifurcationService {
       
       // 2b. Build product type aliases for robust matching
       const productTypeList = this._getProductTypeAliases(productType);
+
+      const hasPkgId = Boolean(packagingInfo.id && parseInt(packagingInfo.id) > 0);
+      const hasPkgBrand = Boolean(packagingInfo.brand && packagingInfo.brand.trim());
+      const hasBagSize = Boolean(packagingInfo.sizeKg && Number(packagingInfo.sizeKg) > 0);
+
+      // Construct packaging conditions dynamically
+      let rsmPkgCondition = '1=1';
+      let paltiSrcPkgCondition = '1=1';
+      let paltiTgtPkgCondition = '1=1';
+      let prodPkgCondition = '1=1';
+
+      if (hasPkgId && hasPkgBrand && hasBagSize) {
+        rsmPkgCondition = `((rsm.packaging_id = :packagingId OR p.id = :packagingId) OR (LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))))`;
+        paltiSrcPkgCondition = `((rsm.source_packaging_id = :packagingId OR sp.id = :packagingId) OR (LOWER(TRIM(COALESCE(sp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (sp."allottedKg" = :bagSizeKg OR CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))))`;
+        paltiTgtPkgCondition = `((rsm.target_packaging_id = :packagingId OR tp.id = :packagingId) OR (LOWER(TRIM(COALESCE(tp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (tp."allottedKg" = :bagSizeKg OR CAST(tp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))))`;
+        prodPkgCondition = `((rp."packagingId" = :packagingId OR p.id = :packagingId) OR (LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))))`;
+      } else if (hasPkgId) {
+        rsmPkgCondition = `(rsm.packaging_id = :packagingId OR p.id = :packagingId)`;
+        paltiSrcPkgCondition = `(rsm.source_packaging_id = :packagingId OR sp.id = :packagingId)`;
+        paltiTgtPkgCondition = `(rsm.target_packaging_id = :packagingId OR tp.id = :packagingId)`;
+        prodPkgCondition = `(rp."packagingId" = :packagingId OR p.id = :packagingId)`;
+      } else if (hasPkgBrand && hasBagSize) {
+        rsmPkgCondition = `(LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))`;
+        paltiSrcPkgCondition = `(LOWER(TRIM(COALESCE(sp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (sp."allottedKg" = :bagSizeKg OR CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))`;
+        paltiTgtPkgCondition = `(LOWER(TRIM(COALESCE(tp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (tp."allottedKg" = :bagSizeKg OR CAST(tp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))`;
+        prodPkgCondition = `(LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))`;
+      } else if (hasPkgBrand) {
+        rsmPkgCondition = `(LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)))`;
+        paltiSrcPkgCondition = `(LOWER(TRIM(COALESCE(sp."brandName", ''))) = LOWER(TRIM(:packagingBrand)))`;
+        paltiTgtPkgCondition = `(LOWER(TRIM(COALESCE(tp."brandName", ''))) = LOWER(TRIM(:packagingBrand)))`;
+        prodPkgCondition = `(LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)))`;
+      } else if (hasBagSize) {
+        rsmPkgCondition = `(p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))`;
+        paltiSrcPkgCondition = `(sp."allottedKg" = :bagSizeKg OR CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))`;
+        paltiTgtPkgCondition = `(tp."allottedKg" = :bagSizeKg OR CAST(tp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))`;
+        prodPkgCondition = `(p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))`;
+      }
       
       // 3. Calculate opening stock (date <= saleDate) - Enhanced with robust location & outturn matching
       const openingStockQuery = `
@@ -380,10 +417,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
-            AND (
-              (:packagingId IS NOT NULL AND (rsm.packaging_id = :packagingId OR p.id = :packagingId))
-              OR (LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
-            )
+            AND ${rsmPkgCondition}
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -402,10 +436,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
-            AND (
-              (:packagingId IS NOT NULL AND (rsm.packaging_id = :packagingId OR p.id = :packagingId))
-              OR (LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
-            )
+            AND ${rsmPkgCondition}
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -424,10 +455,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
-            AND (
-              (:packagingId IS NOT NULL AND (rsm.source_packaging_id = :packagingId OR sp.id = :packagingId))
-              OR (LOWER(TRIM(COALESCE(sp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (sp."allottedKg" = :bagSizeKg OR CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
-            )
+            AND ${paltiSrcPkgCondition}
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -446,10 +474,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = '' OR UPPER(COALESCE(rsm.to_location, rsm.location_code)) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
-            AND (
-              (:packagingId IS NOT NULL AND (rsm.target_packaging_id = :packagingId OR tp.id = :packagingId))
-              OR (LOWER(TRIM(COALESCE(tp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (tp."allottedKg" = :bagSizeKg OR CAST(tp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
-            )
+            AND ${paltiTgtPkgCondition}
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -467,12 +492,9 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL'))
             )
             AND rp."productType" IN (:productTypeList)
-            AND (
-              (:packagingId IS NOT NULL AND (rp."packagingId" = :packagingId OR p.id = :packagingId))
-              OR (LOWER(TRIM(COALESCE(p."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (p."allottedKg" = :bagSizeKg OR CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
-            )
+            AND ${prodPkgCondition}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
-            ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(COALESCE(o."allottedVariety", '') || ' ' || COALESCE(o.type, '')), '[_\\s-]+', ' ', 'g'))) = ANY(ARRAY[:varietyAliases])` : ''}
+            ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))), '[_\\s-]+', ' ', 'g'))) = ANY(ARRAY[:varietyAliases])` : ''}
         )
         SELECT COALESCE(SUM(movement_bags), 0) as opening_stock
         FROM stock_calculation
@@ -493,24 +515,30 @@ class LocationBifurcationService {
             OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
           )
           AND rsm.product_type IN (:productTypeList)
-          AND (
-            (:packagingId IS NOT NULL AND (rsm.source_packaging_id = :packagingId OR sp.id = :packagingId))
-            OR (LOWER(TRIM(COALESCE(sp."brandName", ''))) = LOWER(TRIM(:packagingBrand)) AND (sp."allottedKg" = :bagSizeKg OR CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)))
-          )
+          AND ${paltiSrcPkgCondition}
           ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
       `;
       
-      // Execute queries
+      // Execute queries with clean, defined replacements
       const replacements = {
         saleDate,
         locationCode,
-        packagingId: packagingId ? parseInt(packagingId) : null,
         productTypeList,
-        packagingBrand: packagingInfo.brand,
-        bagSizeKg: packagingInfo.sizeKg,
-        excludeMovementId: excludeMovementId ? parseInt(excludeMovementId) : null,
         ...varietyConditions.replacements
       };
+
+      if (hasPkgId) {
+        replacements.packagingId = parseInt(packagingInfo.id);
+      }
+      if (hasPkgBrand) {
+        replacements.packagingBrand = packagingInfo.brand.trim();
+      }
+      if (hasBagSize) {
+        replacements.bagSizeKg = Number(packagingInfo.sizeKg);
+      }
+      if (excludeMovementId) {
+        replacements.excludeMovementId = parseInt(excludeMovementId);
+      }
       
       const [openingResult] = await sequelize.query(openingStockQuery, {
         replacements,
@@ -522,8 +550,8 @@ class LocationBifurcationService {
         type: sequelize.QueryTypes.SELECT
       });
       
-      const openingStock = parseInt(openingResult.opening_stock || 0);
-      const paltiDeductions = parseInt(paltiResult.palti_deductions || 0);
+      const openingStock = parseInt(openingResult?.opening_stock || 0);
+      const paltiDeductions = parseInt(paltiResult?.palti_deductions || 0);
       const remainingStock = openingStock - paltiDeductions;
       
       const isValid = remainingStock >= requestedBags;
@@ -548,7 +576,7 @@ class LocationBifurcationService {
         message: isValid
           ? `Validation passed: ${remainingStock} bags available`
           : `Insufficient stock. Available: ${remainingStock} bags (Opening: ${openingStock}, Palti: -${paltiDeductions}), Requested: ${requestedBags} bags`,
-        groupKey: `${locationCode}|${variety}|${packagingInfo.brand}|${packagingInfo.sizeKg}|${productType}`
+        groupKey: `${locationCode}|${variety}|${packagingInfo.brand || ''}|${packagingInfo.sizeKg || ''}|${productType}`
       };
       
     } catch (error) {
