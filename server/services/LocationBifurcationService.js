@@ -494,7 +494,7 @@ class LocationBifurcationService {
             AND rp."productType" IN (:productTypeList)
             AND ${prodPkgCondition}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
-            ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))), '[_\\s-]+', ' ', 'g'))) = ANY(ARRAY[:varietyAliases])` : ''}
+            ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)` : ''}
         )
         SELECT COALESCE(SUM(movement_bags), 0) as opening_stock
         FROM stock_calculation
@@ -697,7 +697,7 @@ class LocationBifurcationService {
             ${packagingInfo.brand ? 'AND p."brandName" = :packagingBrand' : ''}
             ${packagingInfo.sizeKg ? 'AND p."allottedKg" = :bagSizeKg' : ''}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
-            ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])' : ''}
+            ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) IN (:varietyAliases)' : ''}
           GROUP BY 
             rp."locationCode",
             rsl.name,
@@ -1100,7 +1100,7 @@ class LocationBifurcationService {
 
     return {
       type: 'string',
-      condition: 'LOWER(TRIM(REGEXP_REPLACE(rsm.variety, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])',
+      condition: 'LOWER(TRIM(REGEXP_REPLACE(rsm.variety, \'[_\\s-]+\', \' \', \'g\'))) IN (:varietyAliases)',
       replacements: { varietyAliases: uniqueAliases }
     };
   }

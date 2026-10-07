@@ -1599,9 +1599,10 @@ router.post('/movements', auth, async (req, res) => {
 
             } catch (stockError) {
                 console.error('❌ Date-aware sale stock validation error:', stockError);
-                return res.status(500).json({
+                return res.status(400).json({
                     success: false,
-                    error: 'Stock validation failed',
+                    error: stockError.message || 'Stock validation failed',
+                    message: stockError.message || 'Stock validation failed',
                     details: {
                         message: stockError.message,
                         stack: stockError.stack
