@@ -417,7 +417,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
-            AND ${rsmPkgCondition}
+            AND (${rsmPkgCondition} OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.packaging_id IS NULL OR rsm.packaging_id = 0)))
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           
           UNION ALL
@@ -492,7 +492,7 @@ class LocationBifurcationService {
               OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL'))
             )
             AND rp."productType" IN (:productTypeList)
-            AND ${prodPkgCondition}
+            AND (${prodPkgCondition} OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rp."packagingId" IS NULL OR rp."packagingId" = 0)))
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
             ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)` : ''}
         )
