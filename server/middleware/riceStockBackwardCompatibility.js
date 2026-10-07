@@ -210,9 +210,9 @@ class RiceStockBackwardCompatibilityLayer {
       // First try exact match
       const [exactMatches] = await sequelize.query(`
         SELECT id, code, allotted_variety, type,
-               UPPER(TRIM(CONCAT(allotted_variety, ' ', COALESCE(type, '')))) as standardized_variety
+               UPPER(TRIM(CONCAT(allotted_variety, ' ', COALESCE(CAST(type AS VARCHAR), '')))) as standardized_variety
         FROM outturns 
-        WHERE UPPER(TRIM(CONCAT(allotted_variety, ' ', COALESCE(type, '')))) = $1
+        WHERE UPPER(TRIM(CONCAT(allotted_variety, ' ', COALESCE(CAST(type AS VARCHAR), '')))) = $1
         LIMIT 1
       `, {
         replacements: [normalizedVariety]
@@ -225,7 +225,7 @@ class RiceStockBackwardCompatibilityLayer {
       // Try partial match on allotted_variety
       const [partialMatches] = await sequelize.query(`
         SELECT id, code, allotted_variety, type,
-               UPPER(TRIM(CONCAT(allotted_variety, ' ', COALESCE(type, '')))) as standardized_variety
+               UPPER(TRIM(CONCAT(allotted_variety, ' ', COALESCE(CAST(type AS VARCHAR), '')))) as standardized_variety
         FROM outturns 
         WHERE UPPER(TRIM(allotted_variety)) = $1
            OR $1 LIKE '%' || UPPER(TRIM(allotted_variety)) || '%'
@@ -261,7 +261,7 @@ class RiceStockBackwardCompatibilityLayer {
     if (enhanced.outturnId && !enhanced.variety) {
       try {
         const [outturnData] = await sequelize.query(`
-          SELECT UPPER(TRIM(CONCAT(allotted_variety, ' ', COALESCE(type, '')))) as standardized_variety
+          SELECT UPPER(TRIM(CONCAT(allotted_variety, ' ', COALESCE(CAST(type AS VARCHAR), '')))) as standardized_variety
           FROM outturns 
           WHERE id = $1
         `, {

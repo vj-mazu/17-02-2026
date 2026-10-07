@@ -133,7 +133,7 @@ router.get('/', auth, async (req, res) => {
                 -- STANDARDIZED VARIETY: Prefer outturn-based variety over free-text
                 CASE 
                     WHEN rsm.outturn_id IS NOT NULL AND o."allottedVariety" IS NOT NULL THEN 
-                        UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))))
+                        UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))))
                     ELSE 
                         UPPER(TRIM(rsm.variety))
                 END as variety,
@@ -478,7 +478,7 @@ router.get('/', auth, async (req, res) => {
                 -- STANDARDIZED VARIETY: Prefer outturn-based variety over free-text
                 CASE 
                     WHEN rsm.outturn_id IS NOT NULL AND o."allottedVariety" IS NOT NULL THEN 
-                        UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))))
+                        UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))))
                     ELSE 
                         UPPER(TRIM(rsm.variety))
                 END as variety,

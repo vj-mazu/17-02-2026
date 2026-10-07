@@ -465,13 +465,13 @@ router.get('/varieties-with-stock', auth, async (req, res) => {
                     lower(trim(regexp_replace(
                         CASE 
                             WHEN o.type IS NULL THEN TRIM(o."allottedVariety")
-                            ELSE TRIM(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))))
+                            ELSE TRIM(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))))
                         END, 
                         '[_\\s-]+', ' ', 'g'
                     ))) as normalized_variety,
                     UPPER(CASE 
                         WHEN o.type IS NULL THEN TRIM(o."allottedVariety")
-                        ELSE TRIM(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))))
+                        ELSE TRIM(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))))
                     END) as original_variety,
                     SUM(rp."quantityQuintals") as stock_qtls
                 FROM rice_productions rp
@@ -650,7 +650,7 @@ router.get('/opening-balance', auth, async (req, res) => {
                 
                 -- Production movements (addition with outturn variety integration)
                 SELECT 
-                    UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as variety,
+                    UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), '')))) as variety,
                     rp."productType"::text as product_type,
                     rp."packagingId" as packaging_id,
                     rp."locationCode" as location_code,
@@ -660,7 +660,7 @@ router.get('/opening-balance', auth, async (req, res) => {
                 JOIN outturns o ON rp."outturnId" = o.id
                 WHERE rp.date < :beforeDate
                   AND rp.status = 'approved'
-                GROUP BY UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))), rp."productType", rp."packagingId", rp."locationCode"
+                GROUP BY UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), '')))), rp."productType", rp."packagingId", rp."locationCode"
             )
             SELECT 
                 ms.variety,
@@ -902,7 +902,7 @@ router.get('/ledger', auth, async (req, res) => {
                     rp.date as "date",
                     'production' as "movementType",
                     rp."productType"::text as "productType",
-                    UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as "variety",
+                    UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), '')))) as "variety",
                     rp.bags as "bags",
                     NULL::integer as "sourceBags",
                     rp."quantityQuintals" as "quantityQuintals",
@@ -1236,7 +1236,7 @@ router.post('/movements', auth, async (req, res) => {
         if (!finalVariety && outturnId && parseInt(outturnId) > 0) {
             try {
                 const [outturnResult] = await sequelize.query(`
-                    SELECT UPPER(TRIM(CONCAT("allottedVariety", ' ', COALESCE(type, '')))) as standardized_variety
+                    SELECT UPPER(TRIM(CONCAT("allottedVariety", ' ', COALESCE(CAST(type AS VARCHAR), '')))) as standardized_variety
                     FROM outturns
                     WHERE id = :outturnId
                 `, {
@@ -1437,7 +1437,7 @@ router.post('/movements', auth, async (req, res) => {
                             WHEN :isDirectLoad THEN rp.date = :date
                             ELSE rp.date <= :date
                           END)
-                          ${variety && safeAliases.length > 0 ? "AND lower(trim(regexp_replace(TRIM(CONCAT(o.\"allottedVariety\", ' ', COALESCE(o.type, ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)" : ''}
+                          ${variety && safeAliases.length > 0 ? "AND lower(trim(regexp_replace(TRIM(CONCAT(o.\"allottedVariety\", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)" : ''}
                     )
                     SELECT 
                         (COALESCE(ms.movement_qtls, 0) + COALESCE(ps.prod_qtls, 0)) as available_qtls

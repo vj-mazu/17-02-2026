@@ -171,7 +171,7 @@ class LocationBifurcationService {
             LEFT JOIN packagings p ON rp."packagingId" = p.id
             WHERE rp.status = 'approved'
               AND rp.date < :date
-              AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
+              AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
               AND rp."productType" IN (:productTypeList)
               AND p."brandName" = :sourcePackagingName
               AND p."allottedKg" = :sourceBagSizeKg
@@ -494,7 +494,7 @@ class LocationBifurcationService {
             AND rp."productType" IN (:productTypeList)
             AND ${prodPkgCondition}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
-            ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)` : ''}
+            ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)` : ''}
         )
         SELECT COALESCE(SUM(movement_bags), 0) as opening_stock
         FROM stock_calculation
@@ -679,7 +679,7 @@ class LocationBifurcationService {
             rp."locationCode" as location_code,
             rsl.name as location_name,
             rsl.is_direct_load,
-            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as complete_variety_text,
+            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), '')))) as complete_variety_text,
             rp."productType" as product_type,
             p."brandName" as packaging_name,
             p."allottedKg" as bag_size_kg,

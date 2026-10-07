@@ -144,7 +144,7 @@ class RiceStockCalculationService {
           -- Rice Productions with outturn complete variety text
           SELECT 
             rp."locationCode" as location_code,
-            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as complete_variety_text,
+            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), '')))) as complete_variety_text,
             rp."productType" as product_type,
             p."brandName" as packaging_name,
             p."allottedKg" as bag_size_kg,
@@ -357,7 +357,7 @@ class RiceStockCalculationService {
           -- Rice Productions for this specific variety (outturn-based)
           SELECT 
             rp."locationCode" as location_code,
-            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(o.type, '')))) as complete_variety_text,
+            UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), '')))) as complete_variety_text,
             rp."productType" as product_type,
             p."brandName" as packaging_name,
             p."allottedKg" as bag_size_kg,
