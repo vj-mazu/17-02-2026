@@ -1236,7 +1236,7 @@ router.post('/movements', auth, async (req, res) => {
         if (!finalVariety && outturnId && parseInt(outturnId) > 0) {
             try {
                 const [outturnResult] = await sequelize.query(`
-                    SELECT UPPER(TRIM("allottedVariety" || ' ' || type)) as standardized_variety
+                    SELECT UPPER(TRIM(CONCAT("allottedVariety", ' ', COALESCE(type, '')))) as standardized_variety
                     FROM outturns
                     WHERE id = :outturnId
                 `, {
@@ -1409,7 +1409,11 @@ router.post('/movements', auth, async (req, res) => {
                             END), 0) as movement_qtls
                         FROM rice_stock_movements 
                         WHERE status = 'approved' 
-                          AND location_code = :locationCode
+                          AND (
+                            LOWER(TRIM(REGEXP_REPLACE(COALESCE(location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                            OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (location_code IS NULL OR TRIM(location_code) = ''))
+                            OR (:locationCode = 'NULL' AND (location_code IS NULL OR TRIM(location_code) = '' OR UPPER(location_code) = 'NULL'))
+                          )
                           AND product_type IN (:productTypeList)
                           AND (CASE 
                             WHEN :isDirectLoad THEN date = :date
@@ -1421,7 +1425,11 @@ router.post('/movements', auth, async (req, res) => {
                         SELECT COALESCE(SUM(rp."quantityQuintals"), 0) as prod_qtls
                         FROM rice_productions rp
                         LEFT JOIN outturns o ON rp."outturnId" = o.id
-                        WHERE rp."locationCode" = :locationCode
+                        WHERE (
+                            LOWER(TRIM(REGEXP_REPLACE(COALESCE(rp."locationCode", ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                            OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = ''))
+                            OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL'))
+                          )
                           AND rp."productType" IN (:productTypeList)
                           AND rp.status = 'approved'
                           AND rp."packagingId" = :sourcePackagingId
@@ -1429,7 +1437,7 @@ router.post('/movements', auth, async (req, res) => {
                             WHEN :isDirectLoad THEN rp.date = :date
                             ELSE rp.date <= :date
                           END)
-                          ${variety && safeAliases.length > 0 ? "AND lower(trim(regexp_replace(o.\"allottedVariety\" || ' ' || o.type, '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)" : ''}
+                          ${variety && safeAliases.length > 0 ? "AND lower(trim(regexp_replace(TRIM(CONCAT(o.\"allottedVariety\", ' ', COALESCE(o.type, ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)" : ''}
                     )
                     SELECT 
                         (COALESCE(ms.movement_qtls, 0) + COALESCE(ps.prod_qtls, 0)) as available_qtls
