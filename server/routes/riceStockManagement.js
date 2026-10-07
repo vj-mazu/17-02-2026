@@ -1545,6 +1545,7 @@ router.post('/movements', auth, async (req, res) => {
                 const validation = await LocationBifurcationService.validateSaleAfterPalti({
                     locationCode,
                     variety,
+                    outturnId: outturnId ? Number.parseInt(outturnId) : null,
                     productType,
                     packagingId: packagingId ? Number.parseInt(packagingId) : null,
                     packagingBrand: packagingBrand || null,

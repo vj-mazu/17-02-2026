@@ -329,6 +329,7 @@ class LocationBifurcationService {
     const {
       locationCode,
       variety,
+      outturnId,
       productType,
       packagingId,
       packagingBrand,
@@ -494,7 +495,11 @@ class LocationBifurcationService {
             AND rp."productType" IN (:productTypeList)
             AND (${prodPkgCondition} OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rp."packagingId" IS NULL OR rp."packagingId" = 0)))
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
-            ${varietyConditions.type === 'string' ? `AND LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)` : ''}
+            ${varietyConditions.type === 'string' ? `AND (
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(o."allottedVariety", ''), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)
+              OR LOWER(TRIM(REGEXP_REPLACE(TRIM(CONCAT(COALESCE(o."allottedVariety", ''), ' ', COALESCE(CAST(o.type AS VARCHAR), ''))), '[_\\s-]+', ' ', 'g'))) IN (:varietyAliases)
+              ${outturnId ? 'OR rp."outturnId" = :outturnId' : ''}
+            )` : (outturnId ? 'AND rp."outturnId" = :outturnId' : '')}
         )
         SELECT COALESCE(SUM(movement_bags), 0) as opening_stock
         FROM stock_calculation
@@ -526,6 +531,9 @@ class LocationBifurcationService {
         productTypeList,
         ...varietyConditions.replacements
       };
+      if (outturnId && parseInt(outturnId) > 0) {
+        replacements.outturnId = parseInt(outturnId);
+      }
 
       if (hasPkgId) {
         replacements.packagingId = parseInt(packagingInfo.id);
