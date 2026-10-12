@@ -4235,14 +4235,28 @@ const Records: React.FC = () => {
                   sourceBags: item.sourceBags || item.source_bags || 0,
                   shortageKg: item.shortageKg || item.conversionShortageKg || item.conversion_shortage_kg || 0,
                   shortageBags: item.shortageBags || item.conversionShortageBags || item.conversion_shortage_bags || 0,
-                  sourcePackaging: (item.sourcePackaging?.brandName || item.source_packaging_brand) ? {
-                    brandName: item.sourcePackaging?.brandName || item.source_packaging_brand,
-                    allottedKg: item.sourcePackaging?.allottedKg || item.source_packaging_kg || item.sourcePackagingKg || 26
-                  } : null,
-                  targetPackaging: (item.targetPackaging?.brandName || item.target_packaging_brand) ? {
-                    brandName: item.targetPackaging?.brandName || item.target_packaging_brand,
-                    allottedKg: item.targetPackaging?.allottedKg || item.target_packaging_kg || item.targetPackagingKg || 26
-                  } : null,
+                  sourcePackaging: (() => {
+                    const brand = item.sourcePackaging?.brandName || item.source_packaging_brand || item.sourcePackaging?.name || item.source_packaging || item.sourcePackagingBrand;
+                    const kg = Number(item.sourcePackaging?.allottedKg || item.source_packaging_kg || item.sourcePackagingKg || item.sourcePackaging?.capacityKg || 0);
+                    if (brand || kg > 0) {
+                      return {
+                        brandName: brand || 'A1',
+                        allottedKg: kg > 0 ? kg : 26
+                      };
+                    }
+                    return null;
+                  })(),
+                  targetPackaging: (() => {
+                    const brand = item.targetPackaging?.brandName || item.target_packaging_brand || item.targetPackaging?.name || item.target_packaging || item.targetPackagingBrand;
+                    const kg = Number(item.targetPackaging?.allottedKg || item.target_packaging_kg || item.targetPackagingKg || item.targetPackaging?.capacityKg || 0);
+                    if (brand || kg > 0) {
+                      return {
+                        brandName: brand || 'A1',
+                        allottedKg: kg > 0 ? kg : 26
+                      };
+                    }
+                    return null;
+                  })(),
                   remarks: item.remarks || null
                 });
               });
@@ -4372,14 +4386,19 @@ const Records: React.FC = () => {
 
                   // Handle Palti as a movement between source (location/pkg) and target (location/pkg)
                   if (movementType === 'palti') {
-                    // 🔧 FIXED: Simplified Palti handling with debug logging
                     const sourceLoc = prod.fromLocation || baseLocation;
                     const targetLoc = prod.toLocation || baseLocation;
 
-                    // Extract source packaging (prioritize camelCase fields)
-                    const sourcePkg = prod.sourcePackaging?.brandName || prod.sourcePackagingBrand || prod.source_packaging_brand || 'A1';
+                    // Extract source packaging with full fallback
+                    const sourcePkg = prod.sourcePackaging?.brandName ||
+                      prod.sourcePackagingBrand ||
+                      prod.source_packaging_brand ||
+                      prod.sourcePackaging?.name ||
+                      prod.source_packaging ||
+                      (typeof packaging === 'string' && packaging.includes('→') ? packaging.split('→')[0]?.trim() : '') ||
+                      'A1';
 
-                    // Extract target packaging (prioritize camelCase fields)
+                    // Extract target packaging with full fallback
                     let targetPkgName = 'A1';
                     if (prod.targetPackaging?.brandName) {
                       targetPkgName = prod.targetPackaging.brandName;
@@ -4387,84 +4406,130 @@ const Records: React.FC = () => {
                       targetPkgName = prod.targetPackagingBrand;
                     } else if (prod.target_packaging_brand) {
                       targetPkgName = prod.target_packaging_brand;
+                    } else if (prod.targetPackaging?.name) {
+                      targetPkgName = prod.targetPackaging.name;
                     } else if (typeof packaging === 'string' && packaging.includes('→')) {
                       targetPkgName = packaging.split('→')[1]?.trim() || 'A1';
                     }
 
-                    // Calculate weights
-                    const sourceKgPerBag = prod.sourcePackaging?.allottedKg || prod.sourcePackagingKg || 26;
-                    const targetKgPerBag = prod.targetPackaging?.allottedKg || prod.targetPackagingKg || prod.bagSizeKg || 26;
+                    // Calculate weights accurately
                     const targetBags = prod.bags || 0;
-                    const targetQtls = prod.actualQtls || prod.quantityQuintals || (targetBags * targetKgPerBag) / 100;
-                    const shortageKg = prod.shortageKg || prod.conversionShortageKg || prod.conversion_shortage_kg || 0;
+                    const targetKgPerBag = Number(
+                      prod.targetPackaging?.allottedKg ||
+                      prod.targetPackagingKg ||
+                      prod.target_packaging_kg ||
+                      prod.bagSizeKg ||
+                      (targetBags > 0 && (prod.actualQtls || prod.quantityQuintals) ? ((prod.actualQtls || prod.quantityQuintals) * 100) / targetBags : null) ||
+                      26
+                    );
+                    const targetQtls = Math.abs(prod.actualQtls || prod.quantityQuintals || (targetBags * targetKgPerBag) / 100);
+                    const shortageKg = Number(prod.shortageKg || prod.conversionShortageKg || prod.conversion_shortage_kg || 0);
                     const shortageQtls = shortageKg / 100;
                     const sourceQtls = targetQtls + shortageQtls;
+                    const sourceBagsCount = Number(prod.sourceBags || prod.source_bags || 0);
+                    const sourceKgPerBag = Number(
+                      prod.sourcePackaging?.allottedKg ||
+                      prod.sourcePackagingKg ||
+                      prod.source_packaging_kg ||
+                      prod.source_bag_size_kg ||
+                      (sourceBagsCount > 0 && sourceQtls > 0 ? (sourceQtls * 100) / sourceBagsCount : null) ||
+                      26
+                    );
 
-                    // 🔧 FIXED: Product type MUST stay the same for Palti (Rice stays Rice, Bran stays Bran)
+                    // Product type MUST stay the same for Palti (Rice stays Rice, Bran stays Bran)
                     const paltiCategory = category;
 
                     // Generate stock keys
                     const sourceKey = createStockKey(variety, sourceLoc, paltiCategory, sourcePkg, sourceKgPerBag);
                     const targetKey = createStockKey(variety, targetLoc, paltiCategory, targetPkgName, targetKgPerBag);
 
-                    // 📊 DEBUG LOGGING
-                    console.log('🔄 PALTI OPERATION:', {
-                      id: prod.id,
-                      date: date,
-                      variety: variety,
-                      category: paltiCategory,
-                      sourceLoc: sourceLoc,
-                      targetLoc: targetLoc,
-                      sourcePkg: sourcePkg,
-                      targetPkg: targetPkgName,
-                      sourceQtls: sourceQtls.toFixed(2),
-                      targetQtls: targetQtls.toFixed(2),
-                      shortageQtls: shortageQtls.toFixed(2),
-                      sourceKey: sourceKey,
-                      targetKey: targetKey,
-                      sourceStockBefore: (runningStockDetailed[sourceKey] || 0).toFixed(2),
-                      targetStockBefore: (runningStockDetailed[targetKey] || 0).toFixed(2)
-                    });
+                    // 1. Subtract from source in runningStockDetailed
+                    let remainingSourceQtls = sourceQtls;
 
-                    // 🔧 FIXED: Simple validation - check if source stock exists
-                    const currentSourceStock = runningStockDetailed[sourceKey] || 0;
-                    if (currentSourceStock < sourceQtls - 0.01) {
-                      console.warn('⚠️ PALTI WARNING: Insufficient source stock!', {
-                        sourceKey,
-                        required: sourceQtls.toFixed(2),
-                        available: currentSourceStock.toFixed(2),
-                        deficit: (sourceQtls - currentSourceStock).toFixed(2)
+                    // 1a. Try exact sourceKey first
+                    if (runningStockDetailed[sourceKey] && runningStockDetailed[sourceKey] > 0.0001) {
+                      const deduct = Math.min(runningStockDetailed[sourceKey], remainingSourceQtls);
+                      runningStockDetailed[sourceKey] -= deduct;
+                      remainingSourceQtls -= deduct;
+                      if (Math.abs(runningStockDetailed[sourceKey]) < 0.0001) {
+                        delete runningStockDetailed[sourceKey];
+                      }
+                    }
+
+                    // 1b. Fallback: If stock was not fully deducted from exact key, search matching stock in source godown
+                    if (remainingSourceQtls > 0.0001) {
+                      const normSourceLoc = normalize(sourceLoc);
+                      const normCategory = paltiCategory.toLowerCase();
+
+                      let paltiVarClean = String(variety || '').toLowerCase().trim();
+                      let paltiProc = 'raw';
+                      if (paltiVarClean.includes('steam')) {
+                        paltiProc = 'steam';
+                        paltiVarClean = paltiVarClean.replace('steam', '').trim();
+                      } else if (paltiVarClean.includes('raw')) {
+                        paltiProc = 'raw';
+                        paltiVarClean = paltiVarClean.replace('raw', '').trim();
+                      }
+                      paltiVarClean = paltiVarClean.replace(/[_\s-]+/g, ' ').trim();
+
+                      // Find candidate keys in runningStockDetailed in the same godown & category with available stock
+                      const candidates = Object.keys(runningStockDetailed).filter(k => {
+                        const parts = k.split('|');
+                        const kLoc = parts[2] || '';
+                        const kProd = parts[3] || '';
+                        return normalize(kLoc) === normSourceLoc &&
+                               kProd.toLowerCase() === normCategory &&
+                               runningStockDetailed[k] > 0.0001;
                       });
-                      // Continue anyway - backend validation will catch this
+
+                      // Sort candidates so the best variety & process match is deducted first
+                      candidates.sort((a, b) => {
+                        const aParts = a.split('|');
+                        const bParts = b.split('|');
+                        const aVar = aParts[0] || '';
+                        const aProc = aParts[1] || '';
+                        const bVar = bParts[0] || '';
+                        const bProc = bParts[1] || '';
+
+                        const scoreMatch = (kVar: string, kProc: string) => {
+                          let score = 0;
+                          if (kVar === paltiVarClean) score += 10;
+                          else if (kVar.includes(paltiVarClean) || paltiVarClean.includes(kVar)) score += 5;
+                          else if (kVar.replace(/[^a-z0-9]/g, '') === paltiVarClean.replace(/[^a-z0-9]/g, '')) score += 7;
+
+                          if (kProc === paltiProc) score += 3;
+                          return score;
+                        };
+
+                        const diff = scoreMatch(bVar, bProc) - scoreMatch(aVar, aProc);
+                        if (diff !== 0) return diff;
+                        return (runningStockDetailed[b] || 0) - (runningStockDetailed[a] || 0);
+                      });
+
+                      for (const candKey of candidates) {
+                        if (remainingSourceQtls <= 0.0001) break;
+                        const avail = runningStockDetailed[candKey] || 0;
+                        if (avail <= 0.0001) continue;
+                        const deduct = Math.min(avail, remainingSourceQtls);
+                        runningStockDetailed[candKey] -= deduct;
+                        remainingSourceQtls -= deduct;
+                        console.log('🔄 PALTI: Deducted', deduct.toFixed(2), 'Qtls from candidate key:', candKey, 'remaining:', (runningStockDetailed[candKey] || 0).toFixed(2));
+                        if (Math.abs(runningStockDetailed[candKey]) < 0.0001) {
+                          delete runningStockDetailed[candKey];
+                        }
+                      }
                     }
 
-                    // 1. Subtract from source
-                    if (!runningStockDetailed[sourceKey]) runningStockDetailed[sourceKey] = 0;
-                    runningStockDetailed[sourceKey] -= sourceQtls;
-                    if (runningStockDetailed[sourceKey] < 0) {
-                      runningStockDetailed[sourceKey] = 0;
-                    }
-
-                    // 2. Add to target
+                    // 2. Add to target in runningStockDetailed
                     if (!runningStockDetailed[targetKey]) runningStockDetailed[targetKey] = 0;
                     runningStockDetailed[targetKey] += targetQtls;
 
-                    // 📊 DEBUG LOGGING - After
-                    console.log('✅ PALTI COMPLETED:', {
-                      sourceKey: sourceKey,
-                      sourceStockAfter: runningStockDetailed[sourceKey].toFixed(2),
-                      targetKey: targetKey,
-                      targetStockAfter: runningStockDetailed[targetKey].toFixed(2)
-                    });
-
-                    // 🔧 FIXED: Only cleanup if stock is truly zero (not just small)
-                    if (Math.abs(runningStockDetailed[sourceKey]) < 0.01) {
+                    // Clean up zero entries
+                    if (runningStockDetailed[sourceKey] !== undefined && Math.abs(runningStockDetailed[sourceKey]) < 0.0001) {
                       delete runningStockDetailed[sourceKey];
-                      console.log('🗑️ Cleaned up source key (zero stock):', sourceKey);
                     }
-                    if (Math.abs(runningStockDetailed[targetKey]) < 0.01) {
+                    if (runningStockDetailed[targetKey] !== undefined && Math.abs(runningStockDetailed[targetKey]) < 0.0001) {
                       delete runningStockDetailed[targetKey];
-                      console.log('🗑️ Cleaned up target key (zero stock):', targetKey);
                     }
 
                     // 🔧 FIXED: Update category totals using paltiCategory (same for source and target)
@@ -4487,8 +4552,85 @@ const Records: React.FC = () => {
                   const pkgName = typeof packaging === 'string' ? packaging : (packaging?.brandName || 'A1');
                   const stockKey = createStockKey(variety, location, category, pkgName, bagSize);
 
-                  if (!runningStockDetailed[stockKey] || runningStockDetailed[stockKey] < 0) {
-                    runningStockDetailed[stockKey] = 0;
+                  if (movementType === 'sale') {
+                    let remainingSaleQtls = Math.abs(prod.actualQtls || 0);
+
+                    // 1. Deduct from exact stockKey if available
+                    if (runningStockDetailed[stockKey] && runningStockDetailed[stockKey] > 0.0001) {
+                      const deduct = Math.min(runningStockDetailed[stockKey], remainingSaleQtls);
+                      runningStockDetailed[stockKey] -= deduct;
+                      remainingSaleQtls -= deduct;
+                      if (Math.abs(runningStockDetailed[stockKey]) < 0.0001) {
+                        delete runningStockDetailed[stockKey];
+                      }
+                    }
+
+                    // 2. Fallback: Search candidate keys in same location & category
+                    if (remainingSaleQtls > 0.0001) {
+                      const normLoc = normalize(location);
+                      const normCategory = category.toLowerCase();
+
+                      let saleVarClean = String(variety || '').toLowerCase().trim();
+                      let saleProc = 'raw';
+                      if (saleVarClean.includes('steam')) {
+                        saleProc = 'steam';
+                        saleVarClean = saleVarClean.replace('steam', '').trim();
+                      } else if (saleVarClean.includes('raw')) {
+                        saleProc = 'raw';
+                        saleVarClean = saleVarClean.replace('raw', '').trim();
+                      }
+                      saleVarClean = saleVarClean.replace(/[_\s-]+/g, ' ').trim();
+
+                      const candidates = Object.keys(runningStockDetailed).filter(k => {
+                        const parts = k.split('|');
+                        const kLoc = parts[2] || '';
+                        const kProd = parts[3] || '';
+                        return normalize(kLoc) === normLoc &&
+                               kProd.toLowerCase() === normCategory &&
+                               runningStockDetailed[k] > 0.0001;
+                      });
+
+                      candidates.sort((a, b) => {
+                        const aParts = a.split('|');
+                        const bParts = b.split('|');
+                        const aVar = aParts[0] || '';
+                        const aProc = aParts[1] || '';
+                        const bVar = bParts[0] || '';
+                        const bProc = bParts[1] || '';
+
+                        const scoreMatch = (kVar: string, kProc: string) => {
+                          let score = 0;
+                          if (kVar === saleVarClean) score += 10;
+                          else if (kVar.includes(saleVarClean) || saleVarClean.includes(kVar)) score += 5;
+                          else if (kVar.replace(/[^a-z0-9]/g, '') === saleVarClean.replace(/[^a-z0-9]/g, '')) score += 7;
+
+                          if (kProc === saleProc) score += 3;
+                          return score;
+                        };
+
+                        const diff = scoreMatch(bVar, bProc) - scoreMatch(aVar, aProc);
+                        if (diff !== 0) return diff;
+                        return (runningStockDetailed[b] || 0) - (runningStockDetailed[a] || 0);
+                      });
+
+                      for (const candKey of candidates) {
+                        if (remainingSaleQtls <= 0.0001) break;
+                        const avail = runningStockDetailed[candKey] || 0;
+                        if (avail <= 0.0001) continue;
+                        const deduct = Math.min(avail, remainingSaleQtls);
+                        runningStockDetailed[candKey] -= deduct;
+                        remainingSaleQtls -= deduct;
+                        if (Math.abs(runningStockDetailed[candKey]) < 0.0001) {
+                          delete runningStockDetailed[candKey];
+                        }
+                      }
+                    }
+                  } else {
+                    // Purchase or Production: Add stock
+                    if (!runningStockDetailed[stockKey] || runningStockDetailed[stockKey] < 0) {
+                      runningStockDetailed[stockKey] = 0;
+                    }
+                    runningStockDetailed[stockKey] += Math.abs(prod.actualQtls || 0);
                   }
 
                   let qtlsChange = prod.actualQtls;
@@ -4496,17 +4638,6 @@ const Records: React.FC = () => {
                     qtlsChange = -Math.abs(qtlsChange);
                   } else {
                     qtlsChange = Math.abs(qtlsChange);
-                  }
-
-                  runningStockDetailed[stockKey] += qtlsChange;
-                  // Physical godown stock can never be negative
-                  if (runningStockDetailed[stockKey] < 0) {
-                    runningStockDetailed[stockKey] = 0;
-                  }
-
-                  // Only delete key if exactly 0 or negative without remaining tracking
-                  if (Math.abs(runningStockDetailed[stockKey]) < 0.0001) {
-                    delete runningStockDetailed[stockKey];
                   }
 
                   // Only add to runningStockByType if NOT DIRECT_LOAD
