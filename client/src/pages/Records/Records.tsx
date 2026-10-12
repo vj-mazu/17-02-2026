@@ -4386,8 +4386,8 @@ const Records: React.FC = () => {
 
                   // Handle Palti as a movement between source (location/pkg) and target (location/pkg)
                   if (movementType === 'palti') {
-                    const sourceLoc = prod.fromLocation || baseLocation;
-                    const targetLoc = prod.toLocation || baseLocation;
+                    const sourceLoc = prod.fromLocation || prod.from_location || prod.from || prod.sourceLocation || prod.source_location || prod.locationCode || prod.location_code || prod.location || baseLocation;
+                    const targetLoc = prod.toLocation || prod.to_location || prod.to || prod.targetLocation || prod.target_location || baseLocation;
 
                     // Extract source packaging with full fallback
                     const sourcePkg = prod.sourcePackaging?.brandName ||
@@ -4437,7 +4437,13 @@ const Records: React.FC = () => {
                     );
 
                     // Product type MUST stay the same for Palti (Rice stays Rice, Bran stays Bran)
-                    const paltiCategory = category;
+                    let paltiCategory = category;
+                    if (!paltiCategory || paltiCategory === 'Other' || paltiCategory === 'Palti') {
+                      const varLower = String(variety || '').toLowerCase();
+                      if (varLower.includes('bran')) paltiCategory = 'Bran';
+                      else if (varLower.includes('broken')) paltiCategory = 'Broken';
+                      else paltiCategory = 'Rice';
+                    }
 
                     // Generate stock keys
                     const sourceKey = createStockKey(variety, sourceLoc, paltiCategory, sourcePkg, sourceKgPerBag);
@@ -4473,7 +4479,7 @@ const Records: React.FC = () => {
                       paltiVarClean = paltiVarClean.replace(/[_\s-]+/g, ' ').trim();
 
                       // Find candidate keys in runningStockDetailed in the same godown & category with available stock
-                      const candidates = Object.keys(runningStockDetailed).filter(k => {
+                      let candidates = Object.keys(runningStockDetailed).filter(k => {
                         const parts = k.split('|');
                         const kLoc = parts[2] || '';
                         const kProd = parts[3] || '';
@@ -4481,6 +4487,15 @@ const Records: React.FC = () => {
                                kProd.toLowerCase() === normCategory &&
                                runningStockDetailed[k] > 0.0001;
                       });
+
+                      // Fallback: If no candidate found by category, search ANY key in that godown with stock
+                      if (candidates.length === 0) {
+                        candidates = Object.keys(runningStockDetailed).filter(k => {
+                          const parts = k.split('|');
+                          const kLoc = parts[2] || '';
+                          return normalize(kLoc) === normSourceLoc && runningStockDetailed[k] > 0.0001;
+                        });
+                      }
 
                       // Sort candidates so the best variety & process match is deducted first
                       candidates.sort((a, b) => {
