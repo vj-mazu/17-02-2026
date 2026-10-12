@@ -4324,15 +4324,17 @@ const Records: React.FC = () => {
                   movementsByType[type] = 0;
                 });
 
-                // Sort movements within the day: Inwards & Palti conversions first, Sales last
+                // Sort movements within the day: Production/Purchase first, Palti second, Sales last
                 const dayMovements = [...dayData.productions].sort((a: any, b: any) => {
                   const typeA = (a.movementType || '').toLowerCase();
                   const typeB = (b.movementType || '').toLowerCase();
-                  const isOutwardA = typeA === 'sale';
-                  const isOutwardB = typeB === 'sale';
-                  if (isOutwardA && !isOutwardB) return 1;
-                  if (!isOutwardA && isOutwardB) return -1;
-                  return 0;
+                  const orderOf = (t: string) => {
+                    if (t === 'production' || t === 'purchase') return 0;
+                    if (t === 'palti') return 1;
+                    if (t === 'sale') return 2;
+                    return 0; // default: treat as production/purchase
+                  };
+                  return orderOf(typeA) - orderOf(typeB);
                 });
 
                 dayMovements.forEach((prod: any) => {
@@ -4534,7 +4536,30 @@ const Records: React.FC = () => {
                     }
 
                     if (remainingSourceQtls > 0.0001) {
-                      console.warn(`  ❌ PALTI DEDUCTION INCOMPLETE [${date}]: ${remainingSourceQtls.toFixed(2)} Qtls NOT deducted from ${sourceLoc}. sourceKey=${sourceKey}`);
+                      // Source stock exists in reality but is NOT in our data (e.g. purchase/production
+                      // at this godown was not returned by the API). Inject it into BOTH the opening
+                      // snapshot AND the running trackers so that:
+                      //   • The variety-wise opening display shows the source row
+                      //   • calculateGroupTotals(opening + movements) gives correct closing
+                      //   • runningStockDetailed (next day's opening) doesn't carry phantom bags
+                      console.warn(`  🔧 INJECTING MISSING SOURCE [${date}]: ${remainingSourceQtls.toFixed(2)} Qtls into ${sourceKey}`);
+
+                      // Inject into today's opening snapshot (for display)
+                      if (!openingStockDetailed[sourceKey]) openingStockDetailed[sourceKey] = 0;
+                      openingStockDetailed[sourceKey] += remainingSourceQtls;
+                      openingStockByType[paltiCategory] = (openingStockByType[paltiCategory] || 0) + remainingSourceQtls;
+
+                      // Inject into running trackers (so runningStockByType stays in sync after movementsByType is applied)
+                      if (!runningStockDetailed[sourceKey]) runningStockDetailed[sourceKey] = 0;
+                      runningStockDetailed[sourceKey] += remainingSourceQtls;
+                      runningStockByType[paltiCategory] = (runningStockByType[paltiCategory] || 0) + remainingSourceQtls;
+
+                      // Now deduct from runningStockDetailed (inject + deduct = net 0)
+                      runningStockDetailed[sourceKey] -= remainingSourceQtls;
+                      if (Math.abs(runningStockDetailed[sourceKey]) < 0.0001) {
+                        delete runningStockDetailed[sourceKey];
+                      }
+                      remainingSourceQtls = 0;
                     }
 
                     // 2. Add to target in runningStockDetailed
