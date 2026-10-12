@@ -4088,17 +4088,6 @@ const Records: React.FC = () => {
                 const qtls = Number(item.quantityQuintals || item.qtls || 0);
                 const bags = Number(item.bags || 0);
 
-                // DEBUG: Log Palti movements to trace productType
-                if ((item.movementType || item.movement_type) === 'palti') {
-                  console.log('🔍 DEBUG - Palti Processing:', {
-                    id: item.id,
-                    'item.productType': item.productType,
-                    'item.product': item.product,
-                    'resolved productType': productType,
-                    movementType: item.movementType
-                  });
-                }
-
                 // Determine product category
                 let category = 'Other';
 
@@ -4157,14 +4146,6 @@ const Records: React.FC = () => {
                   }
                 }
 
-                // DEBUG: Log category assignment for Palti
-                if ((item.movementType || item.movement_type) === 'palti') {
-                  console.log('🔍 DEBUG - Palti Category Assignment:', {
-                    productType,
-                    assignedCategory: category
-                  });
-                }
-
                 // Add movement to daily data
                 dailyData[date].productions.push({
                   id: item.id,
@@ -4178,19 +4159,6 @@ const Records: React.FC = () => {
                     if ((item.movementType || item.movement_type) === 'palti') {
                       const sourcePackaging = item.sourcePackaging?.brandName || item.source_packaging_brand || 'A1';
                       const targetPackaging = item.targetPackaging?.brandName || item.target_packaging_brand || 'A1';
-
-                      // Debug logging for Palti packaging
-                      console.log('🔍 DEBUG - Palti packaging extraction:', {
-                        id: item.id,
-                        sourcePackaging,
-                        targetPackaging,
-                        'item.sourcePackaging': item.sourcePackaging,
-                        'item.targetPackaging': item.targetPackaging,
-                        'item.source_packaging_brand': item.source_packaging_brand,
-                        'item.target_packaging_brand': item.target_packaging_brand,
-                        'FINAL_RESULT': `${sourcePackaging} → ${targetPackaging}`
-                      });
-
                       return `${sourcePackaging} → ${targetPackaging}`;
                     }
 
@@ -4356,7 +4324,18 @@ const Records: React.FC = () => {
                   movementsByType[type] = 0;
                 });
 
-                dayData.productions.forEach((prod: any) => {
+                // Sort movements within the day: Inwards & Palti conversions first, Sales last
+                const dayMovements = [...dayData.productions].sort((a: any, b: any) => {
+                  const typeA = (a.movementType || '').toLowerCase();
+                  const typeB = (b.movementType || '').toLowerCase();
+                  const isOutwardA = typeA === 'sale';
+                  const isOutwardB = typeB === 'sale';
+                  if (isOutwardA && !isOutwardB) return 1;
+                  if (!isOutwardA && isOutwardB) return -1;
+                  return 0;
+                });
+
+                dayMovements.forEach((prod: any) => {
                   const category = prod.category;
                   const movementType = (prod.movementType || '').toLowerCase();
                   const variety = prod.variety || prod.outturn?.allottedVariety || '-';
@@ -4528,7 +4507,6 @@ const Records: React.FC = () => {
                         const deduct = Math.min(avail, remainingSourceQtls);
                         runningStockDetailed[candKey] -= deduct;
                         remainingSourceQtls -= deduct;
-                        console.log('🔄 PALTI: Deducted', deduct.toFixed(2), 'Qtls from candidate key:', candKey, 'remaining:', (runningStockDetailed[candKey] || 0).toFixed(2));
                         if (Math.abs(runningStockDetailed[candKey]) < 0.0001) {
                           delete runningStockDetailed[candKey];
                         }
@@ -4638,6 +4616,15 @@ const Records: React.FC = () => {
                         if (Math.abs(runningStockDetailed[candKey]) < 0.0001) {
                           delete runningStockDetailed[candKey];
                         }
+                      }
+                    }
+
+                    // 3. Fallback: If any sale quantity still remains, deduct from primary stockKey so runningStockDetailed stays 100% in sync
+                    if (remainingSaleQtls > 0.0001) {
+                      runningStockDetailed[stockKey] = (runningStockDetailed[stockKey] || 0) - remainingSaleQtls;
+                      remainingSaleQtls = 0;
+                      if (Math.abs(runningStockDetailed[stockKey]) < 0.0001) {
+                        delete runningStockDetailed[stockKey];
                       }
                     }
                   } else {
@@ -4883,25 +4870,6 @@ const Records: React.FC = () => {
                   ...approvedPaltiMovements
                 ];
 
-                console.log('🔍 DEBUG - Bifurcation for', date, ':', {
-                  yesterdayDate: yesterdayDateStr,
-                  bifurcationGroupsCount: Object.keys(bifurcationGroups).length,
-                  allGroupsCount: allGroups.length,
-                  yesterdayBifurcationCount: dayData.yesterdayBifurcation.length,
-                  sampleBifurcationGroup: dayData.yesterdayBifurcation[0],
-                  allBifurcationCategories: dayData.yesterdayBifurcation.map((g: any) => g.category),
-                  riceEntriesCount: dayData.yesterdayBifurcation.filter((g: any) => g.category === 'Rice').length,
-                  riceEntries: dayData.yesterdayBifurcation.filter((g: any) => g.category === 'Rice').map((g: any) => ({
-                    variety: g.variety,
-                    packaging: g.packaging,
-                    bags: g.bags,
-                    qtls: g.qtls,
-                    location: g.location
-                  }))
-                });
-
-                // Add detailed stock information to day data for debugging
-
                 // Add opening stock entries for display (simplified totals)
                 productTypes.forEach(type => {
                   const qtls = Number(openingStockByType[type] || 0);
@@ -4942,17 +4910,66 @@ const Records: React.FC = () => {
                 });
               });
 
-              // Log final stock balances for debugging
-              console.log('🔍 DEBUG - Final detailed stock balances:', runningStockDetailed);
-              console.log('🔍 DEBUG - Final stock by type:', runningStockByType);
+              // 📊 Clean Audit Logger: Verify today's closing stock matches next day's opening stock
+              try {
+                console.groupCollapsed('📊 RICE STOCK RECONCILIATION AUDIT');
+                sortedDates.forEach((date, idx) => {
+                  const nextDate = sortedDates[idx + 1];
+                  const day = dailyData[date];
+                  const todayRiceOpening = day.openingStock?.find((o: any) => o.category === 'Rice');
+                  const todayRiceBags = todayRiceOpening?.bags || 0;
+                  const todayRiceQtls = todayRiceOpening?.qtls || 0;
+
+                  // Calculate today's Rice closing from movements
+                  const riceProds = (day.productions || []).filter((p: any) =>
+                    p.category === 'Rice' || (!p.category && String(p.product || '').toLowerCase().includes('rice'))
+                  );
+                  let netMvtBags = 0;
+                  let netMvtQtls = 0;
+                  riceProds.forEach((p: any) => {
+                    const mType = (p.movementType || '').toLowerCase();
+                    const b = Number(p.bags || 0);
+                    const q = Number(p.actualQtls || p.qtls || 0);
+                    if (mType === 'sale') {
+                      netMvtBags -= b;
+                      netMvtQtls -= q;
+                    } else if (mType === 'palti') {
+                      const srcBags = Number(p.sourceBags || 0);
+                      const tgtBags = b;
+                      netMvtBags += (tgtBags - srcBags);
+                      const shortageQ = Number(p.shortageKg || 0) / 100;
+                      netMvtQtls -= shortageQ;
+                    } else {
+                      netMvtBags += b;
+                      netMvtQtls += q;
+                    }
+                  });
+                  const closingRiceBags = todayRiceBags + netMvtBags;
+                  const closingRiceQtls = todayRiceQtls + netMvtQtls;
+
+                  if (nextDate) {
+                    const nextDay = dailyData[nextDate];
+                    const nextRiceOpening = nextDay.openingStock?.find((o: any) => o.category === 'Rice');
+                    const nextRiceBags = nextRiceOpening?.bags || 0;
+                    const nextRiceQtls = nextRiceOpening?.qtls || 0;
+                    const diffBags = nextRiceBags - closingRiceBags;
+                    const diffQtls = Math.abs(nextRiceQtls - closingRiceQtls);
+
+                    if (diffBags !== 0 || diffQtls > 0.01) {
+                      console.warn(`❌ [MISMATCH] ${date} Closing (${closingRiceBags} bags, ${closingRiceQtls.toFixed(2)} Qtls) != ${nextDate} Opening (${nextRiceBags} bags, ${nextRiceQtls.toFixed(2)} Qtls) -> Diff: ${diffBags > 0 ? '+' : ''}${diffBags} bags, ${(nextRiceQtls - closingRiceQtls).toFixed(2)} Qtls`);
+                    } else {
+                      console.log(`✅ [MATCH] ${date} Closing == ${nextDate} Opening: ${closingRiceBags} bags (${closingRiceQtls.toFixed(2)} Qtls)`);
+                    }
+                  }
+                });
+                console.groupEnd();
+              } catch (e) {}
 
               // Return in reverse chronological order (latest first) for display
               return sortedDates.reverse().map(date => dailyData[date]);
             };
 
             const processedData = processRiceStockData(riceStockData);
-            console.log('🔍 DEBUG - Processed data:', processedData);
-            console.log('🔍 DEBUG - Dates in processed data:', processedData.map((d: any) => d.date));
 
             // Filter data - show dates matching filters (including 0-movement days with opening/closing stock)
             const filteredData = processedData.filter((dayData: any) => {
@@ -5125,13 +5142,6 @@ const Records: React.FC = () => {
                     'RJ Broken': [], 'Other': [], 'Palti': []
                   };
 
-                  console.log('🔍 DEBUG - Production groups for date', dayData.date, {
-                    allProductions: allProductions.length,
-                    productionGroupKeys: Object.keys(productionGroups).filter(k => productionGroups[k].length > 0),
-                    riceCount: productionGroups['Rice']?.length || 0,
-                    paltiInRice: productionGroups['Rice']?.filter((p: any) => p.movementType === 'palti').length || 0
-                  });
-
                   // Calculate totals for each group (considering movement types)
                   const calculateGroupTotals = (group: any[]) => {
                     return {
@@ -5197,19 +5207,6 @@ const Records: React.FC = () => {
                               26 // Default to 26kg only if nothing else available
                             );
                             sourceBags = Math.round((sourceQtls * 100) / sourcePackagingKg);
-
-                            // DEBUG: Log when palti calculation happens
-                            console.log('📊 Palti sourceBags calculation:', {
-                              id: item.id,
-                              targetQtls,
-                              shortageKg,
-                              sourceQtls,
-                              sourcePackagingKg,
-                              calculatedSourceBags: sourceBags,
-                              targetBags,
-                              fromLoc,
-                              toLoc
-                            });
                           }
 
                           if (normalize(fromLoc) !== 'direct load') {
@@ -5543,39 +5540,6 @@ return (
                                                     const remainingBags = (item.bags || 0) - totalSourceBagsUsed;
                                                     const hasSplits = splits.length > 0;
                                                     const totalShortage = splits.reduce((sum: number, s: any) => sum + (s.shortageKg || 0), 0);
-
-                                                    // DEBUG: Comprehensive matching diagnostics for all sections
-                                                    if (paltiItems.length > 0) {
-                                                      console.group(`🔍 PALTI MATCHING [${productType}] - ${item.variety}`);
-                                                      console.log('Row Data:', { variety: item.variety, location: item.location, pkg: item.packaging, bag: item.bagSizeKg });
-                                                      console.log('Generated Item Key:', itemKey);
-                                                      console.log('Available Palti Keys:', Object.keys(paltiSplitsMap));
-                                                      if (hasSplits) {
-                                                        console.log('%c✅ MATCH FOUND!', 'color: green; font-weight: bold;', splits);
-                                                      } else {
-                                                        console.log('%c❌ NO MATCH', 'color: red;');
-                                                      }
-                                                      console.groupEnd();
-                                                    }
-
-                                                    // DEBUG: Comprehensive matching diagnostics
-                                                    if (paltiItems.length > 0) {
-                                                      console.group(`🔍 PALTI MATCHING [${productType}] - Entry ${idx}`);
-                                                      console.log('Row Data:', { variety: item.variety, location: item.location, pkg: item.packaging, bag: item.bagSizeKg });
-                                                      console.log('Generated Item Key:', itemKey);
-                                                      console.log('Available Palti Keys:', Object.keys(paltiSplitsMap));
-                                                      if (hasSplits) {
-                                                        console.log('%c✅ MATCH FOUND!', 'color: green; font-weight: bold;', splits);
-                                                      } else {
-                                                        console.log('%c❌ NO MATCH', 'color: red;');
-                                                        // Try to find approximate matches to guide debug
-                                                        const potentialMatches = Object.keys(paltiSplitsMap).filter(k => k.includes(itemKey.split('|')[0]));
-                                                        if (potentialMatches.length > 0) {
-                                                          console.log('Potential variety match keys:', potentialMatches);
-                                                        }
-                                                      }
-                                                      console.groupEnd();
-                                                    }
 
                                                     return (
                                                       <React.Fragment key={`bifurcation-${productType}-${idx}`}>
