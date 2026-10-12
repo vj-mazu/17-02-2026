@@ -4428,6 +4428,22 @@ const Records: React.FC = () => {
                     const sourceKey = createStockKey(variety, sourceLoc, paltiCategory, sourcePkg, sourceKgPerBag);
                     const targetKey = createStockKey(variety, targetLoc, paltiCategory, targetPkgName, targetKgPerBag);
 
+                    // 🔍 PALTI DEDUCTION TRACE
+                    const normSourceLocDbg = normalize(sourceLoc);
+                    const allKeysInGodown = Object.keys(runningStockDetailed).filter(k => {
+                      const parts = k.split('|');
+                      return normalize(parts[2] || '') === normSourceLocDbg;
+                    });
+                    console.log(`🔍 PALTI TRACE [${date}] ${sourceLoc}→${targetLoc}:`, {
+                      variety, paltiCategory, sourcePkg, sourceKgPerBag, sourceQtls: sourceQtls.toFixed(2),
+                      sourceLoc, normSourceLoc: normSourceLocDbg,
+                      sourceKey,
+                      exactKeyExists: !!runningStockDetailed[sourceKey],
+                      exactKeyStock: (runningStockDetailed[sourceKey] || 0).toFixed(2),
+                      keysInGodown: allKeysInGodown.map(k => `${k} = ${(runningStockDetailed[k] || 0).toFixed(2)}`),
+                      prodFields: { fromLocation: prod.fromLocation, toLocation: prod.toLocation, location: prod.location, category: prod.category, movementType: prod.movementType }
+                    });
+
                     // 1. Subtract from source in runningStockDetailed
                     let remainingSourceQtls = sourceQtls;
 
@@ -4439,6 +4455,7 @@ const Records: React.FC = () => {
                       if (Math.abs(runningStockDetailed[sourceKey]) < 0.0001) {
                         delete runningStockDetailed[sourceKey];
                       }
+                      console.log(`  ✅ EXACT DEDUCTION: ${deduct.toFixed(2)} Qtls from ${sourceKey}`);
                     }
 
                     // 1b. Fallback: If stock was not fully deducted from exact key, search matching stock in source godown
@@ -4466,6 +4483,7 @@ const Records: React.FC = () => {
                                kProd.toLowerCase() === normCategory &&
                                runningStockDetailed[k] > 0.0001;
                       });
+                      console.log(`  🔍 CATEGORY CANDIDATES (loc=${normSourceLoc}, cat=${normCategory}): ${candidates.length} found`, candidates);
 
                       // Fallback: If no candidate found by category, search ANY key in that godown with stock
                       if (candidates.length === 0) {
@@ -4474,6 +4492,7 @@ const Records: React.FC = () => {
                           const kLoc = parts[2] || '';
                           return normalize(kLoc) === normSourceLoc && runningStockDetailed[k] > 0.0001;
                         });
+                        console.log(`  🔍 GODOWN FALLBACK CANDIDATES (loc=${normSourceLoc}): ${candidates.length} found`, candidates);
                       }
 
                       // Sort candidates so the best variety & process match is deducted first
@@ -4507,10 +4526,15 @@ const Records: React.FC = () => {
                         const deduct = Math.min(avail, remainingSourceQtls);
                         runningStockDetailed[candKey] -= deduct;
                         remainingSourceQtls -= deduct;
+                        console.log(`  ✅ FALLBACK DEDUCTION: ${deduct.toFixed(2)} Qtls from ${candKey}`);
                         if (Math.abs(runningStockDetailed[candKey]) < 0.0001) {
                           delete runningStockDetailed[candKey];
                         }
                       }
+                    }
+
+                    if (remainingSourceQtls > 0.0001) {
+                      console.warn(`  ❌ PALTI DEDUCTION INCOMPLETE [${date}]: ${remainingSourceQtls.toFixed(2)} Qtls NOT deducted from ${sourceLoc}. sourceKey=${sourceKey}`);
                     }
 
                     // 2. Add to target in runningStockDetailed
