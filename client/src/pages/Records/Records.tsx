@@ -4441,6 +4441,9 @@ const Records: React.FC = () => {
                     // 1. Subtract from source
                     if (!runningStockDetailed[sourceKey]) runningStockDetailed[sourceKey] = 0;
                     runningStockDetailed[sourceKey] -= sourceQtls;
+                    if (runningStockDetailed[sourceKey] < 0) {
+                      runningStockDetailed[sourceKey] = 0;
+                    }
 
                     // 2. Add to target
                     if (!runningStockDetailed[targetKey]) runningStockDetailed[targetKey] = 0;
@@ -4484,7 +4487,7 @@ const Records: React.FC = () => {
                   const pkgName = typeof packaging === 'string' ? packaging : (packaging?.brandName || 'A1');
                   const stockKey = createStockKey(variety, location, category, pkgName, bagSize);
 
-                  if (!runningStockDetailed[stockKey]) {
+                  if (!runningStockDetailed[stockKey] || runningStockDetailed[stockKey] < 0) {
                     runningStockDetailed[stockKey] = 0;
                   }
 
@@ -4496,6 +4499,10 @@ const Records: React.FC = () => {
                   }
 
                   runningStockDetailed[stockKey] += qtlsChange;
+                  // Physical godown stock can never be negative
+                  if (runningStockDetailed[stockKey] < 0) {
+                    runningStockDetailed[stockKey] = 0;
+                  }
 
                   // Only delete key if exactly 0 or negative without remaining tracking
                   if (Math.abs(runningStockDetailed[stockKey]) < 0.0001) {
