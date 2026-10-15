@@ -449,8 +449,6 @@ const Locations: React.FC = () => {
     }
 
     try {
-      const code = warehouseName.substring(0, 10).toUpperCase();
-
       if (editingWarehouse) {
         // Update existing
         await axios.put(`/locations/warehouses/${editingWarehouse.id}`, {
@@ -461,7 +459,10 @@ const Locations: React.FC = () => {
         toast.success('Warehouse updated successfully!');
         setEditingWarehouse(null);
       } else {
-        // Create new
+        // Create new - generate unique code from name
+        const baseCode = warehouseName.replace(/\s+/g, '_').substring(0, 20).toUpperCase();
+        const code = baseCode;
+
         await axios.post('/locations/warehouses', {
           name: warehouseName.toUpperCase(),
           code,
@@ -472,8 +473,9 @@ const Locations: React.FC = () => {
 
       setWarehouseName('');
       fetchWarehouses();
-    } catch (error) {
-      toast.error(editingWarehouse ? 'Failed to update warehouse' : 'Failed to create warehouse');
+    } catch (error: any) {
+      const msg = error.response?.data?.error || error.message || (editingWarehouse ? 'Failed to update warehouse' : 'Failed to create warehouse');
+      toast.error(msg);
     }
   };
 
