@@ -631,27 +631,30 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
         }
 
         setStockLoading(true);
+        const queryParams = {
+            productType,
+            packagingId: sourcePackagingId,
+            locationCode,
+            variety: varietyStr,
+            outturnId: outturnId || undefined,
+            date
+        };
+        console.warn('🔍 PALTI MODAL -> CHECKING STOCK PARAMS:', queryParams);
         try {
             const token = localStorage.getItem('token');
             const response = await axios.get('/rice-stock-management/available-stock', {
                 headers: { Authorization: `Bearer ${token}` },
-                params: {
-                    productType,
-                    packagingId: sourcePackagingId,
-                    locationCode,
-                    variety: varietyStr,
-                    outturnId: outturnId || undefined,
-                    date
-                }
+                params: queryParams
             });
 
             const data = response.data as { availableQtls?: number; availableBags?: number };
+            console.warn('🔍 PALTI MODAL -> SERVER STOCK RESPONSE:', data);
             setAvailableStock({
                 qtls: data.availableQtls || 0,
                 bags: data.availableBags || 0
             });
-        } catch (error) {
-            console.error('Error fetching available stock:', error);
+        } catch (error: any) {
+            console.error('❌ Error fetching available stock:', error?.response?.data || error.message);
             // Don't block the form, just show no data
             setAvailableStock({ qtls: 0, bags: 0 });
         } finally {
