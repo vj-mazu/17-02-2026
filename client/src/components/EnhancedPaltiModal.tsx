@@ -640,6 +640,7 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                     packagingId: sourcePackagingId,
                     locationCode,
                     variety: varietyStr,
+                    outturnId: outturnId || undefined,
                     date
                 }
             });
@@ -656,7 +657,7 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
         } finally {
             setStockLoading(false);
         }
-    }, [productType, sourcePackagingId, locationCode, selectedVarietyData, date]);
+    }, [productType, sourcePackagingId, locationCode, selectedVarietyData, outturnId, date]);
 
     // Fetch available stock when relevant inputs change
     useEffect(() => {

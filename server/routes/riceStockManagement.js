@@ -1401,16 +1401,30 @@ router.post('/movements', auth, async (req, res) => {
                     WITH movement_stock AS (
                         SELECT 
                             COALESCE(SUM(CASE 
-                                WHEN movement_type IN ('production', 'purchase') AND packaging_id = :sourcePackagingId THEN quantity_quintals
-                                WHEN movement_type = 'sale' AND packaging_id = :sourcePackagingId THEN -quantity_quintals
-                                WHEN movement_type = 'palti' AND source_packaging_id = :sourcePackagingId THEN -quantity_quintals
-                                WHEN movement_type = 'palti' AND target_packaging_id = :sourcePackagingId THEN quantity_quintals
+                                WHEN movement_type IN ('production', 'purchase') 
+                                     AND packaging_id = :sourcePackagingId 
+                                     AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                                     THEN quantity_quintals
+                                WHEN movement_type = 'sale' 
+                                     AND packaging_id = :sourcePackagingId 
+                                     AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                                     THEN -quantity_quintals
+                                WHEN movement_type = 'palti' 
+                                     AND source_packaging_id = :sourcePackagingId 
+                                     AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(from_location, location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                                     THEN -quantity_quintals
+                                WHEN movement_type = 'palti' 
+                                     AND target_packaging_id = :sourcePackagingId 
+                                     AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(to_location, location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                                     THEN quantity_quintals
                                 ELSE 0
                             END), 0) as movement_qtls
                         FROM rice_stock_movements 
                         WHERE status = 'approved' 
                           AND (
                             LOWER(TRIM(REGEXP_REPLACE(COALESCE(location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                            OR LOWER(TRIM(REGEXP_REPLACE(COALESCE(from_location, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                            OR LOWER(TRIM(REGEXP_REPLACE(COALESCE(to_location, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                             OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (location_code IS NULL OR TRIM(location_code) = ''))
                             OR (:locationCode = 'NULL' AND (location_code IS NULL OR TRIM(location_code) = '' OR UPPER(location_code) = 'NULL'))
                           )

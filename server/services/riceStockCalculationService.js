@@ -155,9 +155,13 @@ class RiceStockCalculationService {
           LEFT JOIN packagings p ON rp."packagingId" = p.id
           WHERE rp.status = 'approved'
             AND rp.date <= :date
-            AND rp."locationCode" = :locationCode
+            AND (
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rp."locationCode", ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = ''))
+              OR (:locationCode = 'NULL' AND (rp."locationCode" IS NULL OR TRIM(rp."locationCode") = '' OR UPPER(rp."locationCode") = 'NULL'))
+            )
             AND rp."productType" IN (:productTypeList)
-            ${packagingInfo.brand ? 'AND p."brandName" = :packagingBrand' : ''}
+            ${packagingInfo.brand ? 'AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))' : ''}
             ${packagingInfo.sizeKg ? 'AND p."allottedKg" = :bagSizeKg' : ''}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
             ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])' : ''}
@@ -497,7 +501,8 @@ class RiceStockCalculationService {
       variety.toLowerCase(),
       variety.toUpperCase(),
       this._toTitleCase(variety),
-      this._normalize(variety)
+      this._normalize(variety),
+      variety.toLowerCase().replace(/[\s_-]+/g, ' ')
     ];
 
     return {
@@ -649,8 +654,10 @@ class RiceStockCalculationService {
     const abbreviations = {
       'rnr': ['rnr', 'r n r', 'r.n.r'],
       'knm': ['knm', 'k n m', 'k.n.m'],
-      'sum25': ['sum25', 'sum 25', 'sum-25'],
-      'dec25': ['dec25', 'dec 25', 'dec-25']
+      'sum25': ['sum25', 'sum 25', 'sum-25', 'sum2025', 'sum 2025'],
+      'sum2025': ['sum2025', 'sum 2025', 'sum-2025', 'sum25', 'sum 25'],
+      'dec25': ['dec25', 'dec 25', 'dec-25', 'dec2025', 'dec 2025'],
+      'dec2025': ['dec2025', 'dec 2025', 'dec-2025', 'dec25', 'dec 25']
     };
 
     for (const [key, variations] of Object.entries(abbreviations)) {
@@ -663,8 +670,18 @@ class RiceStockCalculationService {
       }
     }
 
-    // Remove empty aliases and ensure no cross-contamination
-    const finalAliases = Array.from(aliases).filter(alias => alias && alias.trim());
+    // CRITICAL: Ensure all aliases have lowercase normalized versions so SQL LOWER(...) = ANY(ARRAY[:varietyAliases]) matches
+    const allAliases = new Set();
+    for (const alias of aliases) {
+      if (alias && alias.trim()) {
+        allAliases.add(alias.trim());
+        allAliases.add(alias.trim().toLowerCase());
+        allAliases.add(alias.trim().toUpperCase());
+        allAliases.add(alias.trim().toLowerCase().replace(/[\s_-]+/g, ' '));
+      }
+    }
+
+    const finalAliases = Array.from(allAliases);
 
     console.log(`🎯 Generated aliases for "${variety}":`, finalAliases);
     return finalAliases;
