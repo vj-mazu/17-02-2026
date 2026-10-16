@@ -654,7 +654,11 @@ const EnhancedPaltiModal: React.FC<EnhancedPaltiModalProps> = ({
                 bags: data.availableBags || 0
             });
         } catch (error: any) {
-            console.error('❌ Error fetching available stock:', error?.response?.data || error.message);
+            console.error('❌ Error fetching available stock:', {
+                message: error.message,
+                status: error?.response?.status,
+                data: error?.response?.data
+            });
             // Don't block the form, just show no data
             setAvailableStock({ qtls: 0, bags: 0 });
         } finally {

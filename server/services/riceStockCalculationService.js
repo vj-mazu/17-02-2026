@@ -65,21 +65,21 @@ class RiceStockCalculationService {
         WITH perfect_stock_calculation AS (
           -- Rice Stock Movements with complete variety text
           SELECT 
-            rsm.location_code,
+            :locationCode as location_code,
             rsm.variety as complete_variety_text,
             rsm.product_type,
             COALESCE(
               CASE 
-                WHEN rsm.movement_type = 'palti' AND rsm.from_location = rsm.location_code THEN sp."brandName"
-                WHEN rsm.movement_type = 'palti' AND rsm.to_location = rsm.location_code THEN tp."brandName"
+                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."brandName"
+                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
                 ELSE p."brandName"
               END,
               p."brandName"
             ) as packaging_name,
             COALESCE(
               CASE 
-                WHEN rsm.movement_type = 'palti' AND rsm.from_location = rsm.location_code THEN sp."allottedKg"
-                WHEN rsm.movement_type = 'palti' AND rsm.to_location = rsm.location_code THEN tp."allottedKg"
+                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."allottedKg"
+                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
                 ELSE p."allottedKg"
               END,
               p."allottedKg"
@@ -131,17 +131,16 @@ class RiceStockCalculationService {
             ${packagingInfo.brand && packagingInfo.sizeKg ? `
             AND (
               -- Match regular packaging
-              (LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(p."allottedKg" AS FLOAT) = CAST(:bagSizeKg AS FLOAT))
+              (LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))
               OR
               -- Match source packaging in palti
-              (rsm.movement_type = 'palti' AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(sp."allottedKg" AS FLOAT) = CAST(:bagSizeKg AS FLOAT))
+              (rsm.movement_type = 'palti' AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))
               OR
               -- Match target packaging in palti
-              (rsm.movement_type = 'palti' AND LOWER(TRIM(tp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(tp."allottedKg" AS FLOAT) = CAST(:bagSizeKg AS FLOAT))
+              (rsm.movement_type = 'palti' AND LOWER(TRIM(tp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(tp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))
             )` : ''}
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           GROUP BY 
-            rsm.location_code,
             rsm.variety,
             rsm.product_type,
             COALESCE(
@@ -165,7 +164,7 @@ class RiceStockCalculationService {
           
           -- Rice Productions with outturn complete variety text
           SELECT 
-            rp."locationCode" as location_code,
+            :locationCode as location_code,
             UPPER(TRIM(CONCAT(o."allottedVariety", ' ', COALESCE(CAST(o.type AS VARCHAR), '')))) as complete_variety_text,
             rp."productType" as product_type,
             p."brandName" as packaging_name,
@@ -184,12 +183,11 @@ class RiceStockCalculationService {
             )
             AND rp."productType" IN (:productTypeList)
             ${packagingInfo.brand ? 'AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))' : ''}
-            ${packagingInfo.sizeKg ? 'AND p."allottedKg" = :bagSizeKg' : ''}
+            ${packagingInfo.sizeKg ? 'AND CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC)' : ''}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
             ${varietyConditions.type === 'outturn-or-variety' ? 'AND (rp."outturnId" = :outturnId OR LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases]))' : ''}
             ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])' : ''}
           GROUP BY 
-            rp."locationCode",
             o."allottedVariety",
             o.type,
             rp."productType",
