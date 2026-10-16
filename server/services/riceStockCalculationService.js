@@ -85,17 +85,33 @@ class RiceStockCalculationService {
               p."allottedKg"
             ) as bag_size_kg,
             SUM(CASE 
-              WHEN rsm.movement_type IN ('purchase', 'production') THEN rsm.bags
-              WHEN rsm.movement_type = 'sale' THEN -rsm.bags
-              WHEN rsm.movement_type = 'palti' AND rsm.from_location = rsm.location_code THEN -COALESCE(rsm.source_bags, rsm.bags)
-              WHEN rsm.movement_type = 'palti' AND rsm.to_location = rsm.location_code THEN rsm.bags
+              WHEN rsm.movement_type IN ('purchase', 'production') 
+                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   THEN rsm.bags
+              WHEN rsm.movement_type = 'sale' 
+                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   THEN -rsm.bags
+              WHEN rsm.movement_type = 'palti' 
+                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   THEN -COALESCE(rsm.source_bags, rsm.bags)
+              WHEN rsm.movement_type = 'palti' 
+                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   THEN rsm.bags
               ELSE 0
             END) as movement_bags,
             SUM(CASE 
-              WHEN rsm.movement_type IN ('purchase', 'production') THEN rsm.quantity_quintals
-              WHEN rsm.movement_type = 'sale' THEN -rsm.quantity_quintals
-              WHEN rsm.movement_type = 'palti' AND rsm.from_location = rsm.location_code THEN -rsm.quantity_quintals
-              WHEN rsm.movement_type = 'palti' AND rsm.to_location = rsm.location_code THEN rsm.quantity_quintals
+              WHEN rsm.movement_type IN ('purchase', 'production') 
+                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   THEN rsm.quantity_quintals
+              WHEN rsm.movement_type = 'sale' 
+                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   THEN -rsm.quantity_quintals
+              WHEN rsm.movement_type = 'palti' 
+                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   THEN -rsm.quantity_quintals
+              WHEN rsm.movement_type = 'palti' 
+                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   THEN rsm.quantity_quintals
               ELSE 0
             END) as movement_qtls
           FROM rice_stock_movements rsm
@@ -104,18 +120,24 @@ class RiceStockCalculationService {
           LEFT JOIN packagings tp ON rsm.target_packaging_id = tp.id
           WHERE rsm.status = 'approved'
             AND rsm.date <= :date
-            AND (rsm.location_code = :locationCode OR (:locationCode = 'NULL' AND rsm.location_code IS NULL))
+            AND (
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = ''))
+              OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
+            )
             AND rsm.product_type IN (:productTypeList)
             ${packagingInfo.brand && packagingInfo.sizeKg ? `
             AND (
               -- Match regular packaging
-              (p."brandName" = :packagingBrand AND p."allottedKg" = :bagSizeKg)
+              (LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(p."allottedKg" AS FLOAT) = CAST(:bagSizeKg AS FLOAT))
               OR
               -- Match source packaging in palti
-              (rsm.movement_type = 'palti' AND sp."brandName" = :packagingBrand AND sp."allottedKg" = :bagSizeKg)
+              (rsm.movement_type = 'palti' AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(sp."allottedKg" AS FLOAT) = CAST(:bagSizeKg AS FLOAT))
               OR
               -- Match target packaging in palti
-              (rsm.movement_type = 'palti' AND tp."brandName" = :packagingBrand AND tp."allottedKg" = :bagSizeKg)
+              (rsm.movement_type = 'palti' AND LOWER(TRIM(tp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(tp."allottedKg" AS FLOAT) = CAST(:bagSizeKg AS FLOAT))
             )` : ''}
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           GROUP BY 
@@ -124,16 +146,16 @@ class RiceStockCalculationService {
             rsm.product_type,
             COALESCE(
               CASE 
-                WHEN rsm.movement_type = 'palti' AND rsm.from_location = rsm.location_code THEN sp."brandName"
-                WHEN rsm.movement_type = 'palti' AND rsm.to_location = rsm.location_code THEN tp."brandName"
+                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."brandName"
+                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
                 ELSE p."brandName"
               END,
               p."brandName"
             ),
             COALESCE(
               CASE 
-                WHEN rsm.movement_type = 'palti' AND rsm.from_location = rsm.location_code THEN sp."allottedKg"
-                WHEN rsm.movement_type = 'palti' AND rsm.to_location = rsm.location_code THEN tp."allottedKg"
+                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."allottedKg"
+                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
                 ELSE p."allottedKg"
               END,
               p."allottedKg"
@@ -164,6 +186,7 @@ class RiceStockCalculationService {
             ${packagingInfo.brand ? 'AND LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand))' : ''}
             ${packagingInfo.sizeKg ? 'AND p."allottedKg" = :bagSizeKg' : ''}
             ${varietyConditions.type === 'outturn' ? 'AND rp."outturnId" = :outturnId' : ''}
+            ${varietyConditions.type === 'outturn-or-variety' ? 'AND (rp."outturnId" = :outturnId OR LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases]))' : ''}
             ${varietyConditions.type === 'string' ? 'AND LOWER(TRIM(REGEXP_REPLACE(o."allottedVariety" || \' \' || o.type, \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases])' : ''}
           GROUP BY 
             rp."locationCode",
@@ -587,7 +610,7 @@ class RiceStockCalculationService {
    * Enhanced variety matching with comprehensive aliasing
    */
   static _buildEnhancedVarietyMatching(variety, outturnId) {
-    if (outturnId) {
+    if (outturnId && !variety) {
       return {
         type: 'outturn',
         condition: 'rsm.outturn_id = :outturnId',
@@ -595,7 +618,7 @@ class RiceStockCalculationService {
       };
     }
 
-    if (!variety) {
+    if (!variety && !outturnId) {
       return {
         type: 'none',
         condition: '1=1',
@@ -605,6 +628,16 @@ class RiceStockCalculationService {
 
     // Generate comprehensive variety aliases
     const aliases = this._generateComprehensiveVarietyAliases(variety);
+
+    if (outturnId) {
+      // If BOTH outturnId and variety are present, match either outturn_id OR variety name!
+      // This is crucial because palti movements or legacy movements might only have variety and not outturn_id
+      return {
+        type: 'outturn-or-variety',
+        condition: '(rsm.outturn_id = :outturnId OR LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.variety, \'\'), \'[_\\s-]+\', \' \', \'g\'))) = ANY(ARRAY[:varietyAliases]))',
+        replacements: { outturnId, varietyAliases: aliases }
+      };
+    }
 
     return {
       type: 'string',
