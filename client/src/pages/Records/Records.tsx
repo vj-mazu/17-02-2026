@@ -14,6 +14,7 @@ import EnhancedPaltiModal from '../../components/EnhancedPaltiModal';
 import SimplePurchaseModal from '../../components/SimplePurchaseModal';
 import SimpleSaleModal from '../../components/SimpleSaleModal';
 import { PaddySaleModal } from '../../components/PaddySaleModal';
+import InlinePaddySaleForm from '../../components/InlinePaddySaleForm';
 import {
   generateArrivalsPDF,
   generatePurchasePDF,
@@ -276,6 +277,7 @@ const Records: React.FC = () => {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showPaddySaleModal, setShowPaddySaleModal] = useState(false);
+  const [showInlinePaddySale, setShowInlinePaddySale] = useState(false);
   const [pendingMovements, setPendingMovements] = useState<any[]>([]);
   const [showPendingMovements, setShowPendingMovements] = useState(false);
   const [selectedMovementIds, setSelectedMovementIds] = useState<Set<number>>(new Set());
@@ -8455,23 +8457,34 @@ return (
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <Button
-                  className="danger"
-                  onClick={() => setShowPaddySaleModal(true)}
+                  className={showInlinePaddySale ? "secondary" : "danger"}
+                  onClick={() => setShowInlinePaddySale(!showInlinePaddySale)}
                   style={{
                     fontWeight: 'bold',
                     padding: '0.5rem 1.25rem',
                     fontSize: '0.9rem',
-                    backgroundColor: '#ef4444',
+                    backgroundColor: showInlinePaddySale ? '#4b5563' : '#ef4444',
                     color: 'white'
                   }}
                 >
-                  ➕ Paddy Sale
+                  {showInlinePaddySale ? '✖ Close Paddy Sale' : '➕ Paddy Sale'}
                 </Button>
                 <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
                   {Object.keys(records).length} Days
                 </div>
               </div>
             </div>
+            {/* Inline Paddy Sale Entry Form */}
+            {showInlinePaddySale && (
+              <InlinePaddySaleForm
+                defaultDate={getBusinessDate()}
+                onClose={() => setShowInlinePaddySale(false)}
+                onSuccess={() => {
+                  fetchRecords();
+                  setShowInlinePaddySale(false);
+                }}
+              />
+            )}
             {/* Date-wise stock with variety summary on right */}
             <RecordsContainer>
               {(() => {
@@ -10258,17 +10271,17 @@ return (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               {(activeTab as any) === 'stock' && (
                 <Button
-                  className="success"
-                  onClick={() => setShowPaddySaleModal(true)}
+                  className={showInlinePaddySale ? "secondary" : "success"}
+                  onClick={() => setShowInlinePaddySale(!showInlinePaddySale)}
                   style={{
                     fontWeight: 'bold',
                     padding: '0.5rem 1.25rem',
                     fontSize: '0.9rem',
-                    backgroundColor: '#10b981',
+                    backgroundColor: showInlinePaddySale ? '#4b5563' : '#10b981',
                     color: 'white'
                   }}
                 >
-                  ➕ Paddy Sale
+                  {showInlinePaddySale ? '✖ Close Paddy Sale' : '➕ Paddy Sale'}
                 </Button>
               )}
               <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 'bold' }}>
@@ -10276,6 +10289,17 @@ return (
               </div>
             </div>
           </div>
+
+          {showInlinePaddySale && (
+            <InlinePaddySaleForm
+              defaultDate={getBusinessDate()}
+              onClose={() => setShowInlinePaddySale(false)}
+              onSuccess={() => {
+                fetchRecords();
+                setShowInlinePaddySale(false);
+              }}
+            />
+          )}
 
           <RecordsContainer>
             {Object.entries(records).map(([date, dateRecords]) => (
