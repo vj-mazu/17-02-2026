@@ -4509,14 +4509,15 @@ const Records: React.FC = () => {
                     // 1a. Try exact sourceKey first
                     if (runningStockDetailed[sourceKey] && (runningStockDetailed[sourceKey].qtls > 0.0001 || runningStockDetailed[sourceKey].bags > 0)) {
                       const cur = runningStockDetailed[sourceKey];
-                      const deductQ = Math.min(cur.qtls, remainingSourceQtls);
+                      let deductQ = Math.min(cur.qtls, remainingSourceQtls);
                       let deductB = Math.min(cur.bags, remainingSourceBags);
-                      if (deductQ >= cur.qtls - 0.0001) {
+                      if (deductQ >= cur.qtls - 0.0001 || deductB >= cur.bags) {
+                        deductQ = cur.qtls;
                         deductB = cur.bags;
                       }
                       cur.qtls -= deductQ;
                       cur.bags -= deductB;
-                      remainingSourceQtls -= deductQ;
+                      remainingSourceQtls = Math.max(0, remainingSourceQtls - deductQ);
                       remainingSourceBags -= deductB;
                       if (cur.qtls <= 0.0001 || cur.bags <= 0) {
                         delete runningStockDetailed[sourceKey];
@@ -4525,7 +4526,7 @@ const Records: React.FC = () => {
                     }
 
                     // 1b. Fallback: If stock was not fully deducted from exact key, search matching stock in source godown
-                    if (remainingSourceQtls > 0.0001 || remainingSourceBags > 0) {
+                    if (remainingSourceBags > 0) {
                       const normSourceLoc = normalize(sourceLoc);
                       const normCategory = paltiCategory.toLowerCase();
 
@@ -4578,17 +4579,18 @@ const Records: React.FC = () => {
                       });
 
                       for (const candKey of candidates) {
-                        if (remainingSourceQtls <= 0.0001 && remainingSourceBags <= 0) break;
+                        if (remainingSourceBags <= 0) break;
                         const avail = runningStockDetailed[candKey];
                         if (!avail || (avail.qtls <= 0.0001 && avail.bags <= 0)) continue;
-                        const deductQ = Math.min(avail.qtls, remainingSourceQtls);
+                        let deductQ = Math.min(avail.qtls, remainingSourceQtls);
                         let deductB = Math.min(avail.bags, remainingSourceBags);
-                        if (deductQ >= avail.qtls - 0.0001) {
+                        if (deductQ >= avail.qtls - 0.0001 || deductB >= avail.bags) {
+                          deductQ = avail.qtls;
                           deductB = avail.bags;
                         }
                         avail.qtls -= deductQ;
                         avail.bags -= deductB;
-                        remainingSourceQtls -= deductQ;
+                        remainingSourceQtls = Math.max(0, remainingSourceQtls - deductQ);
                         remainingSourceBags -= deductB;
                         console.log(`  ✅ FALLBACK DEDUCTION: ${deductQ.toFixed(2)} Qtls, ${deductB} bags from ${candKey}`);
                         if (avail.qtls <= 0.0001 || avail.bags <= 0) {
@@ -4597,30 +4599,31 @@ const Records: React.FC = () => {
                       }
                     }
 
-                    if (remainingSourceQtls > 0.0001 || remainingSourceBags > 0) {
+                    if (remainingSourceBags > 0) {
                       // Source stock exists in reality but is NOT in our data (e.g. purchase/production
                       // at this godown was not returned by the API). Inject it into BOTH the opening
                       // snapshot AND the running trackers so that:
                       //   • The variety-wise opening display shows the source row
                       //   • calculateGroupTotals(opening + movements) gives correct closing
                       //   • runningStockDetailed (next day's opening) doesn't carry phantom bags
-                      const injectBags = remainingSourceBags > 0 ? remainingSourceBags : Math.round((remainingSourceQtls * 100) / sourceKgPerBag);
-                      console.warn(`  🔧 INJECTING MISSING SOURCE [${date}]: ${remainingSourceQtls.toFixed(2)} Qtls, ${injectBags} bags into ${sourceKey}`);
+                      const injectBags = remainingSourceBags;
+                      const injectQtls = remainingSourceQtls > 0 ? remainingSourceQtls : (injectBags * sourceKgPerBag) / 100;
+                      console.warn(`  🔧 INJECTING MISSING SOURCE [${date}]: ${injectQtls.toFixed(2)} Qtls, ${injectBags} bags into ${sourceKey}`);
 
                       // Inject into today's opening snapshot (for display)
                       if (!openingStockDetailed[sourceKey]) openingStockDetailed[sourceKey] = { qtls: 0, bags: 0 };
-                      openingStockDetailed[sourceKey].qtls += remainingSourceQtls;
+                      openingStockDetailed[sourceKey].qtls += injectQtls;
                       openingStockDetailed[sourceKey].bags += injectBags;
-                      openingStockByType[paltiCategory] = (openingStockByType[paltiCategory] || 0) + remainingSourceQtls;
+                      openingStockByType[paltiCategory] = (openingStockByType[paltiCategory] || 0) + injectQtls;
 
                       // Inject into running trackers (so runningStockByType stays in sync after movementsByType is applied)
                       if (!runningStockDetailed[sourceKey]) runningStockDetailed[sourceKey] = { qtls: 0, bags: 0 };
-                      runningStockDetailed[sourceKey].qtls += remainingSourceQtls;
+                      runningStockDetailed[sourceKey].qtls += injectQtls;
                       runningStockDetailed[sourceKey].bags += injectBags;
-                      runningStockByType[paltiCategory] = (runningStockByType[paltiCategory] || 0) + remainingSourceQtls;
+                      runningStockByType[paltiCategory] = (runningStockByType[paltiCategory] || 0) + injectQtls;
 
                       // Now deduct from runningStockDetailed (inject + deduct = net 0)
-                      runningStockDetailed[sourceKey].qtls -= remainingSourceQtls;
+                      runningStockDetailed[sourceKey].qtls -= injectQtls;
                       runningStockDetailed[sourceKey].bags -= injectBags;
                       if (Math.abs(runningStockDetailed[sourceKey].qtls) < 0.0001 || runningStockDetailed[sourceKey].bags <= 0) {
                         delete runningStockDetailed[sourceKey];
@@ -4631,8 +4634,9 @@ const Records: React.FC = () => {
 
                     // 2. Add to target in runningStockDetailed
                     const actualTargetBags = targetBags > 0 ? targetBags : Math.round((targetQtls * 100) / targetKgPerBag);
+                    const actualTargetQtls = actualTargetBags > 0 ? (actualTargetBags * targetKgPerBag) / 100 : targetQtls;
                     if (!runningStockDetailed[targetKey]) runningStockDetailed[targetKey] = { qtls: 0, bags: 0 };
-                    runningStockDetailed[targetKey].qtls += targetQtls;
+                    runningStockDetailed[targetKey].qtls += actualTargetQtls;
                     runningStockDetailed[targetKey].bags += actualTargetBags;
 
                     // Clean up zero entries
@@ -4671,14 +4675,15 @@ const Records: React.FC = () => {
                     // 1. Deduct from exact stockKey if available
                     if (runningStockDetailed[stockKey] && (runningStockDetailed[stockKey].qtls > 0.0001 || runningStockDetailed[stockKey].bags > 0)) {
                       const cur = runningStockDetailed[stockKey];
-                      const deductQ = Math.min(cur.qtls, remainingSaleQtls);
+                      let deductQ = Math.min(cur.qtls, remainingSaleQtls);
                       let deductB = Math.min(cur.bags, remainingSaleBags);
-                      if (deductQ >= cur.qtls - 0.0001) {
+                      if (deductQ >= cur.qtls - 0.0001 || deductB >= cur.bags) {
+                        deductQ = cur.qtls;
                         deductB = cur.bags;
                       }
                       cur.qtls -= deductQ;
                       cur.bags -= deductB;
-                      remainingSaleQtls -= deductQ;
+                      remainingSaleQtls = Math.max(0, remainingSaleQtls - deductQ);
                       remainingSaleBags -= deductB;
                       if (cur.qtls <= 0.0001 || cur.bags <= 0) {
                         delete runningStockDetailed[stockKey];
@@ -4686,7 +4691,7 @@ const Records: React.FC = () => {
                     }
 
                     // 2. Fallback: Search candidate keys in same location & category
-                    if (remainingSaleQtls > 0.0001 || remainingSaleBags > 0) {
+                    if (remainingSaleBags > 0) {
                       const normLoc = normalize(location);
                       const normCategory = category.toLowerCase();
 
@@ -4735,17 +4740,18 @@ const Records: React.FC = () => {
                       });
 
                       for (const candKey of candidates) {
-                        if (remainingSaleQtls <= 0.0001 && remainingSaleBags <= 0) break;
+                        if (remainingSaleBags <= 0) break;
                         const avail = runningStockDetailed[candKey];
                         if (!avail || (avail.qtls <= 0.0001 && avail.bags <= 0)) continue;
-                        const deductQ = Math.min(avail.qtls, remainingSaleQtls);
+                        let deductQ = Math.min(avail.qtls, remainingSaleQtls);
                         let deductB = Math.min(avail.bags, remainingSaleBags);
-                        if (deductQ >= avail.qtls - 0.0001) {
+                        if (deductQ >= avail.qtls - 0.0001 || deductB >= avail.bags) {
+                          deductQ = avail.qtls;
                           deductB = avail.bags;
                         }
                         avail.qtls -= deductQ;
                         avail.bags -= deductB;
-                        remainingSaleQtls -= deductQ;
+                        remainingSaleQtls = Math.max(0, remainingSaleQtls - deductQ);
                         remainingSaleBags -= deductB;
                         if (avail.qtls <= 0.0001 || avail.bags <= 0) {
                           delete runningStockDetailed[candKey];
@@ -4754,7 +4760,7 @@ const Records: React.FC = () => {
                     }
 
                     // 3. Fallback: If any sale quantity still remains, deduct from primary stockKey so runningStockDetailed stays 100% in sync
-                    if (remainingSaleQtls > 0.0001 || remainingSaleBags > 0) {
+                    if (remainingSaleBags > 0) {
                       if (!runningStockDetailed[stockKey]) {
                         runningStockDetailed[stockKey] = { qtls: 0, bags: 0 };
                       }
@@ -4769,11 +4775,12 @@ const Records: React.FC = () => {
                     const enteredBags = Number(prod.bags) || 0;
                     const itemQtls = Math.abs(prod.actualQtls || 0);
                     const itemBags = enteredBags > 0 ? enteredBags : Math.round((itemQtls * 100) / bagSize);
+                    const actualItemQtls = itemBags > 0 && bagSize > 0 ? (itemBags * bagSize) / 100 : itemQtls;
 
                     if (!runningStockDetailed[stockKey]) {
                       runningStockDetailed[stockKey] = { qtls: 0, bags: 0 };
                     }
-                    runningStockDetailed[stockKey].qtls += itemQtls;
+                    runningStockDetailed[stockKey].qtls += actualItemQtls;
                     runningStockDetailed[stockKey].bags += itemBags;
                   }
 
@@ -4827,9 +4834,9 @@ const Records: React.FC = () => {
                 // 🔧 FIXED: Use openingStockDetailed (BEFORE today's movements) for opening stock display
                 // This ensures variety-wise opening stock shows yesterday's closing, not including today's transactions
                 Object.entries(openingStockDetailed).forEach(([key, stockObj]) => {
-                  // 🔧 FIXED: Only show entries with actual stock > 0.01 qtls (more than 1kg)
-                  // CRITICAL: Skip entries that have been fully consumed (< 1kg remaining)
-                  if (stockObj.qtls > 0.01 && !key.includes('|direct load|')) { // Use normalized key check
+                  // 🔧 FIXED: Only show entries with actual stock > 0.01 qtls or bags > 0
+                  // CRITICAL: Skip entries that have been fully consumed (< 1kg remaining and 0 bags)
+                  if ((stockObj.qtls > 0.01 || stockObj.bags > 0) && !key.includes('|direct load|')) { // Use normalized key check
                     // FIXED: Key is now variety|process|location|product|packaging|bagSize (6 parts)
                     // We must destructure correctly to support variety-wise bifurcation display
                     const [stockVariety, stockProcess, location, product, packaging, bagSize] = key.split('|');
@@ -4913,7 +4920,9 @@ const Records: React.FC = () => {
                     }
 
                     // Accumulate qtls and bags for this specific combination directly from tracked stock
-                    bifurcationGroups[bifurcationKey].qtls += stockObj.qtls;
+                    const bagSizeNum = Number(bagSize) || 26;
+                    const calculatedQtls = stockObj.bags > 0 ? (stockObj.bags * bagSizeNum) / 100 : stockObj.qtls;
+                    bifurcationGroups[bifurcationKey].qtls += calculatedQtls;
                     bifurcationGroups[bifurcationKey].bags += stockObj.bags;
                   }
                 });
@@ -5016,12 +5025,15 @@ const Records: React.FC = () => {
                 productTypes.forEach(type => {
                   let qtls = Number(openingStockByType[type] || 0);
                   if (qtls > 0.01) {
-                    // Calculate exact bags from openingStockDetailed for this type
+                    // Calculate exact bags and qtls from openingStockDetailed for this type
                     let totalBags = 0;
+                    let totalDetailedQtls = 0;
                     Object.entries(openingStockDetailed).forEach(([key, stockObj]) => {
                       const [v, p, l, prodName, pkg, bagSize] = key.split('|');
                       if (normalizeProductType(prodName) === type) {
                         totalBags += stockObj.bags;
+                        const bSize = Number(bagSize) || 26;
+                        totalDetailedQtls += stockObj.bags > 0 ? (stockObj.bags * bSize) / 100 : stockObj.qtls;
                       }
                     });
 
@@ -5038,6 +5050,8 @@ const Records: React.FC = () => {
                       if (bifQtls > 0.01) {
                         qtls = bifQtls;
                       }
+                    } else if (totalDetailedQtls > 0.01) {
+                      qtls = totalDetailedQtls;
                     }
 
                     dayData.openingStock.push({
