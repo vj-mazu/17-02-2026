@@ -451,9 +451,9 @@ class LocationBifurcationService {
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
             AND rsm.movement_type = 'palti'
             AND (
-              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
-              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = ''))
-              OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
+              LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (COALESCE(rsm.from_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.from_location, rsm.location_code)) = ''))
+              OR (:locationCode = 'NULL' AND (COALESCE(rsm.from_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.from_location, rsm.location_code)) = '' OR UPPER(COALESCE(rsm.from_location, rsm.location_code)) = 'NULL'))
             )
             AND rsm.product_type IN (:productTypeList)
             AND (${paltiSrcPkgCondition} OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.source_packaging_id IS NULL OR rsm.source_packaging_id = 0)))
@@ -562,7 +562,8 @@ class LocationBifurcationService {
       const paltiDeductions = parseInt(paltiResult?.palti_deductions || 0);
       const remainingStock = openingStock - paltiDeductions;
       
-      const isValid = remainingStock >= requestedBags;
+      // Allow 1 bag tolerance for weighbridge/rounding variances from previous operations
+      const isValid = remainingStock >= requestedBags || (remainingStock >= requestedBags - 1 && requestedBags > 1);
       
       if (debugMode) {
         console.log('🔍 Sale Validation:', {

@@ -1359,6 +1359,20 @@ router.post('/movements', auth, async (req, res) => {
                 const sourcePackagingBrandName = sourcePackagingInfo?.brandName || 'Unknown';
                 const sourcePackagingKgValue = parseFloat(sourcePackagingInfo?.allottedKg || 26);
 
+                // Fetch all packaging IDs with the same brand name to prevent duplicate packaging ID mismatches
+                let sourcePackagingIds = [parseInt(sourcePackagingId)];
+                if (sourcePackagingBrandName && sourcePackagingBrandName !== 'Unknown') {
+                    try {
+                        const matchingPkgs = await sequelize.query(
+                            `SELECT id FROM packagings WHERE LOWER(TRIM("brandName")) = LOWER(TRIM(:brandName)) OR id = :sourcePackagingId`,
+                            { replacements: { brandName: sourcePackagingBrandName, sourcePackagingId: parseInt(sourcePackagingId) }, type: sequelize.QueryTypes.SELECT }
+                        );
+                        if (matchingPkgs.length > 0) {
+                            sourcePackagingIds = matchingPkgs.map(p => p.id);
+                        }
+                    } catch (e) {}
+                }
+
                 // CRITICAL FIX: Product Type Aliasing for flexible matching
                 // Maps frontend product types to backend/database variations
                 const productTypeAliases = {
@@ -1402,19 +1416,19 @@ router.post('/movements', auth, async (req, res) => {
                         SELECT 
                             COALESCE(SUM(CASE 
                                 WHEN movement_type IN ('production', 'purchase') 
-                                     AND packaging_id = :sourcePackagingId 
+                                     AND packaging_id IN (:sourcePackagingIds) 
                                      AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                                      THEN quantity_quintals
                                 WHEN movement_type = 'sale' 
-                                     AND packaging_id = :sourcePackagingId 
+                                     AND packaging_id IN (:sourcePackagingIds) 
                                      AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                                      THEN -quantity_quintals
                                 WHEN movement_type = 'palti' 
-                                     AND source_packaging_id = :sourcePackagingId 
+                                     AND source_packaging_id IN (:sourcePackagingIds) 
                                      AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(from_location, location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                                      THEN -quantity_quintals
                                 WHEN movement_type = 'palti' 
-                                     AND target_packaging_id = :sourcePackagingId 
+                                     AND target_packaging_id IN (:sourcePackagingIds) 
                                      AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(to_location, location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                                      THEN quantity_quintals
                                 ELSE 0
@@ -1446,7 +1460,7 @@ router.post('/movements', auth, async (req, res) => {
                           )
                           AND rp."productType" IN (:productTypeList)
                           AND rp.status = 'approved'
-                          AND rp."packagingId" = :sourcePackagingId
+                          AND rp."packagingId" IN (:sourcePackagingIds)
                           AND (CASE 
                             WHEN :isDirectLoad THEN rp.date = :date
                             ELSE rp.date <= :date
@@ -1458,7 +1472,7 @@ router.post('/movements', auth, async (req, res) => {
                     FROM movement_stock ms, production_stock ps
                 `, {
                     replacements: {
-                        sourcePackagingId: parseInt(sourcePackagingId),
+                        sourcePackagingIds: sourcePackagingIds,
                         locationCode: locationCode,
                         productTypeList: productTypeList,
                         varietyAliases: safeAliases.length > 0 ? safeAliases : [''],
@@ -1497,7 +1511,11 @@ router.post('/movements', auth, async (req, res) => {
                 });
 
                 // STRICT VALIDATION - Block if insufficient stock for EXACT match
-                if (availableQtls < reqQtls) {
+                // Allow 1 bag (e.g. 0.26 Qtls) tolerance for previous shortage or weighbridge differences
+                const toleranceQtls = (sourcePackagingKgValue / 100) + 0.05;
+                const shortfall = reqQtls - availableQtls;
+
+                if (availableQtls < reqQtls && shortfall > toleranceQtls) {
                     const today = new Date().toISOString().split('T')[0];
                     const isPastDate = date < today;
 
@@ -1763,7 +1781,11 @@ router.post('/movements', auth, async (req, res) => {
         }
 
         // Calculate quantity quintals if not provided
-        if (!finalQuantityQuintals && finalBags && finalPackagingKg) {
+        // For Palti, target quantity quintals must ALWAYS be the nominal weight of target bags
+        // (shortage is stored separately in conversion_shortage_kg)
+        if (movementType === 'palti' && finalBags && finalPackagingKg) {
+            finalQuantityQuintals = (parseInt(finalBags) * parseFloat(finalPackagingKg)) / 100;
+        } else if (!finalQuantityQuintals && finalBags && finalPackagingKg) {
             finalQuantityQuintals = (parseInt(finalBags) * parseFloat(finalPackagingKg)) / 100;
         }
 
@@ -2290,7 +2312,10 @@ router.put('/movements/:id', auth, async (req, res) => {
                         isValid: availableQtls >= reqQtls
                     });
 
-                    if (availableQtls < reqQtls) {
+                    const toleranceQtls = (sourcePackagingKgValue / 100) + 0.05;
+                    const shortfall = reqQtls - availableQtls;
+
+                    if (availableQtls < reqQtls && shortfall > toleranceQtls) {
                         return res.status(400).json({
                             success: false,
                             error: `Insufficient ${finalProductType} stock at ${finalLocationCode}`,
@@ -2299,7 +2324,7 @@ router.put('/movements/:id', auth, async (req, res) => {
                                 location: finalLocationCode,
                                 availableQtls: parseFloat(availableQtls.toFixed(2)),
                                 requestedQtls: parseFloat(reqQtls.toFixed(2)),
-                                shortfall: parseFloat((reqQtls - availableQtls).toFixed(2))
+                                shortfall: parseFloat(shortfall.toFixed(2))
                             }
                         });
                     }
@@ -2314,9 +2339,14 @@ router.put('/movements/:id', auth, async (req, res) => {
         // Calculate quintals based on bags and resolved packaging size
         const effectiveBagsForQtls = bags !== undefined ? parseInt(bags) : currentMovement.bags;
         const effectiveKgForQtls = resolvedPackagingKg ? parseFloat(resolvedPackagingKg) : (currentMovement.bag_size_kg || 26);
-        const calculatedQuantityQuintals = quantityQuintals !== undefined && quantityQuintals !== null
-            ? parseFloat(quantityQuintals)
-            : parseFloat(((effectiveBagsForQtls * effectiveKgForQtls) / 100).toFixed(2));
+        let calculatedQuantityQuintals;
+        if (finalMovementType === 'palti' && effectiveBagsForQtls && effectiveKgForQtls) {
+            calculatedQuantityQuintals = parseFloat(((effectiveBagsForQtls * effectiveKgForQtls) / 100).toFixed(2));
+        } else {
+            calculatedQuantityQuintals = quantityQuintals !== undefined && quantityQuintals !== null
+                ? parseFloat(quantityQuintals)
+                : parseFloat(((effectiveBagsForQtls * effectiveKgForQtls) / 100).toFixed(2));
+        }
 
         // =====================================================
         // UPDATE MOVEMENT
