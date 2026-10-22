@@ -318,7 +318,8 @@ const Records: React.FC = () => {
 
       // Clone the print area to format it cleanly for PDF export
       const clone = printArea.cloneNode(true) as HTMLElement;
-      clone.style.width = '800px';
+      clone.style.width = '820px';
+      clone.style.maxWidth = '820px';
       clone.style.padding = '20px';
       clone.style.background = '#ffffff';
       clone.style.position = 'fixed';
@@ -326,24 +327,28 @@ const Records: React.FC = () => {
       clone.style.top = '0';
       clone.style.zIndex = '-1000';
 
-      // Hide all .patti-no-print elements in clone
-      const noPrintEls = clone.querySelectorAll('.patti-no-print');
+      // Hide all .no-print and .patti-no-print elements in clone
+      const noPrintEls = clone.querySelectorAll('.no-print, .patti-no-print');
       noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
 
       // Show all .patti-print-only elements in clone
       const printOnlyEls = clone.querySelectorAll('.patti-print-only');
       printOnlyEls.forEach((el) => ((el as HTMLElement).style.display = 'inline'));
 
-      // Hide all .patti-rate-input in clone
-      const rateInputs = clone.querySelectorAll('.patti-rate-input');
-      rateInputs.forEach((el) => ((el as HTMLElement).style.display = 'none'));
-
-      // Format bottom split to align right in clone
-      const bottomSplit = clone.querySelector('.patti-bottom-split') as HTMLElement;
-      if (bottomSplit) {
-        bottomSplit.style.display = 'flex';
-        bottomSplit.style.justifyContent = 'flex-end';
-      }
+      // Replace or hide inputs cleanly so they render as clean printed text
+      const allInputs = clone.querySelectorAll('input');
+      allInputs.forEach((inp) => {
+        const val = inp.value;
+        const span = document.createElement('span');
+        span.textContent = val;
+        span.style.fontWeight = '700';
+        span.style.fontSize = '12px';
+        span.style.color = '#1e293b';
+        span.style.display = 'inline-block';
+        span.style.minWidth = '24px';
+        span.style.textAlign = 'center';
+        inp.parentNode?.replaceChild(span, inp);
+      });
 
       document.body.appendChild(clone);
       await new Promise(resolve => setTimeout(resolve, 150));
@@ -12837,6 +12842,15 @@ return (
               .patti-rate-input {
                 display: none !important;
               }
+              input {
+                border: none !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                width: auto !important;
+                font-weight: 700 !important;
+                color: #000 !important;
+              }
               table {
                 border-collapse: collapse !important;
               }
@@ -13144,12 +13158,9 @@ return (
                 <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
                   <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: Hamali @</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <input
-                      type="number"
-                      readOnly
-                      value={pattiCalculations.hVal}
-                      style={{ width: '55px', padding: '3px', textAlign: 'center', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '3px', background: '#f1f5f9', color: '#334155', fontWeight: '700', cursor: 'not-allowed' }}
-                    />
+                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                      {pattiCalculations.hVal}
+                    </span>
                     <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
                       {pattiCalculations.hMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
                     </span>
@@ -13161,12 +13172,9 @@ return (
                 <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
                   <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: Brokerage @</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <input
-                      type="number"
-                      readOnly
-                      value={pattiCalculations.bVal}
-                      style={{ width: '55px', padding: '3px', textAlign: 'center', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '3px', background: '#f1f5f9', color: '#334155', fontWeight: '700', cursor: 'not-allowed' }}
-                    />
+                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                      {pattiCalculations.bVal}
+                    </span>
                     <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
                       {pattiCalculations.bMethod === 'percentage' ? '%' : (pattiCalculations.bMethod === 'per_quintal' ? '/ qtl' : '/ bag')}
                     </span>
@@ -13178,12 +13186,9 @@ return (
                 <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
                   <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: LF @</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <input
-                      type="number"
-                      readOnly
-                      value={pattiCalculations.lfVal}
-                      style={{ width: '55px', padding: '3px', textAlign: 'center', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '3px', background: '#f1f5f9', color: '#334155', fontWeight: '700', cursor: 'not-allowed' }}
-                    />
+                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                      {pattiCalculations.lfVal}
+                    </span>
                     <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
                       {pattiCalculations.lfMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
                     </span>
@@ -13196,12 +13201,9 @@ return (
                   <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
                     <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: EGB @</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                      <input
-                        type="number"
-                        readOnly
-                        value={pattiCalculations.egbVal}
-                        style={{ width: '55px', padding: '3px', textAlign: 'center', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '3px', background: '#f1f5f9', color: '#334155', fontWeight: '700', cursor: 'not-allowed' }}
-                      />
+                      <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                        {pattiCalculations.egbVal}
+                      </span>
                       <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
                         {pattiCalculations.egbMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
                       </span>
