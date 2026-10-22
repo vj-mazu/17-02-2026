@@ -1695,9 +1695,9 @@ const Records: React.FC = () => {
               brandName: 'A1',
               allottedKg: 26
             },
-            from: `Outt1-${prod.outturn?.code || 'Sum25 RNR Raw'}`,
+            from: prod.outturn?.code || prod.outturnNumber || 'Production',
             to: prod.locationCode || prod.location_code || prod.location || '-',
-            fromLocation: `Outt1-${prod.outturn?.code || 'Sum25 RNR Raw'}`,
+            fromLocation: prod.outturn?.code || prod.outturnNumber || 'Production',
             toLocation: prod.locationCode || prod.location_code || prod.location || '-',
             partyName: null,
             billNumber: prod.billNumber,
@@ -4199,6 +4199,8 @@ const Records: React.FC = () => {
                 // Add movement to daily data
                 dailyData[date].productions.push({
                   id: item.id,
+                  date: item.date || date,
+                  createdAt: item.createdAt,
                   qtls: Math.abs(Number(qtls)), // Always show positive values for display
                   bags: Math.abs(Number(bags)),
                   bagSizeKg: Number(item.bagSizeKg || item.bag_size_kg || 26),
@@ -4347,6 +4349,10 @@ const Records: React.FC = () => {
               interface DetailedStock {
                 qtls: number;
                 bags: number;
+                createdDate?: string;
+                outturn?: {
+                  code?: string;
+                };
               }
               const runningStockDetailed: { [key: string]: DetailedStock } = {};
               const runningStockByType: { [productType: string]: number } = {};
@@ -4370,7 +4376,12 @@ const Records: React.FC = () => {
                 // This is used for variety-wise opening stock display (yesterday's closing = today's opening)
                 const openingStockDetailed: { [key: string]: DetailedStock } = {};
                 Object.entries(runningStockDetailed).forEach(([key, stock]) => {
-                  openingStockDetailed[key] = { qtls: stock.qtls, bags: stock.bags };
+                  openingStockDetailed[key] = {
+                    qtls: stock.qtls,
+                    bags: stock.bags,
+                    createdDate: stock.createdDate,
+                    outturn: stock.outturn ? { ...stock.outturn } : undefined
+                  };
                 });
 
                 // Calculate movements for this day by detailed tracking
@@ -4501,6 +4512,10 @@ const Records: React.FC = () => {
                       keysInGodown: allKeysInGodown.map(k => `${k} = ${(runningStockDetailed[k]?.qtls || 0).toFixed(2)} (${runningStockDetailed[k]?.bags || 0} bags)`),
                       prodFields: { fromLocation: prod.fromLocation, toLocation: prod.toLocation, location: prod.location, category: prod.category, movementType: prod.movementType }
                     });
+
+                    // Capture lot age / outturn from source before subtraction
+                    const sourceCreatedDate = runningStockDetailed[sourceKey]?.createdDate;
+                    const sourceOutturn = runningStockDetailed[sourceKey]?.outturn;
 
                     // 1. Subtract from source in runningStockDetailed
                     let remainingSourceQtls = sourceQtls;
@@ -4635,9 +4650,22 @@ const Records: React.FC = () => {
                     // 2. Add to target in runningStockDetailed
                     const actualTargetBags = targetBags > 0 ? targetBags : Math.round((targetQtls * 100) / targetKgPerBag);
                     const actualTargetQtls = actualTargetBags > 0 ? (actualTargetBags * targetKgPerBag) / 100 : targetQtls;
-                    if (!runningStockDetailed[targetKey]) runningStockDetailed[targetKey] = { qtls: 0, bags: 0 };
+                    if (!runningStockDetailed[targetKey]) {
+                      runningStockDetailed[targetKey] = {
+                        qtls: 0,
+                        bags: 0,
+                        createdDate: sourceCreatedDate || prod.date || date,
+                        outturn: sourceOutturn || (prod.outturn?.code ? { code: prod.outturn.code } : undefined)
+                      };
+                    }
                     runningStockDetailed[targetKey].qtls += actualTargetQtls;
                     runningStockDetailed[targetKey].bags += actualTargetBags;
+                    if (!runningStockDetailed[targetKey].createdDate) {
+                      runningStockDetailed[targetKey].createdDate = sourceCreatedDate || prod.date || date;
+                    }
+                    if (!runningStockDetailed[targetKey].outturn && (sourceOutturn || prod.outturn?.code)) {
+                      runningStockDetailed[targetKey].outturn = sourceOutturn || (prod.outturn?.code ? { code: prod.outturn.code } : undefined);
+                    }
 
                     // Clean up zero entries
                     if (runningStockDetailed[sourceKey] !== undefined && (Math.abs(runningStockDetailed[sourceKey].qtls) < 0.0001 || runningStockDetailed[sourceKey].bags <= 0)) {
@@ -4777,8 +4805,23 @@ const Records: React.FC = () => {
                     const itemBags = enteredBags > 0 ? enteredBags : Math.round((itemQtls * 100) / bagSize);
                     const actualItemQtls = itemBags > 0 && bagSize > 0 ? (itemBags * bagSize) / 100 : itemQtls;
 
+                    const lotCreatedDate = prod.outturn?.paddyDate || prod.outturn?.createdAt || prod.date || prod.createdAt || date;
+                    const lotOutturnCode = prod.outturn?.code || prod.outturnNumber || (typeof prod.outturn === 'string' && prod.outturn ? prod.outturn : undefined);
+
                     if (!runningStockDetailed[stockKey]) {
-                      runningStockDetailed[stockKey] = { qtls: 0, bags: 0 };
+                      runningStockDetailed[stockKey] = {
+                        qtls: 0,
+                        bags: 0,
+                        createdDate: lotCreatedDate,
+                        outturn: lotOutturnCode ? { code: lotOutturnCode } : undefined
+                      };
+                    } else {
+                      if (!runningStockDetailed[stockKey].createdDate) {
+                        runningStockDetailed[stockKey].createdDate = lotCreatedDate;
+                      }
+                      if (!runningStockDetailed[stockKey].outturn && lotOutturnCode) {
+                        runningStockDetailed[stockKey].outturn = { code: lotOutturnCode };
+                      }
                     }
                     runningStockDetailed[stockKey].qtls += actualItemQtls;
                     runningStockDetailed[stockKey].bags += itemBags;
@@ -4911,12 +4954,21 @@ const Records: React.FC = () => {
                         qtls: 0,
                         bags: 0,
                         bagSizeKg: Number(bagSize) || 26,
+                        createdDate: stockObj.createdDate,
+                        outturn: stockObj.outturn,
                         movementTypes: [],
                         count: 0,
                         isPalti: false,
                         shortageKg: 0,
                         shortageBags: 0
                       };
+                    } else {
+                      if (!bifurcationGroups[bifurcationKey].createdDate && stockObj.createdDate) {
+                        bifurcationGroups[bifurcationKey].createdDate = stockObj.createdDate;
+                      }
+                      if (!bifurcationGroups[bifurcationKey].outturn && stockObj.outturn) {
+                        bifurcationGroups[bifurcationKey].outturn = stockObj.outturn;
+                      }
                     }
 
                     // Accumulate qtls and bags for this specific combination directly from tracked stock
@@ -4971,9 +5023,23 @@ const Records: React.FC = () => {
                   if (group.isPalti) {
                     productDisplay = `🔄 ${group.product || 'Palti'}`;
                   }
+
+                  let daysOld: number | null = null;
+                  if (group.createdDate) {
+                    try {
+                      const cDate = new Date(group.createdDate.split('T')[0] + 'T00:00:00');
+                      const vDate = new Date(date.split('T')[0] + 'T00:00:00');
+                      const diffMs = vDate.getTime() - cDate.getTime();
+                      daysOld = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+                    } catch (e) {
+                      daysOld = null;
+                    }
+                  }
+
                   return {
                     ...group,
-                    product: productDisplay
+                    product: productDisplay,
+                    daysOld
                   };
                 }).filter((group: any) => {
                   // 🔧 FIXED: Cap at 0 minimum - don't show negative stock
@@ -5729,10 +5795,30 @@ return (
                                                           <div style={{ textAlign: 'center', fontSize: '8pt', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                           <div style={{ textAlign: 'center', fontSize: '8pt' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
                                                           <div style={{ fontSize: '8pt', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                                            <div>
-                                                              {item.product}
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                              <span>{item.product}</span>
                                                               {item.outturn?.code && (
-                                                                <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                                <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                              )}
+                                                              {item.daysOld !== undefined && item.daysOld !== null && (
+                                                                <span
+                                                                  style={{
+                                                                    background: item.daysOld >= 30 ? '#fee2e2' : item.daysOld >= 15 ? '#fef3c7' : '#e0f2fe',
+                                                                    color: item.daysOld >= 30 ? '#b91c1c' : item.daysOld >= 15 ? '#b45309' : '#0369a1',
+                                                                    border: `1px solid ${item.daysOld >= 30 ? '#fca5a5' : item.daysOld >= 15 ? '#fde68a' : '#bae6fd'}`,
+                                                                    fontSize: '7pt',
+                                                                    padding: '1px 5px',
+                                                                    borderRadius: '4px',
+                                                                    fontWeight: 'bold',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '2px',
+                                                                    cursor: 'default'
+                                                                  }}
+                                                                  title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed)`}
+                                                                >
+                                                                  ⏱️ {item.daysOld}d
+                                                                </span>
                                                               )}
                                                             </div>
                                                             {hasSplits && totalShortage > 0 && (
@@ -6541,10 +6627,30 @@ return (
                                                     <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                     <div style={{ textAlign: 'center' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
                                                     <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                                      <div>
-                                                        {item.product}
+                                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                        <span>{item.product}</span>
                                                         {item.outturn?.code && (
-                                                          <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                          <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                        )}
+                                                        {item.daysOld !== undefined && item.daysOld !== null && (
+                                                          <span
+                                                            style={{
+                                                              background: item.daysOld >= 30 ? '#fee2e2' : item.daysOld >= 15 ? '#fef3c7' : '#e0f2fe',
+                                                              color: item.daysOld >= 30 ? '#b91c1c' : item.daysOld >= 15 ? '#b45309' : '#0369a1',
+                                                              border: `1px solid ${item.daysOld >= 30 ? '#fca5a5' : item.daysOld >= 15 ? '#fde68a' : '#bae6fd'}`,
+                                                              fontSize: '6.5pt',
+                                                              padding: '1px 4px',
+                                                              borderRadius: '3px',
+                                                              fontWeight: 'bold',
+                                                              display: 'inline-flex',
+                                                              alignItems: 'center',
+                                                              gap: '2px',
+                                                              cursor: 'default'
+                                                            }}
+                                                            title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed)`}
+                                                          >
+                                                            ⏱️ {item.daysOld}d
+                                                          </span>
                                                         )}
                                                       </div>
                                                       {hasSplits && totalShortage > 0 && (
@@ -7247,10 +7353,30 @@ return (
                                                   <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                   <div style={{ textAlign: 'center' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
                                                   <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                                    <div>
-                                                      {item.product}
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                      <span>{item.product}</span>
                                                       {item.outturn?.code && (
-                                                        <span style={{ color: '#7c3aed', fontWeight: 'bold', marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                        <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                      )}
+                                                      {item.daysOld !== undefined && item.daysOld !== null && (
+                                                        <span
+                                                          style={{
+                                                            background: item.daysOld >= 30 ? '#fee2e2' : item.daysOld >= 15 ? '#fef3c7' : '#e0f2fe',
+                                                            color: item.daysOld >= 30 ? '#b91c1c' : item.daysOld >= 15 ? '#b45309' : '#0369a1',
+                                                            border: `1px solid ${item.daysOld >= 30 ? '#fca5a5' : item.daysOld >= 15 ? '#fde68a' : '#bae6fd'}`,
+                                                            fontSize: '6.5pt',
+                                                            padding: '1px 4px',
+                                                            borderRadius: '3px',
+                                                            fontWeight: 'bold',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '2px',
+                                                            cursor: 'default'
+                                                          }}
+                                                          title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed)`}
+                                                        >
+                                                          ⏱️ {item.daysOld}d
+                                                        </span>
                                                       )}
                                                     </div>
                                                     {hasSplits && totalShortage > 0 && (

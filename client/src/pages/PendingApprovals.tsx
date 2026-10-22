@@ -1269,7 +1269,7 @@ const PendingApprovals: React.FC = () => {
                                     : prod.outturn?.allottedVariety || '-';
                                 const fromLoc = prod.movementType === 'loading'
                                     ? prod.locationCode || '-'
-                                    : `Outt1-${prod.outturn?.code || '?'}`;
+                                    : prod.outturn?.code || 'Production';
                                 const toLoc = prod.movementType === 'loading'
                                     ? 'DIRECT_LOAD'
                                     : prod.locationCode || '-';

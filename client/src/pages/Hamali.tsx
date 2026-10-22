@@ -1657,7 +1657,7 @@ const Hamali: React.FC = () => {
                             toField = item.toLocation || item.originalMovement?.toLocation || 'Target';
                           } else {
                             // Production entries
-                            fromField = `Outt1-${item.outturn?.code || '-'}`;
+                            fromField = item.outturn?.code || item.outturnNumber || 'Production';
 
                             if (item.movementType === 'kunchinittu') {
                               toField = item.locationCode;
