@@ -394,51 +394,33 @@ const Records: React.FC = () => {
   };
 
   const handleOpenPattiModal = async (record: any) => {
+    // If user clicks the already opened Patti for this row, toggle it closed
+    if (pattiModalRecord && pattiModalRecord.id === record.id) {
+      setPattiModalRecord(null);
+      return;
+    }
+
     setPattiModalRecord(record);
-    const recDate = record.date ? record.date.split('T')[0] : '';
-    const allArrivals = Object.values(records || {}).flat();
-    const matching = allArrivals.filter((r: any) =>
-      r.fromLocation && record.fromLocation &&
-      r.fromLocation.trim().toLowerCase() === record.fromLocation.trim().toLowerCase() &&
-      (!recDate || (r.date && r.date.split('T')[0] === recDate))
-    );
-    const trips = matching.length > 0 ? matching : [record];
     const initialRates: { [id: number]: number } = {};
-    trips.forEach((t: any) => {
-      const bRate = t.purchaseRate?.baseRate ?? record.purchaseRate?.baseRate;
-      if (bRate !== undefined && bRate !== null && !isNaN(Number(bRate)) && Number(bRate) > 0) {
-        initialRates[t.id] = Number(bRate);
-      }
-    });
+    const bRate = record.purchaseRate?.baseRate;
+    if (bRate !== undefined && bRate !== null && !isNaN(Number(bRate)) && Number(bRate) > 0) {
+      initialRates[record.id] = Number(bRate);
+    }
     setPattiEditableRates(initialRates);
 
-    // Asynchronously fetch authoritative purchase rates for all trips
+    // Asynchronously fetch authoritative purchase rate for this clicked trip
     try {
-      let updatedPattiRecord = { ...record };
-      const updatedRates = { ...initialRates };
-
-      await Promise.all(trips.map(async (t: any) => {
-        try {
-          const res = await axios.get<{ purchaseRate: any }>(`/purchase-rates/${t.id}`);
-          if (res.data?.purchaseRate) {
-            const pr = res.data.purchaseRate;
-            t.purchaseRate = pr;
-            if (pr.baseRate !== undefined && pr.baseRate !== null && Number(pr.baseRate) > 0) {
-              updatedRates[t.id] = Number(pr.baseRate);
-            }
-            if (t.id === record.id) {
-              updatedPattiRecord = { ...updatedPattiRecord, purchaseRate: pr };
-            }
-          }
-        } catch {
-          // No purchase rate saved yet for this trip
+      const res = await axios.get<{ purchaseRate: any }>(`/purchase-rates/${record.id}`);
+      if (res.data?.purchaseRate) {
+        const pr = res.data.purchaseRate;
+        record.purchaseRate = pr;
+        if (pr.baseRate !== undefined && pr.baseRate !== null && Number(pr.baseRate) > 0) {
+          setPattiEditableRates(prev => ({ ...prev, [record.id]: Number(pr.baseRate) }));
         }
-      }));
-
-      setPattiEditableRates(updatedRates);
-      setPattiModalRecord(updatedPattiRecord);
-    } catch (err) {
-      console.error('Error fetching patti rates:', err);
+        setPattiModalRecord({ ...record, purchaseRate: pr });
+      }
+    } catch {
+      // No purchase rate saved yet for this trip
     }
   };
 
@@ -498,15 +480,8 @@ const Records: React.FC = () => {
   // Trips corresponding to the selected Patti record
   const pattiTripRecords = useMemo(() => {
     if (!pattiModalRecord) return [];
-    const recDate = pattiModalRecord.date ? pattiModalRecord.date.split('T')[0] : '';
-    const allArrivals = Object.values(records || {}).flat();
-    const matching = allArrivals.filter((r: any) =>
-      r.fromLocation && pattiModalRecord.fromLocation &&
-      r.fromLocation.trim().toLowerCase() === pattiModalRecord.fromLocation.trim().toLowerCase() &&
-      (!recDate || (r.date && r.date.split('T')[0] === recDate))
-    );
-    return matching.length > 0 ? matching : [pattiModalRecord];
-  }, [pattiModalRecord, records]);
+    return [pattiModalRecord];
+  }, [pattiModalRecord]);
 
   // Real-time recalculation of Mother India Patti
   const pattiCalculations = useMemo(() => {
@@ -11998,12 +11973,18 @@ return (
                                       {expandedRateRecordId === record.id ? 'Close' : (record.purchaseRate ? 'Edit Rate' : 'Add Rate')}
                                     </Button>
                                     <Button
-                                      className="success"
+                                      className={pattiModalRecord?.id === record.id ? "secondary" : "success"}
                                       onClick={() => handleOpenPattiModal(record)}
-                                      style={{ padding: '0.4rem 0.8rem', fontSize: '0.82rem', background: '#059669', color: '#fff', fontWeight: 'bold' }}
+                                      style={{
+                                        padding: '0.4rem 0.8rem',
+                                        fontSize: '0.82rem',
+                                        background: pattiModalRecord?.id === record.id ? '#475569' : '#059669',
+                                        color: '#fff',
+                                        fontWeight: 'bold'
+                                      }}
                                       title="View & Print Mother India Patti"
                                     >
-                                      📄 Patti
+                                      {pattiModalRecord?.id === record.id ? '✕ Close Patti' : '📄 Patti'}
                                     </Button>
                                   </div>
                                 </td>
@@ -12313,6 +12294,438 @@ return (
                                   </RateFormContainer>
                                 </RateFormCell>
                               </InlineRateForm>
+                            )}
+
+                            {/* Inline Mother India Purchase Patti (Rendered directly under clicked row) */}
+                            {pattiModalRecord && pattiModalRecord.id === record.id && pattiCalculations && (
+                              <tr className="inline-patti-row" style={{ backgroundColor: '#f8fafc' }}>
+                                <td colSpan={canEdit ? 17 : 16} style={{ padding: '16px 20px', borderTop: '2px solid #059669', borderBottom: '2px solid #059669', background: '#f8fafc' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div
+            className="patti-print-area"
+            id="mother-india-patti-print-area"
+            style={{
+              backgroundColor: 'white',
+              padding: '24px',
+              borderRadius: '8px',
+              width: '92%',
+              maxWidth: '920px',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              fontFamily: 'inherit'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Bar with Download & Print & Close buttons (No-Print) */}
+            <div
+              className="no-print patti-no-print"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#f8fafc',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                marginBottom: '14px',
+                border: '1px solid #e2e8f0'
+              }}
+            >
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>Patti Mode:</span>
+                <span style={{ fontSize: '12px', color: '#2563eb', fontWeight: '800' }}>
+                  🏭 Mill WB Patti
+                </span>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  backgroundColor: '#dbeafe',
+                  color: '#1e40af',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  marginLeft: '6px'
+                }}>
+                  Type: {pattiModalRecord.purchaseRate?.rateType || 'CDL'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handleDownloadPattiPDF}
+                  disabled={downloadingPattiPDF}
+                  style={{
+                    padding: '5px 14px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    borderRadius: '4px',
+                    border: '1px solid #059669',
+                    background: downloadingPattiPDF ? '#64748b' : '#059669',
+                    color: '#ffffff',
+                    cursor: downloadingPattiPDF ? 'not-allowed' : 'pointer'
+                  }}
+                  title="Directly download clean PDF"
+                >
+                  {downloadingPattiPDF ? '⏳ Generating...' : '📥 Download PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{
+                    padding: '5px 14px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    borderRadius: '4px',
+                    border: '1px solid #2563eb',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    cursor: 'pointer'
+                  }}
+                  title="Print to printer or PDF"
+                >
+                  🖨️ Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPattiModalRecord(null)}
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    borderRadius: '4px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#64748b',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* Header: Mother India in exact sleek print style with dashed border line */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px dashed #333', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800', letterSpacing: '0.5px' }}>
+                  MOTHER INDIA
+                </h2>
+                <div style={{ fontSize: '13px', color: '#4b5563', marginTop: '4px', fontWeight: '600' }}>
+                  Party: <span style={{ color: '#111827' }}>{pattiModalRecord.fromLocation || pattiModalRecord.party || '-'}</span> | Location: <span style={{ color: '#111827' }}>{pattiModalRecord.toWarehouse?.name || pattiModalRecord.toLocation || 'Mother India Mill'}</span>
+                  {pattiModalRecord.broker && (
+                    <span> | Broker: <span style={{ color: '#111827' }}>{pattiModalRecord.broker}</span></span>
+                  )}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                <span style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#374151' }}>
+                  Date: {pattiModalRecord.date ? new Date(pattiModalRecord.date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}
+                </span>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '700', backgroundColor: '#e5e7eb', padding: '2px 8px', borderRadius: '4px', display: 'inline-block' }}>
+                    Pkg: 75 Kg
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: '700', backgroundColor: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '4px', display: 'inline-block' }}>
+                    Type: {pattiModalRecord.purchaseRate?.rateType || 'CDL'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Table: Exact Clean Black Border Table */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', marginBottom: '20px', border: '1px solid #000' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f3f4f6', borderBottom: '1px solid #000' }}>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700' }}>Date</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700' }}>Bags</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Variety</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Net WB</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Shoot</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>S.Net WB</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Rate</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Amount</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Lorry No</th>
+                  <th className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700', width: '60px' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pattiCalculations.tripsCalculated.map((trip: any, idx: number) => {
+                  const isChanged = pattiEditableRates[trip.id] !== undefined &&
+                    pattiEditableRates[trip.id] !== Number(trip.purchaseRate?.baseRate || pattiModalRecord.purchaseRate?.baseRate || 0);
+
+                  return (
+                    <tr key={idx} style={{ borderBottom: '1px solid #ddd' }}>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'center' }}>
+                        {trip.date ? new Date(trip.date).toLocaleDateString('en-GB') : '-'}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '600' }}>
+                        {trip.tripBags ? Number(trip.tripBags).toLocaleString('en-IN') : '0'}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left' }}>
+                        {trip.variety || '-'}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left' }}>
+                        {trip.tripNetWb ? Number(trip.tripNetWb).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', color: '#dc2626', fontWeight: '600' }}>
+                        {trip.tripSute ? Number(trip.tripSute).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '600' }}>
+                        {trip.tripSNetWb ? Number(trip.tripSNetWb).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', color: '#16a34a', fontWeight: '700' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <input
+                            type="number"
+                            step="0.5"
+                            className="patti-rate-input"
+                            value={pattiEditableRates[trip.id] !== undefined && pattiEditableRates[trip.id] !== 0 ? pattiEditableRates[trip.id] : (trip.purchaseRate?.baseRate ? Number(trip.purchaseRate.baseRate) : '')}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setPattiEditableRates(prev => ({ ...prev, [trip.id]: val }));
+                            }}
+                            style={{
+                              width: '70px',
+                              padding: '2px 4px',
+                              border: isChanged ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                              borderRadius: '3px',
+                              textAlign: 'right',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              background: isChanged ? '#eff6ff' : '#ffffff'
+                            }}
+                            title="Edit purchase rate"
+                          />
+                          <span className="patti-print-only" style={{ display: 'none' }}>
+                            {trip.currentRate ? Number(trip.currentRate).toLocaleString('en-IN') : '0'}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '600' }}>
+                        {trip.amount ? Number(trip.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>
+                        {trip.lorryNumber || '-'}
+                      </td>
+                      <td className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleSavePattiRate(trip.id)}
+                          disabled={savingPattiRate}
+                          style={{
+                            padding: '2px 6px',
+                            background: isChanged ? '#059669' : '#64748b',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '3px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: savingPattiRate ? 'not-allowed' : 'pointer'
+                          }}
+                          title="Save rate to database"
+                        >
+                          {savingPattiRate ? '...' : (isChanged ? '💾 Save' : 'Saved')}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* Totals Row: Exact KBD format with double 2px solid border */}
+                <tr style={{ backgroundColor: '#f9fafb', borderTop: '2px solid #000', borderBottom: '2px solid #000', fontWeight: '800' }}>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center' }}>Total</td>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center' }}>{pattiCalculations.totalBags.toLocaleString('en-IN')}</td>
+                  <td style={{ border: '1px solid #000', padding: '8px' }}></td>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left' }}>{pattiCalculations.totalNetWb.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left', color: '#dc2626' }}>{pattiCalculations.totalSute.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left' }}>{pattiCalculations.totalSNetWb.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left' }}></td>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left' }}>{pattiCalculations.totalBaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td style={{ border: '1px solid #000', padding: '8px' }}></td>
+                  <td className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '8px' }}></td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Bottom Calculations Layout: Exact KBD Left Red Box + Right Breakdown Box */}
+            <div className="patti-bottom-split" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '16px', gap: '20px', flexWrap: 'wrap' }}>
+              {/* Left Side: Comprehensive Weighment & Rate Averages Card */}
+              <div style={{ flex: 1, minWidth: '260px', padding: '14px 18px', background: '#fff5f5', borderRadius: '8px', border: '1.5px solid #fecaca', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ borderBottom: '1.5px solid #fca5a5', paddingBottom: '6px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#b91c1c' }}>
+                    Avg WB : {pattiCalculations.avgWbPerBag.toFixed(3)} Kg / Bag
+                  </div>
+                  <div style={{ fontSize: '11.5px', fontWeight: '600', color: '#7f1d1d', marginTop: '2px' }}>
+                    Gross Net WB: {pattiCalculations.totalNetWb.toFixed(2)} Kg ÷ {pattiCalculations.totalBags} Bags
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', color: '#374151' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Total Net WB:</span>
+                    <strong>{pattiCalculations.totalNetWb.toFixed(2)} Kg</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Total Sute (Deduction):</span>
+                    <strong style={{ color: '#dc2626' }}>-{pattiCalculations.totalSute.toFixed(2)} Kg</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #fca5a5', paddingTop: '4px' }}>
+                    <span style={{ fontWeight: '700', color: '#1f2937' }}>Sute Net Weight:</span>
+                    <strong style={{ fontWeight: '800', color: '#047857' }}>{pattiCalculations.totalSNetWb.toFixed(2)} Kg</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Avg S.Net per Bag:</span>
+                    <strong>{(pattiCalculations.totalBags > 0 ? pattiCalculations.totalSNetWb / pattiCalculations.totalBags : 0).toFixed(3)} Kg</strong>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1.5px solid #fca5a5', paddingTop: '6px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#b91c1c', lineHeight: '1.3' }}>
+                    Avg Base Rate : ₹{pattiCalculations.avgBaseRate75.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#7f1d1d', marginTop: '1px' }}>
+                    per 75 Kg Bag (Base Rate)
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#047857', marginTop: '4px' }}>
+                    Net Avg Rate : ₹{pattiCalculations.netAvgRate75.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / 75kg
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Side: Exact KBD Calculation Breakdown Box */}
+              <div className="patti-financial-box" style={{ width: '100%', maxWidth: '440px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '2px solid #000', marginBottom: '6px', fontSize: '14px' }}>
+                  <span style={{ fontWeight: '800', color: '#0f172a' }}>Lorry Total Amount:</span>
+                  <span style={{ fontWeight: '800', color: '#0f172a' }}>Rs {pattiCalculations.totalBaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+
+                {/* Hamali */}
+                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: Hamali @</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
+                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                      {pattiCalculations.hVal}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
+                      {pattiCalculations.hMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
+                    </span>
+                  </div>
+                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.hAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+
+                {/* Brokerage */}
+                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: Brokerage @</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
+                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                      {pattiCalculations.bVal}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
+                      {pattiCalculations.bMethod === 'percentage' ? '%' : (pattiCalculations.bMethod === 'per_quintal' ? '/ qtl' : '/ bag')}
+                    </span>
+                  </div>
+                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.bAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+
+                {/* LF */}
+                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: LF @</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
+                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                      {pattiCalculations.lfVal}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
+                      {pattiCalculations.lfMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
+                    </span>
+                  </div>
+                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.lfAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+
+                {/* EGB */}
+                {pattiCalculations.egbVal > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: EGB @</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
+                      <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                        {pattiCalculations.egbVal}
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
+                        {pattiCalculations.egbMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
+                      </span>
+                    </div>
+                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.egbAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+
+                {/* Total with Additions */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '2px solid #000', borderBottom: '2px solid #000', marginBottom: '8px', color: '#0f172a', fontWeight: '800', fontSize: '13.5px', backgroundColor: '#f8fafc' }}>
+                  <span>Total (with Additions):</span>
+                  <span>Rs {(pattiCalculations.totalBaseAmount + pattiCalculations.totalAdditions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+
+                {/* Deductions: DF */}
+                {pattiCalculations.dfAmount > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Less: DF:</span>
+                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', width: '110px' }}>
+                      {pattiCalculations.totalBags} bags x {pattiCalculations.dfVal}
+                    </span>
+                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: '#dc2626' }}>- Rs {pattiCalculations.dfAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+
+                {/* Deductions: CD */}
+                {pattiCalculations.cdAmount > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Less: CD:</span>
+                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', width: '110px' }}>
+                      Cash Discount
+                    </span>
+                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: '#dc2626' }}>- Rs {pattiCalculations.cdAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+
+                {/* Deductions: TDS */}
+                {pattiCalculations.tdsAmount > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Less: TDS:</span>
+                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', width: '110px' }}>
+                      TDS
+                    </span>
+                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: '#dc2626' }}>- Rs {pattiCalculations.tdsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+
+                {/* Grand Total: Exact KBD format with double 2px bottom border */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: '2px solid #000', borderBottom: '2px double #000', marginTop: '8px', fontSize: '15px', fontWeight: '800', color: '#1e3a8a' }}>
+                  <span>Grand Total:</span>
+                  <span>Rs {pattiCalculations.netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Bottom Buttons (No-Print) */}
+            <div className="no-print patti-no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', borderTop: '1px solid #eee', paddingTop: '16px' }}>
+              <button
+                type="button"
+                onClick={() => setPattiModalRecord(null)}
+                style={{
+                  padding: '8px 20px',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  fontWeight: '700',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+                                  </div>
+                                </td>
+                              </tr>
                             )}
 
                           </React.Fragment>
@@ -12795,491 +13208,48 @@ return (
         </div>
       )}
 
-      {/* =========================================================================
-          MOTHER INDIA - PADDY PURCHASE PATTI MODAL (WITH LIVE EDITABLE RATE & PRINT)
-          ========================================================================= */}
-      {pattiModalRecord && pattiCalculations && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 1050
-          }}
-          onClick={() => setPattiModalRecord(null)}
-        >
-          <style dangerouslySetInnerHTML={{ __html: `
-            @media print {
-              body * {
-                visibility: hidden !important;
-              }
-              #mother-india-patti-print-area, #mother-india-patti-print-area * {
-                visibility: visible !important;
-              }
-              #mother-india-patti-print-area {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 100% !important;
-                max-width: 100% !important;
-                box-shadow: none !important;
-                margin: 0 !important;
-                padding: 0 !important;
-              }
-              .no-print, .patti-no-print {
-                display: none !important;
-              }
-              .patti-print-only {
-                display: inline !important;
-              }
-              .patti-rate-input {
-                display: none !important;
-              }
-              input {
-                border: none !important;
-                background: transparent !important;
-                box-shadow: none !important;
-                padding: 0 !important;
-                width: auto !important;
-                font-weight: 700 !important;
-                color: #000 !important;
-              }
-              table {
-                border-collapse: collapse !important;
-              }
-            }
-          `}} />
-
-          <div
-            className="patti-print-area"
-            id="mother-india-patti-print-area"
-            style={{
-              backgroundColor: 'white',
-              padding: '24px',
-              borderRadius: '8px',
-              width: '92%',
-              maxWidth: '920px',
-              maxHeight: '92vh',
-              overflowY: 'auto',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-              fontFamily: 'inherit'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Top Bar with Download & Print & Close buttons (No-Print) */}
-            <div
-              className="no-print patti-no-print"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                backgroundColor: '#f8fafc',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                marginBottom: '14px',
-                border: '1px solid #e2e8f0'
-              }}
-            >
-              <div style={{ fontSize: '13px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>Patti Mode:</span>
-                <span style={{ fontSize: '12px', color: '#2563eb', fontWeight: '800' }}>
-                  🏭 Mill WB Patti
-                </span>
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  backgroundColor: '#dbeafe',
-                  color: '#1e40af',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  marginLeft: '6px'
-                }}>
-                  Type: {pattiModalRecord.purchaseRate?.rateType || 'CDL'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  type="button"
-                  onClick={handleDownloadPattiPDF}
-                  disabled={downloadingPattiPDF}
-                  style={{
-                    padding: '5px 14px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    borderRadius: '4px',
-                    border: '1px solid #059669',
-                    background: downloadingPattiPDF ? '#64748b' : '#059669',
-                    color: '#ffffff',
-                    cursor: downloadingPattiPDF ? 'not-allowed' : 'pointer'
-                  }}
-                  title="Directly download clean PDF"
-                >
-                  {downloadingPattiPDF ? '⏳ Generating...' : '📥 Download PDF'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  style={{
-                    padding: '5px 14px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    borderRadius: '4px',
-                    border: '1px solid #2563eb',
-                    background: '#2563eb',
-                    color: '#ffffff',
-                    cursor: 'pointer'
-                  }}
-                  title="Print to printer or PDF"
-                >
-                  🖨️ Print
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPattiModalRecord(null)}
-                  style={{
-                    padding: '5px 12px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    borderRadius: '4px',
-                    border: '1px solid #cbd5e1',
-                    background: '#ffffff',
-                    color: '#64748b',
-                    cursor: 'pointer'
-                  }}
-                >
-                  ✕ Close
-                </button>
-              </div>
-            </div>
-
-            {/* Header: Mother India in exact sleek print style with dashed border line */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px dashed #333', paddingBottom: '12px', marginBottom: '16px' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800', letterSpacing: '0.5px' }}>
-                  MOTHER INDIA
-                </h2>
-                <div style={{ fontSize: '13px', color: '#4b5563', marginTop: '4px', fontWeight: '600' }}>
-                  Party: <span style={{ color: '#111827' }}>{pattiModalRecord.fromLocation || pattiModalRecord.party || '-'}</span> | Location: <span style={{ color: '#111827' }}>{pattiModalRecord.toWarehouse?.name || pattiModalRecord.toLocation || 'Mother India Mill'}</span>
-                  {pattiModalRecord.broker && (
-                    <span> | Broker: <span style={{ color: '#111827' }}>{pattiModalRecord.broker}</span></span>
-                  )}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                <span style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#374151' }}>
-                  Date: {pattiModalRecord.date ? new Date(pattiModalRecord.date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}
-                </span>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '700', backgroundColor: '#e5e7eb', padding: '2px 8px', borderRadius: '4px', display: 'inline-block' }}>
-                    Pkg: 75 Kg
-                  </span>
-                  <span style={{ fontSize: '12px', fontWeight: '700', backgroundColor: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '4px', display: 'inline-block' }}>
-                    Type: {pattiModalRecord.purchaseRate?.rateType || 'CDL'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Table: Exact Clean Black Border Table */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', marginBottom: '20px', border: '1px solid #000' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f3f4f6', borderBottom: '1px solid #000' }}>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700' }}>Date</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700' }}>Bags</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Variety</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Net WB</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Shoot</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>S.Net WB</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Rate</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Amount</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Lorry No</th>
-                  <th className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700', width: '60px' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pattiCalculations.tripsCalculated.map((trip: any, idx: number) => {
-                  const isChanged = pattiEditableRates[trip.id] !== undefined &&
-                    pattiEditableRates[trip.id] !== Number(trip.purchaseRate?.baseRate || pattiModalRecord.purchaseRate?.baseRate || 0);
-
-                  return (
-                    <tr key={idx} style={{ borderBottom: '1px solid #ddd' }}>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'center' }}>
-                        {trip.date ? new Date(trip.date).toLocaleDateString('en-GB') : '-'}
-                      </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '600' }}>
-                        {trip.tripBags ? Number(trip.tripBags).toLocaleString('en-IN') : '0'}
-                      </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left' }}>
-                        {trip.variety || '-'}
-                      </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left' }}>
-                        {trip.tripNetWb ? Number(trip.tripNetWb).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
-                      </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', color: '#dc2626', fontWeight: '600' }}>
-                        {trip.tripSute ? Number(trip.tripSute).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
-                      </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '600' }}>
-                        {trip.tripSNetWb ? Number(trip.tripSNetWb).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
-                      </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', color: '#16a34a', fontWeight: '700' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <input
-                            type="number"
-                            step="0.5"
-                            className="patti-rate-input"
-                            value={pattiEditableRates[trip.id] !== undefined && pattiEditableRates[trip.id] !== 0 ? pattiEditableRates[trip.id] : (trip.purchaseRate?.baseRate ? Number(trip.purchaseRate.baseRate) : '')}
-                            placeholder="0"
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setPattiEditableRates(prev => ({ ...prev, [trip.id]: val }));
-                            }}
-                            style={{
-                              width: '70px',
-                              padding: '2px 4px',
-                              border: isChanged ? '2px solid #2563eb' : '1px solid #cbd5e1',
-                              borderRadius: '3px',
-                              textAlign: 'right',
-                              fontWeight: 700,
-                              fontSize: '12px',
-                              background: isChanged ? '#eff6ff' : '#ffffff'
-                            }}
-                            title="Edit purchase rate"
-                          />
-                          <span className="patti-print-only" style={{ display: 'none' }}>
-                            {trip.currentRate ? Number(trip.currentRate).toLocaleString('en-IN') : '0'}
-                          </span>
-                        </div>
-                      </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '600' }}>
-                        {trip.amount ? Number(trip.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
-                      </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>
-                        {trip.lorryNumber || '-'}
-                      </td>
-                      <td className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleSavePattiRate(trip.id)}
-                          disabled={savingPattiRate}
-                          style={{
-                            padding: '2px 6px',
-                            background: isChanged ? '#059669' : '#64748b',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '3px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            cursor: savingPattiRate ? 'not-allowed' : 'pointer'
-                          }}
-                          title="Save rate to database"
-                        >
-                          {savingPattiRate ? '...' : (isChanged ? '💾 Save' : 'Saved')}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-                {/* Totals Row: Exact KBD format with double 2px solid border */}
-                <tr style={{ backgroundColor: '#f9fafb', borderTop: '2px solid #000', borderBottom: '2px solid #000', fontWeight: '800' }}>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center' }}>Total</td>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center' }}>{pattiCalculations.totalBags.toLocaleString('en-IN')}</td>
-                  <td style={{ border: '1px solid #000', padding: '8px' }}></td>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left' }}>{pattiCalculations.totalNetWb.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left', color: '#dc2626' }}>{pattiCalculations.totalSute.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left' }}>{pattiCalculations.totalSNetWb.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left' }}></td>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'left' }}>{pattiCalculations.totalBaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td style={{ border: '1px solid #000', padding: '8px' }}></td>
-                  <td className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '8px' }}></td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Bottom Calculations Layout: Exact KBD Left Red Box + Right Breakdown Box */}
-            <div className="patti-bottom-split" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '16px', gap: '20px', flexWrap: 'wrap' }}>
-              {/* Left Side: Comprehensive Weighment & Rate Averages Card */}
-              <div style={{ flex: 1, minWidth: '260px', padding: '14px 18px', background: '#fff5f5', borderRadius: '8px', border: '1.5px solid #fecaca', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ borderBottom: '1.5px solid #fca5a5', paddingBottom: '6px' }}>
-                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#b91c1c' }}>
-                    Avg WB : {pattiCalculations.avgWbPerBag.toFixed(3)} Kg / Bag
-                  </div>
-                  <div style={{ fontSize: '11.5px', fontWeight: '600', color: '#7f1d1d', marginTop: '2px' }}>
-                    Gross Net WB: {pattiCalculations.totalNetWb.toFixed(2)} Kg ÷ {pattiCalculations.totalBags} Bags
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', color: '#374151' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#6b7280' }}>Total Net WB:</span>
-                    <strong>{pattiCalculations.totalNetWb.toFixed(2)} Kg</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#6b7280' }}>Total Sute (Deduction):</span>
-                    <strong style={{ color: '#dc2626' }}>-{pattiCalculations.totalSute.toFixed(2)} Kg</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #fca5a5', paddingTop: '4px' }}>
-                    <span style={{ fontWeight: '700', color: '#1f2937' }}>Sute Net Weight:</span>
-                    <strong style={{ fontWeight: '800', color: '#047857' }}>{pattiCalculations.totalSNetWb.toFixed(2)} Kg</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#6b7280' }}>Avg S.Net per Bag:</span>
-                    <strong>{(pattiCalculations.totalBags > 0 ? pattiCalculations.totalSNetWb / pattiCalculations.totalBags : 0).toFixed(3)} Kg</strong>
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1.5px solid #fca5a5', paddingTop: '6px' }}>
-                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#b91c1c', lineHeight: '1.3' }}>
-                    Avg Base Rate : ₹{pattiCalculations.avgBaseRate75.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                  <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#7f1d1d', marginTop: '1px' }}>
-                    per 75 Kg Bag (Base Rate)
-                  </div>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#047857', marginTop: '4px' }}>
-                    Net Avg Rate : ₹{pattiCalculations.netAvgRate75.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / 75kg
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Side: Exact KBD Calculation Breakdown Box */}
-              <div className="patti-financial-box" style={{ width: '100%', maxWidth: '440px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '2px solid #000', marginBottom: '6px', fontSize: '14px' }}>
-                  <span style={{ fontWeight: '800', color: '#0f172a' }}>Lorry Total Amount:</span>
-                  <span style={{ fontWeight: '800', color: '#0f172a' }}>Rs {pattiCalculations.totalBaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-
-                {/* Hamali */}
-                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: Hamali @</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
-                      {pattiCalculations.hVal}
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
-                      {pattiCalculations.hMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
-                    </span>
-                  </div>
-                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.hAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-
-                {/* Brokerage */}
-                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: Brokerage @</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
-                      {pattiCalculations.bVal}
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
-                      {pattiCalculations.bMethod === 'percentage' ? '%' : (pattiCalculations.bMethod === 'per_quintal' ? '/ qtl' : '/ bag')}
-                    </span>
-                  </div>
-                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.bAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-
-                {/* LF */}
-                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: LF @</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
-                      {pattiCalculations.lfVal}
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
-                      {pattiCalculations.lfMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
-                    </span>
-                  </div>
-                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.lfAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-
-                {/* EGB */}
-                {pattiCalculations.egbVal > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: EGB @</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                      <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
-                        {pattiCalculations.egbVal}
-                      </span>
-                      <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
-                        {pattiCalculations.egbMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
-                      </span>
-                    </div>
-                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.egbAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-
-                {/* Total with Additions */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '2px solid #000', borderBottom: '2px solid #000', marginBottom: '8px', color: '#0f172a', fontWeight: '800', fontSize: '13.5px', backgroundColor: '#f8fafc' }}>
-                  <span>Total (with Additions):</span>
-                  <span>Rs {(pattiCalculations.totalBaseAmount + pattiCalculations.totalAdditions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-
-                {/* Deductions: DF */}
-                {pattiCalculations.dfAmount > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Less: DF:</span>
-                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', width: '110px' }}>
-                      {pattiCalculations.totalBags} bags x {pattiCalculations.dfVal}
-                    </span>
-                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: '#dc2626' }}>- Rs {pattiCalculations.dfAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-
-                {/* Deductions: CD */}
-                {pattiCalculations.cdAmount > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Less: CD:</span>
-                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', width: '110px' }}>
-                      Cash Discount
-                    </span>
-                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: '#dc2626' }}>- Rs {pattiCalculations.cdAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-
-                {/* Deductions: TDS */}
-                {pattiCalculations.tdsAmount > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Less: TDS:</span>
-                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', width: '110px' }}>
-                      TDS
-                    </span>
-                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: '#dc2626' }}>- Rs {pattiCalculations.tdsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-
-                {/* Grand Total: Exact KBD format with double 2px bottom border */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: '2px solid #000', borderBottom: '2px double #000', marginTop: '8px', fontSize: '15px', fontWeight: '800', color: '#1e3a8a' }}>
-                  <span>Grand Total:</span>
-                  <span>Rs {pattiCalculations.netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Bottom Buttons (No-Print) */}
-            <div className="no-print patti-no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', borderTop: '1px solid #eee', paddingTop: '16px' }}>
-              <button
-                type="button"
-                onClick={() => setPattiModalRecord(null)}
-                style={{
-                  padding: '8px 20px',
-                  backgroundColor: '#f1f5f9',
-                  color: '#475569',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  cursor: 'pointer'
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Global Print Styles for Patti */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #mother-india-patti-print-area, #mother-india-patti-print-area * {
+            visibility: visible !important;
+          }
+          #mother-india-patti-print-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .no-print, .patti-no-print {
+            display: none !important;
+          }
+          .patti-print-only {
+            display: inline !important;
+          }
+          .patti-rate-input {
+            display: none !important;
+          }
+          input {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            width: auto !important;
+            font-weight: 700 !important;
+            color: #000 !important;
+          }
+          table {
+            border-collapse: collapse !important;
+          }
+        }
+      `}} />
 
           </Container>
   );
