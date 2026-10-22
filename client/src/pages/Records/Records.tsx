@@ -13090,18 +13090,45 @@ return (
 
             {/* Bottom Calculations Layout: Exact KBD Left Red Box + Right Breakdown Box */}
             <div className="patti-bottom-split" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '16px', gap: '20px', flexWrap: 'wrap' }}>
-              {/* Left Side: Exact KBD Red Avg Stats Box */}
-              <div style={{ flex: 1, minWidth: '220px', padding: '12px 16px', background: '#fff5f5', borderRadius: '8px', border: '1px solid #fed7d7' }}>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#dc2626', marginBottom: '2px' }}>
-                  Avg WB : {pattiCalculations.avgWbPerBag.toFixed(2)}
+              {/* Left Side: Comprehensive Weighment & Rate Averages Card */}
+              <div style={{ flex: 1, minWidth: '260px', padding: '14px 18px', background: '#fff5f5', borderRadius: '8px', border: '1.5px solid #fecaca', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ borderBottom: '1.5px solid #fca5a5', paddingBottom: '6px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#b91c1c' }}>
+                    Avg WB : {pattiCalculations.avgWbPerBag.toFixed(3)} Kg / Bag
+                  </div>
+                  <div style={{ fontSize: '11.5px', fontWeight: '600', color: '#7f1d1d', marginTop: '2px' }}>
+                    Gross Net WB: {pattiCalculations.totalNetWb.toFixed(2)} Kg ÷ {pattiCalculations.totalBags} Bags
+                  </div>
                 </div>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626', marginBottom: '14px' }}>
-                  Per Bag
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', color: '#374151' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Total Net WB:</span>
+                    <strong>{pattiCalculations.totalNetWb.toFixed(2)} Kg</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Total Sute (Deduction):</span>
+                    <strong style={{ color: '#dc2626' }}>-{pattiCalculations.totalSute.toFixed(2)} Kg</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #fca5a5', paddingTop: '4px' }}>
+                    <span style={{ fontWeight: '700', color: '#1f2937' }}>Sute Net Weight:</span>
+                    <strong style={{ fontWeight: '800', color: '#047857' }}>{pattiCalculations.totalSNetWb.toFixed(2)} Kg</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Avg S.Net per Bag:</span>
+                    <strong>{(pattiCalculations.totalBags > 0 ? pattiCalculations.totalSNetWb / pattiCalculations.totalBags : 0).toFixed(3)} Kg</strong>
+                  </div>
                 </div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#dc2626', lineHeight: '1.4' }}>
-                  Avg Rate : {pattiCalculations.avgBaseRate75.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626', marginTop: '2px' }}>
-                    75 Kg Bag
+
+                <div style={{ borderTop: '1.5px solid #fca5a5', paddingTop: '6px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#b91c1c', lineHeight: '1.3' }}>
+                    Avg Base Rate : ₹{pattiCalculations.avgBaseRate75.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#7f1d1d', marginTop: '1px' }}>
+                    per 75 Kg Bag (Base Rate)
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#047857', marginTop: '4px' }}>
+                    Net Avg Rate : ₹{pattiCalculations.netAvgRate75.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / 75kg
                   </div>
                 </div>
               </div>
