@@ -297,6 +297,395 @@ const Records: React.FC = () => {
     });
   };
 
+  // Patti Modal State for Purchase Records
+  const [pattiModalRecord, setPattiModalRecord] = useState<any | null>(null);
+  const [pattiEditableRates, setPattiEditableRates] = useState<{ [arrivalId: number]: number }>({});
+  const [savingPattiRate, setSavingPattiRate] = useState(false);
+
+  const handleOpenPattiModal = (record: any) => {
+    setPattiModalRecord(record);
+    const recDate = record.date ? record.date.split('T')[0] : '';
+    const allArrivals = Object.values(records || {}).flat();
+    const matching = allArrivals.filter((r: any) =>
+      r.fromLocation && record.fromLocation &&
+      r.fromLocation.trim().toLowerCase() === record.fromLocation.trim().toLowerCase() &&
+      (!recDate || (r.date && r.date.split('T')[0] === recDate))
+    );
+    const trips = matching.length > 0 ? matching : [record];
+    const initialRates: { [id: number]: number } = {};
+    trips.forEach((t: any) => {
+      initialRates[t.id] = t.purchaseRate?.baseRate !== undefined && t.purchaseRate?.baseRate !== null
+        ? Number(t.purchaseRate.baseRate)
+        : (record.purchaseRate?.baseRate ? Number(record.purchaseRate.baseRate) : 0);
+    });
+    setPattiEditableRates(initialRates);
+  };
+
+  const handleSavePattiRate = async (arrivalId: number) => {
+    const updatedRate = pattiEditableRates[arrivalId];
+    if (updatedRate === undefined || isNaN(updatedRate) || updatedRate <= 0) {
+      toast.error('Please enter a valid rate');
+      return;
+    }
+
+    try {
+      setSavingPattiRate(true);
+      const allArrivals = Object.values(records || {}).flat();
+      const targetArrival = allArrivals.find((r: any) => r.id === arrivalId) || pattiModalRecord;
+      const pr = targetArrival?.purchaseRate || pattiModalRecord?.purchaseRate || {};
+      await axios.post('/purchase-rates', {
+        arrivalId,
+        sute: parseFloat(pr.sute || '0'),
+        suteCalculationMethod: pr.suteCalculationMethod || 'per_bag',
+        baseRate: updatedRate,
+        baseRateCalculationMethod: pr.baseRateCalculationMethod || 'per_bag',
+        rateType: pr.rateType || 'CDL',
+        h: parseFloat(pr.h || '0'),
+        b: parseFloat(pr.b || '0'),
+        bCalculationMethod: pr.bCalculationMethod || 'per_bag',
+        lf: parseFloat(pr.lf || '0'),
+        lfCalculationMethod: pr.lfCalculationMethod || 'per_bag',
+        egb: parseFloat(pr.egb || '0'),
+        hCalculationMethod: pr.hCalculationMethod || 'per_bag'
+      });
+      toast.success(`Rate ₹${updatedRate} saved for Lorry ${targetArrival?.lorryNumber || arrivalId}`);
+      fetchRecords();
+      // Update local state in pattiModalRecord
+      if (pattiModalRecord && pattiModalRecord.id === arrivalId) {
+        setPattiModalRecord((prev: any) => ({
+          ...prev,
+          purchaseRate: {
+            ...prev?.purchaseRate,
+            baseRate: updatedRate
+          }
+        }));
+      }
+    } catch (err: any) {
+      console.error('Failed to update patti rate:', err);
+      toast.error(err.response?.data?.error || 'Failed to update rate');
+    } finally {
+      setSavingPattiRate(false);
+    }
+  };
+
+  // Trips corresponding to the selected Patti record
+  const pattiTripRecords = useMemo(() => {
+    if (!pattiModalRecord) return [];
+    const recDate = pattiModalRecord.date ? pattiModalRecord.date.split('T')[0] : '';
+    const allArrivals = Object.values(records || {}).flat();
+    const matching = allArrivals.filter((r: any) =>
+      r.fromLocation && pattiModalRecord.fromLocation &&
+      r.fromLocation.trim().toLowerCase() === pattiModalRecord.fromLocation.trim().toLowerCase() &&
+      (!recDate || (r.date && r.date.split('T')[0] === recDate))
+    );
+    return matching.length > 0 ? matching : [pattiModalRecord];
+  }, [pattiModalRecord, records]);
+
+  // Real-time recalculation of Mother India Patti
+  const pattiCalculations = useMemo(() => {
+    if (!pattiModalRecord || pattiTripRecords.length === 0) {
+      return null;
+    }
+
+    const pr = pattiModalRecord.purchaseRate || {};
+    const rateType = pr.rateType || 'CDL';
+    const isMd = ['MDL', 'MDWB'].includes(rateType);
+
+    let totalBags = 0;
+    let totalNetWb = 0;
+    let totalSute = 0;
+    let totalSNetWb = 0;
+    let totalBaseAmount = 0;
+
+    const tripsCalculated = pattiTripRecords.map((trip: any) => {
+      const tripPr = trip.purchaseRate || pr || {};
+      const bags = Number(trip.bags || 0);
+      const netWeight = Number(trip.netWeight || 0);
+
+      // Sute
+      const suteVal = parseFloat(tripPr.sute || pr.sute || '0');
+      const suteMethod = tripPr.suteCalculationMethod || pr.suteCalculationMethod || 'per_bag';
+      const suteAmount = suteMethod === 'per_quintal' ? (netWeight / 100) * suteVal : suteVal * bags;
+      const sNetWb = Math.max(0, netWeight - suteAmount);
+
+      // Base Rate
+      const currentRate = pattiEditableRates[trip.id] !== undefined
+        ? Number(pattiEditableRates[trip.id])
+        : Number(tripPr.baseRate || pr.baseRate || 0);
+
+      const baseMethod = tripPr.baseRateCalculationMethod || pr.baseRateCalculationMethod || 'per_bag';
+      const divisor = baseMethod === 'per_quintal' ? 100 : 75;
+      const amount = (sNetWb / divisor) * currentRate;
+
+      totalBags += bags;
+      totalNetWb += netWeight;
+      totalSute += suteAmount;
+      totalSNetWb += sNetWb;
+      totalBaseAmount += amount;
+
+      return {
+        ...trip,
+        tripBags: bags,
+        tripNetWb: netWeight,
+        tripSute: suteAmount,
+        tripSNetWb: sNetWb,
+        currentRate,
+        divisor,
+        amount
+      };
+    });
+
+    // Additions & Deductions
+    const hVal = parseFloat(pr.h || '0');
+    const hMethod = pr.hCalculationMethod || 'per_bag';
+    const hAmount = hMethod === 'per_quintal' ? (totalNetWb / 100) * hVal : hVal * totalBags;
+
+    const bVal = parseFloat(pr.b || '0');
+    const bMethod = pr.bCalculationMethod || 'per_bag';
+    let bAmount = 0;
+    if (bMethod === 'percentage') {
+      bAmount = totalBaseAmount * (bVal / 100);
+    } else if (bMethod === 'per_quintal') {
+      bAmount = (totalNetWb / 100) * bVal;
+    } else {
+      bAmount = bVal * totalBags;
+    }
+
+    let lfVal = parseFloat(pr.lf || '0');
+    if (isMd) lfVal = 0;
+    const lfMethod = pr.lfCalculationMethod || 'per_bag';
+    const lfAmount = lfMethod === 'per_quintal' ? (totalNetWb / 100) * lfVal : lfVal * totalBags;
+
+    const egbVal = parseFloat(pr.egb || '0');
+    const egbMethod = pr.egbCalculationMethod || 'per_bag';
+    const egbAmount = egbMethod === 'per_quintal' ? (totalNetWb / 100) * egbVal : egbVal * totalBags;
+
+    const totalAdditions = hAmount + bAmount + lfAmount + egbAmount;
+
+    // Deductions
+    const dfVal = parseFloat(pr.df || '0');
+    const dfMethod = pr.dfCalculationMethod || 'per_bag';
+    const dfAmount = dfMethod === 'per_quintal' ? (totalNetWb / 100) * dfVal : dfVal * totalBags;
+
+    const cdAmount = parseFloat(pr.cd || '0');
+    const tdsAmount = parseFloat(pr.tds || '0');
+    const totalDeductions = dfAmount + cdAmount + tdsAmount;
+
+    const netPayable = totalBaseAmount + totalAdditions - totalDeductions;
+    const avgWbPerBag = totalBags > 0 ? totalNetWb / totalBags : 0;
+    const avgRatePerBag = totalBags > 0 ? totalBaseAmount / totalBags : 0;
+
+    return {
+      tripsCalculated,
+      totalBags,
+      totalNetWb,
+      totalSute,
+      totalSNetWb,
+      totalBaseAmount,
+      hVal,
+      hMethod,
+      hAmount,
+      bVal,
+      bMethod,
+      bAmount,
+      lfVal,
+      lfMethod,
+      lfAmount,
+      egbVal,
+      egbMethod,
+      egbAmount,
+      totalAdditions,
+      dfVal,
+      dfMethod,
+      dfAmount,
+      cdAmount,
+      tdsAmount,
+      totalDeductions,
+      netPayable,
+      avgWbPerBag,
+      avgRatePerBag
+    };
+  }, [pattiModalRecord, pattiTripRecords, pattiEditableRates]);
+
+  // Rice Stock Lot History Ledger State
+  const [selectedLotForLedger, setSelectedLotForLedger] = useState<any | null>(null);
+  const [lotLedgerSearch, setLotLedgerSearch] = useState('');
+  const [lotLedgerPage, setLotLedgerPage] = useState(1);
+
+  // Computes the comprehensive chronological Lot History Ledger for the selected lot
+  const lotHistoryData = useMemo(() => {
+    if (!selectedLotForLedger) {
+      return {
+        entries: [],
+        filteredEntries: [],
+        totalInwardBags: 0,
+        totalInwardQtls: 0,
+        totalOutwardBags: 0,
+        totalOutwardQtls: 0,
+        closingBags: 0,
+        closingQtls: 0,
+        totalShortageKg: 0
+      };
+    }
+
+    const lot = selectedLotForLedger;
+    const lotVarietyNorm = (lot.variety || '').toLowerCase().trim();
+    const lotCategory = (lot.category || lot.productType || '').toLowerCase().trim();
+    const lotLocation = (lot.location || lot.locationCode || '').toLowerCase().trim();
+
+    // Match movements from riceStockData
+    const matching = (riceStockData || []).filter((m: any) => {
+      // 1. Variety matching
+      const mVar = (m.variety || '').toLowerCase().trim();
+      const varOk = !lotVarietyNorm || mVar === lotVarietyNorm || mVar.includes(lotVarietyNorm) || lotVarietyNorm.includes(mVar);
+      if (!varOk) return false;
+
+      // 2. Product Category matching
+      const mCat = (m.productType || '').toLowerCase().trim();
+      if (lotCategory && mCat && lotCategory !== mCat) return false;
+
+      // 3. Location matching
+      const fromLoc = (m.fromLocation || m.from || '').toLowerCase().trim();
+      const toLoc = (m.toLocation || m.to || '').toLowerCase().trim();
+      const locCode = (m.locationCode || '').toLowerCase().trim();
+
+      const locOk = !lotLocation ||
+        fromLoc === lotLocation ||
+        toLoc === lotLocation ||
+        locCode === lotLocation ||
+        fromLoc.includes(lotLocation) ||
+        toLoc.includes(lotLocation);
+
+      return locOk;
+    });
+
+    // Chronological order (oldest first) to compute running balance
+    const sorted = [...matching].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let runningBags = 0;
+    let runningQtls = 0;
+    let totalInBags = 0;
+    let totalInQtls = 0;
+    let totalOutBags = 0;
+    let totalOutQtls = 0;
+    let totalShortage = 0;
+
+    const entries = sorted.map((m: any, index: number) => {
+      const mvtType = (m.movementType || '').toLowerCase();
+      const bags = Number(m.bags || 0);
+      const qtls = Number(m.quantityQuintals || 0);
+
+      let isInward = false;
+      let inBags = 0;
+      let inQtls = 0;
+      let outBags = 0;
+      let outQtls = 0;
+      let typeLabel = 'PRODUCTION';
+      let typeColor = '#059669'; // Green
+
+      const fromLoc = (m.fromLocation || m.from || '').toLowerCase().trim();
+      const toLoc = (m.toLocation || m.to || '').toLowerCase().trim();
+
+      if (mvtType === 'production') {
+        isInward = true;
+        inBags = bags;
+        inQtls = qtls;
+        typeLabel = 'PRODUCTION';
+        typeColor = '#059669';
+      } else if (mvtType === 'purchase') {
+        isInward = true;
+        inBags = bags;
+        inQtls = qtls;
+        typeLabel = 'PURCHASE';
+        typeColor = '#2563eb';
+      } else if (mvtType === 'sale') {
+        outBags = bags;
+        outQtls = qtls;
+        typeLabel = 'SALE';
+        typeColor = '#dc2626';
+      } else if (mvtType === 'palti') {
+        if (toLoc === lotLocation) {
+          isInward = true;
+          inBags = bags;
+          inQtls = qtls;
+          typeLabel = 'PALTI IN';
+          typeColor = '#7c3aed';
+        } else if (fromLoc === lotLocation) {
+          outBags = m.sourceBags ? Number(m.sourceBags) : bags;
+          outQtls = qtls;
+          typeLabel = 'PALTI OUT';
+          typeColor = '#ea580c';
+          totalShortage += Number(m.shortageKg || 0);
+        } else {
+          isInward = true;
+          inBags = bags;
+          inQtls = qtls;
+          typeLabel = 'PALTI';
+          typeColor = '#7c3aed';
+        }
+      } else {
+        isInward = true;
+        inBags = bags;
+        inQtls = qtls;
+        typeLabel = mvtType.toUpperCase();
+        typeColor = '#4b5563';
+      }
+
+      if (isInward) {
+        runningBags += inBags;
+        runningQtls += inQtls;
+        totalInBags += inBags;
+        totalInQtls += inQtls;
+      } else {
+        runningBags -= outBags;
+        runningQtls -= outQtls;
+        totalOutBags += outBags;
+        totalOutQtls += outQtls;
+      }
+
+      return {
+        ...m,
+        entryIndex: index + 1,
+        typeLabel,
+        typeColor,
+        isInward,
+        inBags,
+        inQtls,
+        outBags,
+        outQtls,
+        runningBags,
+        runningQtls
+      };
+    });
+
+    // Apply search filter if user types query
+    const query = lotLedgerSearch.toLowerCase().trim();
+    const filteredEntries = query
+      ? entries.filter((e: any) =>
+          (e.partyName && e.partyName.toLowerCase().includes(query)) ||
+          (e.billNumber && String(e.billNumber).toLowerCase().includes(query)) ||
+          (e.lorryNumber && e.lorryNumber.toLowerCase().includes(query)) ||
+          (e.typeLabel && e.typeLabel.toLowerCase().includes(query)) ||
+          (e.remarks && e.remarks.toLowerCase().includes(query)) ||
+          (e.fromLocation && e.fromLocation.toLowerCase().includes(query)) ||
+          (e.toLocation && e.toLocation.toLowerCase().includes(query)) ||
+          (e.variety && e.variety.toLowerCase().includes(query))
+        )
+      : entries;
+
+    return {
+      entries,
+      filteredEntries,
+      totalInwardBags: totalInBags,
+      totalInwardQtls: totalInQtls,
+      totalOutwardBags: totalOutBags,
+      totalOutwardQtls: totalOutQtls,
+      closingBags: runningBags,
+      closingQtls: runningQtls,
+      totalShortageKg: totalShortage
+    };
+  }, [selectedLotForLedger, riceStockData, lotLedgerSearch]);
+
   // Helper function to navigate to outturn
   const navigateToOutturn = (outturnCode: string) => {
     // Switch to outturn-report tab
@@ -5780,7 +6169,10 @@ return (
                                                     return (
                                                       <React.Fragment key={`bifurcation-${productType}-${idx}`}>
                                                         {/* Main Opening Stock Entry - Highlighted Yellow if has Palti splits */}
-                                                        <div style={{
+                                                        <div
+                                                          onClick={() => setSelectedLotForLedger(item)}
+                                                          title="Click to view complete Lot History Ledger"
+                                                          style={{
                                                           display: 'grid',
                                                           gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
                                                           gap: '8px',
@@ -5790,7 +6182,8 @@ return (
                                                           marginBottom: hasSplits ? '0' : '2px',
                                                           borderRadius: hasSplits ? '3px 3px 0 0' : '3px',
                                                           border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
-                                                          borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
+                                                          borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef',
+                                                          cursor: 'pointer'
                                                         }}>
                                                           <div style={{ textAlign: 'center', fontSize: '8pt', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                           <div style={{ textAlign: 'center', fontSize: '8pt' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
@@ -5798,7 +6191,7 @@ return (
                                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flexWrap: 'wrap' }}>
                                                               <span>{item.product}</span>
                                                               {item.outturn?.code && (
-                                                                <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                                <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigateToOutturn(item.outturn.code); }}>→ {item.outturn.code}</span>
                                                               )}
                                                               {item.daysOld !== undefined && item.daysOld !== null && (
                                                                 <span
@@ -5813,13 +6206,36 @@ return (
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
                                                                     gap: '2px',
-                                                                    cursor: 'default'
+                                                                    cursor: 'pointer'
                                                                   }}
-                                                                  title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed)`}
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setSelectedLotForLedger(item);
+                                                                  }}
+                                                                  title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed). Click to view full Lot History Ledger.`}
                                                                 >
                                                                   ⏱️ {item.daysOld}d
                                                                 </span>
                                                               )}
+                                                              <span
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setSelectedLotForLedger(item);
+                                                                }}
+                                                                style={{
+                                                                  fontSize: '6.5pt',
+                                                                  color: '#0369a1',
+                                                                  background: '#e0f2fe',
+                                                                  border: '1px solid #bae6fd',
+                                                                  borderRadius: '3px',
+                                                                  padding: '0 4px',
+                                                                  fontWeight: 'bold',
+                                                                  cursor: 'pointer'
+                                                                }}
+                                                                title="View Lot History Ledger"
+                                                              >
+                                                                📋 Ledger
+                                                              </span>
                                                             </div>
                                                             {hasSplits && totalShortage > 0 && (
                                                               <div style={{
@@ -6612,7 +7028,10 @@ return (
 
                                               return (
                                                 <React.Fragment key={`bifurcation-${productType}-${idx}`}>
-                                                  <div style={{
+                                                  <div
+                                                    onClick={() => setSelectedLotForLedger(item)}
+                                                    title="Click to view complete Lot History Ledger"
+                                                    style={{
                                                     display: 'grid',
                                                     gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                     gap: '6px',
@@ -6622,7 +7041,8 @@ return (
                                                     marginBottom: hasSplits ? '0' : '1px',
                                                     borderRadius: hasSplits ? '2px 2px 0 0' : '2px',
                                                     border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
-                                                    borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
+                                                    borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef',
+                                                    cursor: 'pointer'
                                                   }}>
                                                     <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                     <div style={{ textAlign: 'center' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
@@ -6630,7 +7050,7 @@ return (
                                                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flexWrap: 'wrap' }}>
                                                         <span>{item.product}</span>
                                                         {item.outturn?.code && (
-                                                          <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                          <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigateToOutturn(item.outturn.code); }}>→ {item.outturn.code}</span>
                                                         )}
                                                         {item.daysOld !== undefined && item.daysOld !== null && (
                                                           <span
@@ -6645,13 +7065,36 @@ return (
                                                               display: 'inline-flex',
                                                               alignItems: 'center',
                                                               gap: '2px',
-                                                              cursor: 'default'
+                                                              cursor: 'pointer'
                                                             }}
-                                                            title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed)`}
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              setSelectedLotForLedger(item);
+                                                            }}
+                                                            title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed). Click to view full Lot History Ledger.`}
                                                           >
                                                             ⏱️ {item.daysOld}d
                                                           </span>
                                                         )}
+                                                        <span
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedLotForLedger(item);
+                                                          }}
+                                                          style={{
+                                                            fontSize: '6pt',
+                                                            color: '#0369a1',
+                                                            background: '#e0f2fe',
+                                                            border: '1px solid #bae6fd',
+                                                            borderRadius: '3px',
+                                                            padding: '0 3px',
+                                                            fontWeight: 'bold',
+                                                            cursor: 'pointer'
+                                                          }}
+                                                          title="View Lot History Ledger"
+                                                        >
+                                                          📋 Ledger
+                                                        </span>
                                                       </div>
                                                       {hasSplits && totalShortage > 0 && (
                                                         <div style={{
@@ -7338,7 +7781,10 @@ return (
 
                                             return (
                                               <React.Fragment key={`bifurcation-${productType}-${idx}`}>
-                                                <div style={{
+                                                <div
+                                                  onClick={() => setSelectedLotForLedger(item)}
+                                                  title="Click to view complete Lot History Ledger"
+                                                  style={{
                                                   display: 'grid',
                                                   gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
                                                   gap: '6px',
@@ -7348,7 +7794,8 @@ return (
                                                   marginBottom: hasSplits ? '0' : '1px',
                                                   borderRadius: hasSplits ? '2px 2px 0 0' : '2px',
                                                   border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
-                                                  borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
+                                                  borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef',
+                                                  cursor: 'pointer'
                                                 }}>
                                                   <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                   <div style={{ textAlign: 'center' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
@@ -7356,7 +7803,7 @@ return (
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flexWrap: 'wrap' }}>
                                                       <span>{item.product}</span>
                                                       {item.outturn?.code && (
-                                                        <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateToOutturn(item.outturn.code)}>→ {item.outturn.code}</span>
+                                                        <span style={{ color: '#7c3aed', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigateToOutturn(item.outturn.code); }}>→ {item.outturn.code}</span>
                                                       )}
                                                       {item.daysOld !== undefined && item.daysOld !== null && (
                                                         <span
@@ -7378,6 +7825,25 @@ return (
                                                           ⏱️ {item.daysOld}d
                                                         </span>
                                                       )}
+                                                      <span
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          setSelectedLotForLedger(item);
+                                                        }}
+                                                        style={{
+                                                          background: '#e0e7ff',
+                                                          color: '#3730a3',
+                                                          border: '1px solid #c7d2fe',
+                                                          fontSize: '6.5pt',
+                                                          padding: '1px 5px',
+                                                          borderRadius: '3px',
+                                                          fontWeight: 'bold',
+                                                          cursor: 'pointer'
+                                                        }}
+                                                        title="View Lot History Ledger"
+                                                      >
+                                                        📋 Ledger
+                                                      </span>
                                                     </div>
                                                     {hasSplits && totalShortage > 0 && (
                                                       <div style={{
@@ -10941,14 +11407,24 @@ return (
                               <td>{record.purchaseRate?.totalAmount !== undefined && record.purchaseRate?.totalAmount !== null ? `₹${Number(record.purchaseRate.totalAmount).toFixed(2)}` : '-'}</td>
                               <td>{record.purchaseRate?.averageRate !== undefined && record.purchaseRate?.averageRate !== null ? `₹${Number(record.purchaseRate.averageRate).toFixed(2)}` : '-'}</td>
                               {canEdit && (
-                                <td>
-                                  <Button
-                                    className={expandedRateRecordId === record.id ? "secondary" : "primary"}
-                                    onClick={() => toggleRateForm(record.id)}
-                                    style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
-                                  >
-                                    {expandedRateRecordId === record.id ? 'Close' : (record.purchaseRate ? 'Edit Rate' : 'Add Rate')}
-                                  </Button>
+                                <td style={{ whiteSpace: 'nowrap' }}>
+                                  <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                                    <Button
+                                      className={expandedRateRecordId === record.id ? "secondary" : "primary"}
+                                      onClick={() => toggleRateForm(record.id)}
+                                      style={{ padding: '0.4rem 0.8rem', fontSize: '0.82rem' }}
+                                    >
+                                      {expandedRateRecordId === record.id ? 'Close' : (record.purchaseRate ? 'Edit Rate' : 'Add Rate')}
+                                    </Button>
+                                    <Button
+                                      className="success"
+                                      onClick={() => handleOpenPattiModal(record)}
+                                      style={{ padding: '0.4rem 0.8rem', fontSize: '0.82rem', background: '#059669', color: '#fff', fontWeight: 'bold' }}
+                                      title="View & Print Mother India Patti"
+                                    >
+                                      📄 Patti
+                                    </Button>
+                                  </div>
                                 </td>
                               )}
                             </PurchaseRow>
@@ -11103,6 +11579,16 @@ return (
                                             />
                                             Quintal
                                           </RateRadioLabel>
+                                          <RateRadioLabel>
+                                            <input
+                                              type="radio"
+                                              name="bCalculationMethod"
+                                              value="percentage"
+                                              checked={rateFormData.bCalculationMethod === 'percentage'}
+                                              onChange={(e) => handleRateInputChange('bCalculationMethod', e.target.value)}
+                                            />
+                                            % (Percentage)
+                                          </RateRadioLabel>
                                         </RateRadioGroup>
                                       </RateFormGroup>
 
@@ -11196,7 +11682,9 @@ return (
                                             const bValue = parseFloat(rateFormData.b || '0');
                                             const bAmount = rateFormData.bCalculationMethod === 'per_bag'
                                               ? bValue * bags
-                                              : bValue * (actualNetWeight / 100);
+                                              : rateFormData.bCalculationMethod === 'percentage'
+                                                ? baseRateAmount * (bValue / 100)
+                                                : bValue * (actualNetWeight / 100);
 
                                             let lfValue = parseFloat(rateFormData.lf || '0');
                                             if (['MDL', 'MDWB'].includes(rateFormData.rateType)) {
@@ -11721,6 +12209,955 @@ return (
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MOTHER INDIA - PADDY PURCHASE PATTI MODAL (WITH LIVE EDITABLE RATE & PRINT)
+          ========================================================================= */}
+      {pattiModalRecord && pattiCalculations && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '16px',
+            overflowY: 'auto'
+          }}
+          onClick={() => setPattiModalRecord(null)}
+        >
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #mother-india-patti-print-area, #mother-india-patti-print-area * {
+                visibility: visible !important;
+              }
+              #mother-india-patti-print-area {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 10mm !important;
+                background: white !important;
+                box-shadow: none !important;
+                border: none !important;
+              }
+              .patti-no-print {
+                display: none !important;
+              }
+              .patti-rate-input {
+                border: none !important;
+                background: transparent !important;
+                font-weight: bold !important;
+                padding: 0 !important;
+                text-align: right !important;
+              }
+            }
+          `}</style>
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              maxWidth: '920px',
+              width: '100%',
+              maxHeight: '94vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              overflow: 'hidden',
+              border: '1px solid #cbd5e1'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Action Header (Excluded from Print) */}
+            <div className="patti-no-print" style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 20px',
+              background: '#0f172a',
+              color: '#ffffff'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.2rem' }}>📄</span>
+                <span style={{ fontWeight: 700, fontSize: '1.05rem', letterSpacing: '0.5px' }}>
+                  Mother India Purchase Patti
+                </span>
+                <span style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  background: '#059669',
+                  color: 'white',
+                  fontWeight: 600
+                }}>
+                  {pattiModalRecord.purchaseRate?.rateType || 'CDL'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  onClick={() => window.print()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '7px 16px',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                  title="Print Patti to Paper or Save as PDF"
+                >
+                  🖨️ Print Patti (PDF)
+                </button>
+                <button
+                  onClick={() => setPattiModalRecord(null)}
+                  style={{
+                    background: '#334155',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '6px 12px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    color: '#e2e8f0',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Patti Document Area */}
+            <div
+              id="mother-india-patti-print-area"
+              style={{
+                padding: '24px 30px',
+                overflowY: 'auto',
+                fontFamily: `'Calibri', 'Arial', sans-serif`,
+                color: '#0f172a',
+                background: '#ffffff'
+              }}
+            >
+              {/* Company Header */}
+              <div style={{ textAlign: 'center', borderBottom: '2.5px solid #0f172a', paddingBottom: '8px', marginBottom: '14px' }}>
+                <h1 style={{
+                  fontSize: '28px',
+                  fontWeight: 900,
+                  letterSpacing: '2px',
+                  margin: '0 0 4px 0',
+                  color: '#0f172a',
+                  textTransform: 'uppercase'
+                }}>
+                  MOTHER INDIA
+                </h1>
+                <div style={{
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  letterSpacing: '3px',
+                  color: '#475569',
+                  textTransform: 'uppercase'
+                }}>
+                  PADDY PURCHASE PATTI
+                </div>
+              </div>
+
+              {/* Sub-Header Details Grid */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1.2fr 1fr',
+                gap: '8px 24px',
+                fontSize: '10pt',
+                background: '#f8fafc',
+                padding: '10px 14px',
+                borderRadius: '6px',
+                border: '1px solid #e2e8f0',
+                marginBottom: '16px'
+              }}>
+                <div>
+                  <div style={{ marginBottom: '4px' }}>
+                    <strong style={{ color: '#475569' }}>Party: </strong>
+                    <span style={{ fontWeight: 800, fontSize: '10.5pt', color: '#0f172a' }}>
+                      {pattiModalRecord.fromLocation || pattiModalRecord.party || '-'}
+                    </span>
+                  </div>
+                  <div style={{ marginBottom: '4px' }}>
+                    <strong style={{ color: '#475569' }}>Broker: </strong>
+                    <span style={{ fontWeight: 700 }}>{pattiModalRecord.broker || '-'}</span>
+                  </div>
+                  <div>
+                    <strong style={{ color: '#475569' }}>Rate Type: </strong>
+                    <span style={{ fontWeight: 700, color: '#2563eb' }}>
+                      {pattiModalRecord.purchaseRate?.rateType || 'CDL'}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ marginBottom: '4px' }}>
+                    <strong style={{ color: '#475569' }}>Date: </strong>
+                    <span style={{ fontWeight: 700 }}>
+                      {pattiModalRecord.date ? new Date(pattiModalRecord.date).toLocaleDateString('en-GB') : '-'}
+                    </span>
+                  </div>
+                  <div style={{ marginBottom: '4px' }}>
+                    <strong style={{ color: '#475569' }}>Location / Mill: </strong>
+                    <span style={{ fontWeight: 700 }}>
+                      {pattiModalRecord.toWarehouse?.name || pattiModalRecord.toLocation || 'Mother India Mill'}
+                    </span>
+                  </div>
+                  <div>
+                    <strong style={{ color: '#475569' }}>Pkg Base: </strong>
+                    <span style={{ fontWeight: 700 }}>
+                      {pattiModalRecord.purchaseRate?.baseRateCalculationMethod === 'per_quintal' ? '100 Kg (Quintal)' : '75 Kg / Bag'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lorry Trips Table */}
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '9.5pt',
+                marginBottom: '14px',
+                border: '1.5px solid #334155'
+              }}>
+                <thead>
+                  <tr style={{ background: '#1e293b', color: '#ffffff' }}>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>#</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Date</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>Bags</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Variety</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>Net W.B.</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>Shoot</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>S.Net W.B.</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #475569', minWidth: '95px' }}>Rate (₹)</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #475569', minWidth: '100px' }}>Amount (₹)</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Lorry No</th>
+                    <th className="patti-no-print" style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pattiCalculations.tripsCalculated.map((trip: any, idx: number) => {
+                    const isChanged = pattiEditableRates[trip.id] !== undefined &&
+                      Number(pattiEditableRates[trip.id]) !== Number(trip.purchaseRate?.baseRate || 0);
+
+                    return (
+                      <tr key={`trip-${trip.id}-${idx}`} style={{
+                        background: idx % 2 === 0 ? '#ffffff' : '#f8fafc',
+                        borderBottom: '1px solid #cbd5e1'
+                      }}>
+                        <td style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #cbd5e1' }}>{idx + 1}</td>
+                        <td style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>
+                          {trip.date ? new Date(trip.date).toLocaleDateString('en-GB') : '-'}
+                        </td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                          {trip.tripBags}
+                        </td>
+                        <td style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                          {trip.variety || '-'}
+                        </td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #cbd5e1' }}>
+                          {trip.tripNetWb.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#b91c1c', border: '1px solid #cbd5e1' }}>
+                          {trip.tripSute > 0 ? `-${trip.tripSute.toFixed(2)}` : '0.00'}
+                        </td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                          {trip.tripSNetWb.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #cbd5e1' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
+                            <span className="patti-no-print" style={{ color: '#64748b', fontSize: '8pt' }}>₹</span>
+                            <input
+                              type="number"
+                              step="0.5"
+                              className="patti-rate-input"
+                              value={pattiEditableRates[trip.id] !== undefined ? pattiEditableRates[trip.id] : (trip.purchaseRate?.baseRate || '')}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPattiEditableRates(prev => ({ ...prev, [trip.id]: val }));
+                              }}
+                              style={{
+                                width: '75px',
+                                padding: '3px 4px',
+                                border: isChanged ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                                borderRadius: '4px',
+                                textAlign: 'right',
+                                fontWeight: 700,
+                                fontSize: '9pt',
+                                background: isChanged ? '#eff6ff' : 'white'
+                              }}
+                              title="Edit purchase rate (recalculates immediately)"
+                            />
+                          </div>
+                        </td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, color: '#0f172a', border: '1px solid #cbd5e1' }}>
+                          ₹{trip.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ padding: '5px 6px', textAlign: 'center', fontSize: '9pt', fontWeight: 600, border: '1px solid #cbd5e1' }}>
+                          {trip.lorryNumber || '-'}
+                        </td>
+                        <td className="patti-no-print" style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                          <button
+                            onClick={() => handleSavePattiRate(trip.id)}
+                            disabled={savingPattiRate}
+                            style={{
+                              padding: '3px 8px',
+                              background: isChanged ? '#059669' : '#64748b',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '8pt',
+                              fontWeight: 700,
+                              cursor: savingPattiRate ? 'not-allowed' : 'pointer'
+                            }}
+                            title="Save rate to database"
+                          >
+                            {savingPattiRate ? '...' : (isChanged ? '💾 Save' : 'Saved')}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* Totals Row */}
+                  <tr style={{ background: '#0f172a', color: '#ffffff', fontWeight: 800, borderTop: '2px solid #0f172a' }}>
+                    <td colSpan={2} style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #334155' }}>
+                      TOTAL
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', border: '1px solid #334155', fontSize: '10pt' }}>
+                      {pattiCalculations.totalBags}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', border: '1px solid #334155' }}>
+                      {pattiCalculations.totalNetWb.toFixed(2)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', border: '1px solid #334155' }}>
+                      {pattiCalculations.totalSute.toFixed(2)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', border: '1px solid #334155' }}>
+                      {pattiCalculations.totalSNetWb.toFixed(2)}
+                    </td>
+                    <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #334155', fontSize: '10.5pt', color: '#38bdf8' }}>
+                      ₹{pattiCalculations.totalBaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
+                    <td className="patti-no-print" style={{ padding: '7px 6px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Bottom Calculations Split Section */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1.35fr',
+                gap: '18px',
+                fontSize: '9.5pt'
+              }}>
+                {/* Left Column: Averages & Weighment Summary */}
+                <div style={{
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '12px 14px',
+                  background: '#f8fafc',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: '10pt', color: '#0f172a', borderBottom: '1.5px solid #cbd5e1', paddingBottom: '4px' }}>
+                    📊 WEIGHMENT & RATE AVERAGES
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                    <span style={{ color: '#475569' }}>Total Net W.B.:</span>
+                    <strong style={{ color: '#0f172a' }}>{pattiCalculations.totalNetWb.toFixed(2)} Kgs</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                    <span style={{ color: '#475569' }}>Total Bags:</span>
+                    <strong style={{ color: '#0f172a' }}>{pattiCalculations.totalBags} Bags</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: '1px dashed #cbd5e1', background: '#e0f2fe', paddingLeft: '6px', paddingRight: '6px', borderRadius: '4px' }}>
+                    <span style={{ fontWeight: 700, color: '#0369a1' }}>Avg. W.B. per Bag:</span>
+                    <strong style={{ fontWeight: 800, color: '#0369a1' }}>{pattiCalculations.avgWbPerBag.toFixed(3)} Kg</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', background: '#ecfdf5', paddingLeft: '6px', paddingRight: '6px', borderRadius: '4px' }}>
+                    <span style={{ fontWeight: 700, color: '#047857' }}>Avg. Rate per 75kg Bag:</span>
+                    <strong style={{ fontWeight: 800, color: '#047857' }}>₹{pattiCalculations.avgRatePerBag.toFixed(2)}</strong>
+                  </div>
+                  <div style={{ marginTop: 'auto', paddingTop: '6px', fontSize: '8pt', color: '#64748b', fontStyle: 'italic' }}>
+                    Note: Brokerage percentage (%) is calculated strictly on Base Goods Amount.
+                  </div>
+                </div>
+
+                {/* Right Column: Financial Deductions & Net Payable */}
+                <div style={{
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '12px 14px',
+                  background: '#ffffff'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '10.5pt', borderBottom: '1.5px solid #e2e8f0' }}>
+                    <strong style={{ color: '#0f172a' }}>Lorry Total (Goods Amount):</strong>
+                    <strong style={{ color: '#0f172a' }}>
+                      ₹{pattiCalculations.totalBaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+
+                  {/* Additions */}
+                  <div style={{ padding: '6px 0', borderBottom: '1px dashed #e2e8f0', fontSize: '9pt' }}>
+                    <div style={{ fontWeight: 700, color: '#059669', marginBottom: '3px' }}>+ ADDITIONS</div>
+                    {pattiCalculations.hAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                        <span style={{ color: '#475569' }}>Hamali (H @ {pattiCalculations.hVal}/{pattiCalculations.hMethod === 'per_quintal' ? 'qtl' : 'bag'}):</span>
+                        <span style={{ fontWeight: 600 }}>+ ₹{pattiCalculations.hAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pattiCalculations.bAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                        <span style={{ color: '#475569' }}>
+                          Brokerage (B @ {pattiCalculations.bVal}{pattiCalculations.bMethod === 'percentage' ? '% on Base Amt' : `/${pattiCalculations.bMethod === 'per_quintal' ? 'qtl' : 'bag'}`}):
+                        </span>
+                        <span style={{ fontWeight: 600 }}>+ ₹{pattiCalculations.bAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pattiCalculations.lfAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                        <span style={{ color: '#475569' }}>Lorry Freight (LF @ {pattiCalculations.lfVal}/{pattiCalculations.lfMethod === 'per_quintal' ? 'qtl' : 'bag'}):</span>
+                        <span style={{ fontWeight: 600 }}>+ ₹{pattiCalculations.lfAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pattiCalculations.egbAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                        <span style={{ color: '#475569' }}>EGB (@ {pattiCalculations.egbVal}/{pattiCalculations.egbMethod === 'per_quintal' ? 'qtl' : 'bag'}):</span>
+                        <span style={{ fontWeight: 600 }}>+ ₹{pattiCalculations.egbAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pattiCalculations.totalAdditions === 0 && (
+                      <div style={{ color: '#94a3b8', fontSize: '8.5pt' }}>None</div>
+                    )}
+                  </div>
+
+                  {/* Deductions */}
+                  <div style={{ padding: '6px 0', borderBottom: '1.5px solid #e2e8f0', fontSize: '9pt' }}>
+                    <div style={{ fontWeight: 700, color: '#dc2626', marginBottom: '3px' }}>- DEDUCTIONS</div>
+                    {pattiCalculations.dfAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                        <span style={{ color: '#475569' }}>DF Deduction:</span>
+                        <span style={{ fontWeight: 600, color: '#dc2626' }}>- ₹{pattiCalculations.dfAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pattiCalculations.cdAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                        <span style={{ color: '#475569' }}>Cash Discount (CD):</span>
+                        <span style={{ fontWeight: 600, color: '#dc2626' }}>- ₹{pattiCalculations.cdAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pattiCalculations.tdsAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                        <span style={{ color: '#475569' }}>TDS:</span>
+                        <span style={{ fontWeight: 600, color: '#dc2626' }}>- ₹{pattiCalculations.tdsAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pattiCalculations.totalDeductions === 0 && (
+                      <div style={{ color: '#94a3b8', fontSize: '8.5pt' }}>None</div>
+                    )}
+                  </div>
+
+                  {/* Net Payable Highlight */}
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                    borderRadius: '6px',
+                    color: '#ffffff',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span style={{ fontWeight: 800, fontSize: '11pt', letterSpacing: '0.5px' }}>NET PAYABLE:</span>
+                    <span style={{ fontWeight: 900, fontSize: '14pt' }}>
+                      ₹{pattiCalculations.netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Signatures Footer */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginTop: '36px',
+                paddingTop: '16px',
+                borderTop: '1px solid #cbd5e1',
+                fontSize: '9pt',
+                color: '#475569'
+              }}>
+                <div>
+                  <div>Verified By: ___________________</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 700, color: '#0f172a' }}>For MOTHER INDIA</div>
+                  <div style={{ marginTop: '24px' }}>Authorized Signatory</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          RICE STOCK - LOT HISTORY LEDGER MODAL (KUNCHINITTIU LEDGER STYLE)
+          ========================================================================= */}
+      {selectedLotForLedger && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '16px',
+            overflowY: 'auto'
+          }}
+          onClick={() => setSelectedLotForLedger(null)}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              maxWidth: '1200px',
+              width: '100%',
+              maxHeight: '94vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              overflow: 'hidden',
+              border: '1px solid #cbd5e1'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+              color: '#ffffff',
+              padding: '16px 22px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.4rem' }}>📋</span>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>
+                    Lot History Ledger — {selectedLotForLedger.variety || '-'}
+                  </h2>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', marginTop: '6px', fontSize: '0.85rem', color: '#e0e7ff', flexWrap: 'wrap' }}>
+                  <span><strong>Category:</strong> {selectedLotForLedger.category || selectedLotForLedger.productType || 'Rice'}</span>
+                  <span>•</span>
+                  <span><strong>Location:</strong> {selectedLotForLedger.location || selectedLotForLedger.locationCode || '-'}</span>
+                  <span>•</span>
+                  <span><strong>Packaging:</strong> {selectedLotForLedger.packaging || selectedLotForLedger.product || '-'} ({selectedLotForLedger.bagSizeKg || 26} kg)</span>
+                  <span>•</span>
+                  <span style={{
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    padding: '1px 8px',
+                    borderRadius: '4px',
+                    fontWeight: 700
+                  }}>
+                    ⏱️ {selectedLotForLedger.daysOld ?? 0} Days Old
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedLotForLedger(null)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '6px 14px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  color: 'white',
+                  fontSize: '0.95rem'
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div style={{ padding: '18px 22px', overflowY: 'auto' }}>
+              {/* Summary Metric Cards (Kunchinittu Ledger Style) */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '12px',
+                marginBottom: '18px'
+              }}>
+                {/* Total Inward */}
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1.5px solid #86efac',
+                  borderRadius: '8px',
+                  padding: '10px 14px'
+                }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
+                    🟢 Total Inward (Prod / Pur / Palti In)
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>
+                    {lotHistoryData.totalInwardBags} Bags
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#166534' }}>
+                    {lotHistoryData.totalInwardQtls.toFixed(2)} Quintals
+                  </div>
+                </div>
+
+                {/* Total Outward */}
+                <div style={{
+                  background: '#fef2f2',
+                  border: '1.5px solid #fca5a5',
+                  borderRadius: '8px',
+                  padding: '10px 14px'
+                }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>
+                    🔴 Total Outward (Sales / Palti Out)
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#b91c1c', marginTop: '4px' }}>
+                    {lotHistoryData.totalOutwardBags} Bags
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#991b1b' }}>
+                    {lotHistoryData.totalOutwardQtls.toFixed(2)} Quintals
+                  </div>
+                </div>
+
+                {/* Total Shortage */}
+                <div style={{
+                  background: '#fffbeb',
+                  border: '1.5px solid #fde68a',
+                  borderRadius: '8px',
+                  padding: '10px 14px'
+                }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>
+                    ⚠️ Conversion Shortage
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>
+                    {lotHistoryData.totalShortageKg.toFixed(1)} Kg
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#92400e' }}>
+                    {(lotHistoryData.totalShortageKg / 100).toFixed(2)} Qtls
+                  </div>
+                </div>
+
+                {/* Closing Stock */}
+                <div style={{
+                  background: '#eff6ff',
+                  border: '1.5px solid #93c5fd',
+                  borderRadius: '8px',
+                  padding: '10px 14px'
+                }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+                    📦 Closing Stock Balance
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1d4ed8', marginTop: '4px' }}>
+                    {lotHistoryData.closingBags} Bags
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#1e40af' }}>
+                    {lotHistoryData.closingQtls.toFixed(2)} Quintals
+                  </div>
+                </div>
+              </div>
+
+              {/* Search & Filter Bar */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '14px',
+                background: '#f8fafc',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '400px' }}>
+                  <span>🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Search by party, outturn, bill, lorry..."
+                    value={lotLedgerSearch}
+                    onChange={(e) => {
+                      setLotLedgerSearch(e.target.value);
+                      setLotLedgerPage(1);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '6px',
+                      fontSize: '0.9rem'
+                    }}
+                  />
+                  {lotLedgerSearch && (
+                    <button
+                      onClick={() => setLotLedgerSearch('')}
+                      style={{
+                        background: '#e2e8f0',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '4px 8px',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem'
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>
+                  Showing {lotHistoryData.filteredEntries.length} transactions
+                </div>
+              </div>
+
+              {/* Exact Format Table (Kunchinittu Ledger Styling) */}
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontFamily: `'Calibri', 'Arial', sans-serif`,
+                fontSize: '9.5pt',
+                border: '1px solid #ddd',
+                marginBottom: '14px'
+              }}>
+                <thead>
+                  <tr style={{ background: '#4a90e2', color: '#ffffff' }}>
+                    <th style={{ padding: '7px 6px', textAlign: 'center', border: '1px solid #ddd' }}>#</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Date</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Type</th>
+                    <th style={{ padding: '7px 10px', textAlign: 'left', border: '1px solid #ddd' }}>Particulars / Party / Outturn</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>From → To</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Brand / Pkg</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6' }}>In Bags</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6' }}>In Qtls</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444' }}>Out Bags</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444' }}>Out Qtls</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981' }}>Bal Bags</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981' }}>Bal Qtls</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Lorry / Ref</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lotHistoryData.filteredEntries.length === 0 ? (
+                    <tr>
+                      <td colSpan={13} style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
+                        No transactions found for this lot.
+                      </td>
+                    </tr>
+                  ) : (
+                    (() => {
+                      const pageSize = 15;
+                      const totalPages = Math.ceil(lotHistoryData.filteredEntries.length / pageSize) || 1;
+                      const currentPage = Math.min(Math.max(lotLedgerPage, 1), totalPages);
+                      const startIndex = (currentPage - 1) * pageSize;
+                      const pageRows = lotHistoryData.filteredEntries.slice(startIndex, startIndex + pageSize);
+
+                      return (
+                        <>
+                          {pageRows.map((entry: any, idx: number) => {
+                            const isEven = idx % 2 === 0;
+
+                            return (
+                              <tr
+                                key={`ledger-row-${entry.id || idx}`}
+                                style={{
+                                  background: isEven ? '#ffffff' : '#f8f9fa',
+                                  transition: 'background 0.2s'
+                                }}
+                              >
+                                <td style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd', color: '#64748b' }}>
+                                  {startIndex + idx + 1}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
+                                  {entry.date ? new Date(entry.date).toLocaleDateString('en-GB') : '-'}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd' }}>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '2px 7px',
+                                    borderRadius: '4px',
+                                    fontSize: '7.5pt',
+                                    fontWeight: 700,
+                                    color: '#ffffff',
+                                    background: entry.typeColor
+                                  }}>
+                                    {entry.typeLabel}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '5px 10px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 600 }}>
+                                  <div>
+                                    {entry.partyName || entry.from || entry.billNumber || 'Internal Movement'}
+                                    {entry.outturn?.code && (
+                                      <span
+                                        onClick={() => {
+                                          setSelectedLotForLedger(null);
+                                          navigateToOutturn(entry.outturn.code);
+                                        }}
+                                        style={{
+                                          marginLeft: '6px',
+                                          color: '#7c3aed',
+                                          cursor: 'pointer',
+                                          textDecoration: 'underline',
+                                          fontSize: '8.5pt'
+                                        }}
+                                        title="View Outturn Report"
+                                      >
+                                        → {entry.outturn.code}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {entry.billNumber && (
+                                    <small style={{ color: '#64748b', fontSize: '7.5pt' }}>
+                                      Bill: {entry.billNumber}
+                                    </small>
+                                  )}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8.5pt' }}>
+                                  {entry.fromLocation || entry.from || '-'} → {entry.toLocation || entry.to || '-'}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8.5pt' }}>
+                                  {entry.packagingBrand || entry.packaging?.brandName || '-'}{entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.inBags > 0 ? 700 : 'normal', color: entry.inBags > 0 ? '#15803d' : '#9ca3af' }}>
+                                  {entry.inBags > 0 ? `+${entry.inBags}` : '-'}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', color: entry.inQtls > 0 ? '#15803d' : '#9ca3af' }}>
+                                  {entry.inQtls > 0 ? `+${entry.inQtls.toFixed(2)}` : '-'}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.outBags > 0 ? 700 : 'normal', color: entry.outBags > 0 ? '#b91c1c' : '#9ca3af' }}>
+                                  {entry.outBags > 0 ? `-${entry.outBags}` : '-'}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', color: entry.outQtls > 0 ? '#b91c1c' : '#9ca3af' }}>
+                                  {entry.outQtls > 0 ? `-${entry.outQtls.toFixed(2)}` : '-'}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 800, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe' }}>
+                                  {entry.runningBags}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 700, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe' }}>
+                                  {entry.runningQtls.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8.5pt' }}>
+                                  {entry.lorryNumber || entry.remarks || '-'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {/* Table Totals Row */}
+                          <tr style={{ background: '#000000', color: '#ffffff', fontWeight: 800 }}>
+                            <td colSpan={6} style={{ padding: '7px 10px', textAlign: 'center', border: '1px solid #333' }}>
+                              TOTAL MOVEMENTS
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#4ade80' }}>
+                              +{lotHistoryData.totalInwardBags}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#4ade80' }}>
+                              +{lotHistoryData.totalInwardQtls.toFixed(2)}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#f87171' }}>
+                              -{lotHistoryData.totalOutwardBags}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#f87171' }}>
+                              -{lotHistoryData.totalOutwardQtls.toFixed(2)}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#60a5fa', fontSize: '10pt' }}>
+                              {lotHistoryData.closingBags}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#60a5fa', fontSize: '10pt' }}>
+                              {lotHistoryData.closingQtls.toFixed(2)}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #333' }}>-</td>
+                          </tr>
+                        </>
+                      );
+                    })()
+                  )}
+                </tbody>
+              </table>
+
+              {/* Cursor / In-Memory Pagination Controls */}
+              {lotHistoryData.filteredEntries.length > 15 && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  background: '#f8fafc',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0'
+                }}>
+                  <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                    Showing page {lotLedgerPage} of {Math.ceil(lotHistoryData.filteredEntries.length / 15)} ({lotHistoryData.filteredEntries.length} total entries)
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setLotLedgerPage(p => Math.max(p - 1, 1))}
+                      disabled={lotLedgerPage <= 1}
+                      style={{
+                        padding: '5px 14px',
+                        background: lotLedgerPage <= 1 ? '#e2e8f0' : '#3b82f6',
+                        color: lotLedgerPage <= 1 ? '#94a3b8' : 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: lotLedgerPage <= 1 ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      ← Previous
+                    </button>
+                    <button
+                      onClick={() => setLotLedgerPage(p => Math.min(p + 1, Math.ceil(lotHistoryData.filteredEntries.length / 15)))}
+                      disabled={lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15)}
+                      style={{
+                        padding: '5px 14px',
+                        background: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? '#e2e8f0' : '#3b82f6',
+                        color: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? '#94a3b8' : 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

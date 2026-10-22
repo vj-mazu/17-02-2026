@@ -174,7 +174,7 @@ router.post('/', auth, authorize('manager', 'admin'), async (req, res) => {
     if (!['per_bag', 'per_quintal'].includes(suteCalculationMethod)) {
       return res.status(400).json({ error: 'Invalid Sute calculation method' });
     }
-    if (!['per_bag', 'per_quintal'].includes(bCalculationMethod)) {
+    if (!['per_bag', 'per_quintal', 'percentage'].includes(bCalculationMethod)) {
       return res.status(400).json({ error: 'Invalid B calculation method' });
     }
     if (!['per_bag', 'per_quintal'].includes(lfCalculationMethod)) {
@@ -244,6 +244,9 @@ router.post('/', auth, authorize('manager', 'admin'), async (req, res) => {
     if (bCalculationMethod === 'per_bag') {
       // Per actual bag: bags × b
       bAmount = bags * bNum;
+    } else if (bCalculationMethod === 'percentage') {
+      // Percentage on Base Rate Amount: baseRateAmount × (b / 100)
+      bAmount = baseRateAmount * (bNum / 100);
     } else {
       // Per quintal: (original net weight ÷ 100) × b
       bAmount = (actualNetWeight / 100) * bNum;
@@ -298,7 +301,7 @@ router.post('/', auth, authorize('manager', 'admin'), async (req, res) => {
       line2Parts.push(`${hNum > 0 ? '+' : ''}${parseFloat(hNum)}h/${unit}`);
     }
     if (bNum !== 0) {
-      const unit = bCalculationMethod === 'per_bag' ? 'b' : 'q';
+      const unit = bCalculationMethod === 'per_bag' ? 'b' : (bCalculationMethod === 'percentage' ? '%' : 'q');
       line2Parts.push(`${bNum > 0 ? '+' : ''}${parseFloat(bNum)}b/${unit}`);
     }
     if (effectiveLfNum !== 0) {

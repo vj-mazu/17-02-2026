@@ -1412,6 +1412,32 @@ const startServer = async () => {
         console.log('⚠️ Auto-migration Food hamali rate warning:', error.message);
       }
 
+      // Auto-migration: Ensure purchase_rates.b_calculation_method supports 'percentage'
+      try {
+        const { sequelize: seq } = require('./config/database');
+        await seq.query(`
+          DO $$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_purchase_rates_b_calculation_method') THEN
+              BEGIN
+                ALTER TYPE "enum_purchase_rates_b_calculation_method" ADD VALUE IF NOT EXISTS 'percentage';
+              EXCEPTION WHEN OTHERS THEN
+                NULL;
+              END;
+            END IF;
+            IF EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'purchase_rates' AND column_name = 'b_calculation_method' AND data_type = 'character varying'
+            ) THEN
+              ALTER TABLE purchase_rates ALTER COLUMN b_calculation_method TYPE VARCHAR(30);
+            END IF;
+          END$$;
+        `);
+        console.log('✅ Auto-migration: purchase_rates.b_calculation_method percentage support verified');
+      } catch (error) {
+        console.log('⚠️ Auto-migration b_calculation_method warning:', error.message);
+      }
+
       // Migration 84: Standardize rice_stock_locations columns and DIRECT_LOAD
       try {
         const migration84 = require('./migrations/84_fix_rice_stock_locations_columns');

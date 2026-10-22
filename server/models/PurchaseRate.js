@@ -62,7 +62,7 @@ const PurchaseRate = sequelize.define('PurchaseRate', {
     defaultValue: 0
   },
   bCalculationMethod: {
-    type: DataTypes.ENUM('per_bag', 'per_quintal'),
+    type: DataTypes.STRING(20),
     allowNull: false,
     defaultValue: 'per_bag',
     field: 'b_calculation_method'
