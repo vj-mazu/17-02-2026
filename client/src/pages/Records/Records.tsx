@@ -12435,16 +12435,16 @@ return (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', marginBottom: '20px', border: '1px solid #000' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f3f4f6', borderBottom: '1px solid #000' }}>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700' }}>Date</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700' }}>Bags</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Variety</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Net WB</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Shoot</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>S.Net WB</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Rate</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Amount</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>Lorry No</th>
-                  <th className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '700', width: '60px' }}>Action</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827' }}>Date</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827' }}>Bags</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Variety</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Net WB</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Shoot</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>S.Net WB</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Rate</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Amount</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Lorry No</th>
+                  <th className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827', width: '60px' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
