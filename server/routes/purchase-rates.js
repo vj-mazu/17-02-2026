@@ -7,6 +7,7 @@ const User = require('../models/User');
 const { Kunchinittu, Warehouse } = require('../models/Location');
 const Outturn = require('../models/Outturn');
 const { sequelize } = require('../config/database');
+const cacheService = require('../services/cacheService');
 
 const router = express.Router();
 
@@ -406,6 +407,13 @@ router.post('/', auth, authorize('manager', 'admin'), async (req, res) => {
       // Don't fail the main operation if average rate calculation fails
     }
 
+    // Invalidate records cache so UI immediately reflects updated rates
+    try {
+      await cacheService.delPattern('records_*');
+    } catch (cacheErr) {
+      console.warn('Failed to clear records cache on rate update:', cacheErr);
+    }
+
     res.json({
       message: created ? 'Purchase rate created successfully' : 'Purchase rate updated successfully',
       purchaseRate: savedRate
@@ -547,6 +555,13 @@ router.post('/:id/admin-approve', auth, authorize('admin'), async (req, res) => 
       console.error('Error updating kunchinittu average rate after approval:', error);
     }
 
+    // Invalidate records cache so UI immediately reflects updated rates
+    try {
+      await cacheService.delPattern('records_*');
+    } catch (cacheErr) {
+      console.warn('Failed to clear records cache on rate update:', cacheErr);
+    }
+
     res.json({
       message: 'Purchase rate approved successfully',
       purchaseRate
@@ -576,6 +591,13 @@ router.post('/:id/reject', auth, authorize('admin'), async (req, res) => {
     await purchaseRate.update({
       status: 'rejected'
     });
+
+    // Invalidate records cache so UI immediately reflects updated rates
+    try {
+      await cacheService.delPattern('records_*');
+    } catch (cacheErr) {
+      console.warn('Failed to clear records cache on rate update:', cacheErr);
+    }
 
     res.json({
       message: 'Purchase rate rejected',
@@ -631,6 +653,13 @@ router.post('/bulk-approve', auth, authorize('admin'), async (req, res) => {
       }
     }
 
+    // Invalidate records cache so UI immediately reflects updated rates
+    try {
+      await cacheService.delPattern('records_*');
+    } catch (cacheErr) {
+      console.warn('Failed to clear records cache on rate update:', cacheErr);
+    }
+
     res.json({
       message: `Bulk approval completed: ${results.approved.length} approved, ${results.failed.length} failed`,
       results
@@ -683,6 +712,13 @@ router.post('/bulk-reject', auth, authorize('admin'), async (req, res) => {
       } catch (error) {
         results.failed.push({ id, reason: error.message });
       }
+    }
+
+    // Invalidate records cache so UI immediately reflects updated rates
+    try {
+      await cacheService.delPattern('records_*');
+    } catch (cacheErr) {
+      console.warn('Failed to clear records cache on rate update:', cacheErr);
     }
 
     res.json({

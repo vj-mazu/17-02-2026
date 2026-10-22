@@ -148,7 +148,7 @@ router.get('/arrivals', auth, async (req, res) => {
         { model: Warehouse, as: 'toWarehouseShift', attributes: ['name', 'code'] },
         { model: Kunchinittu, as: 'fromKunchinittu', attributes: ['name', 'code'] },
         { model: Outturn, as: 'outturn', attributes: ['code', 'allottedVariety', 'averageRate'], required: false },
-        { model: PurchaseRate, as: 'purchaseRate', attributes: ['amountFormula', 'totalAmount', 'averageRate'], required: false }
+        { model: PurchaseRate, as: 'purchaseRate', required: false }
       ],
       order: [['date', 'DESC'], ['createdAt', 'DESC']],
       limit: limitNum
@@ -310,7 +310,6 @@ router.get('/purchase', auth, async (req, res) => {
         {
           model: PurchaseRate,
           as: 'purchaseRate',
-          attributes: ['amountFormula', 'totalAmount', 'averageRate'],
           required: false
         }
       ],
@@ -455,7 +454,7 @@ router.get('/shifting', auth, async (req, res) => {
         { model: Kunchinittu, as: 'fromKunchinittu', attributes: ['name', 'code'] },
         { model: Kunchinittu, as: 'toKunchinittu', attributes: ['name', 'code'] },
         { model: Outturn, as: 'outturn', attributes: ['code', 'allottedVariety'] },
-        { model: PurchaseRate, as: 'purchaseRate', attributes: ['amountFormula', 'totalAmount', 'averageRate'], required: false }
+        { model: PurchaseRate, as: 'purchaseRate', required: false }
       ],
       order: [['date', 'DESC'], ['createdAt', 'DESC']]
     };
@@ -631,7 +630,7 @@ router.get('/stock', auth, async (req, res) => {
         { model: Warehouse, as: 'toWarehouseShift', attributes: ['name', 'code'] },
         { model: Kunchinittu, as: 'fromKunchinittu', attributes: ['name', 'code'] },
         { model: Outturn, as: 'outturn', attributes: ['code', 'allottedVariety', 'isCleared', 'clearedAt'], required: false },
-        { model: PurchaseRate, as: 'purchaseRate', attributes: ['amountFormula', 'totalAmount', 'averageRate'], required: false }
+        { model: PurchaseRate, as: 'purchaseRate', required: false }
       ],
       order: [['date', 'DESC'], ['createdAt', 'DESC']],
       limit: limitNum,

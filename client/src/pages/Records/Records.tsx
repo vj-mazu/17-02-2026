@@ -302,7 +302,7 @@ const Records: React.FC = () => {
   const [pattiEditableRates, setPattiEditableRates] = useState<{ [arrivalId: number]: number }>({});
   const [savingPattiRate, setSavingPattiRate] = useState(false);
 
-  const handleOpenPattiModal = (record: any) => {
+  const handleOpenPattiModal = async (record: any) => {
     setPattiModalRecord(record);
     const recDate = record.date ? record.date.split('T')[0] : '';
     const allArrivals = Object.values(records || {}).flat();
@@ -314,17 +314,47 @@ const Records: React.FC = () => {
     const trips = matching.length > 0 ? matching : [record];
     const initialRates: { [id: number]: number } = {};
     trips.forEach((t: any) => {
-      initialRates[t.id] = t.purchaseRate?.baseRate !== undefined && t.purchaseRate?.baseRate !== null
-        ? Number(t.purchaseRate.baseRate)
-        : (record.purchaseRate?.baseRate ? Number(record.purchaseRate.baseRate) : 0);
+      const bRate = t.purchaseRate?.baseRate ?? record.purchaseRate?.baseRate;
+      if (bRate !== undefined && bRate !== null && !isNaN(Number(bRate)) && Number(bRate) > 0) {
+        initialRates[t.id] = Number(bRate);
+      }
     });
     setPattiEditableRates(initialRates);
+
+    // Asynchronously fetch authoritative purchase rates for all trips
+    try {
+      let updatedPattiRecord = { ...record };
+      const updatedRates = { ...initialRates };
+
+      await Promise.all(trips.map(async (t: any) => {
+        try {
+          const res = await axios.get<{ purchaseRate: any }>(`/purchase-rates/${t.id}`);
+          if (res.data?.purchaseRate) {
+            const pr = res.data.purchaseRate;
+            t.purchaseRate = pr;
+            if (pr.baseRate !== undefined && pr.baseRate !== null && Number(pr.baseRate) > 0) {
+              updatedRates[t.id] = Number(pr.baseRate);
+            }
+            if (t.id === record.id) {
+              updatedPattiRecord = { ...updatedPattiRecord, purchaseRate: pr };
+            }
+          }
+        } catch {
+          // No purchase rate saved yet for this trip
+        }
+      }));
+
+      setPattiEditableRates(updatedRates);
+      setPattiModalRecord(updatedPattiRecord);
+    } catch (err) {
+      console.error('Error fetching patti rates:', err);
+    }
   };
 
   const handleSavePattiRate = async (arrivalId: number) => {
     const updatedRate = pattiEditableRates[arrivalId];
     if (updatedRate === undefined || isNaN(updatedRate) || updatedRate <= 0) {
-      toast.error('Please enter a valid rate');
+      toast.error('Please enter a valid rate greater than 0');
       return;
     }
 
@@ -333,7 +363,7 @@ const Records: React.FC = () => {
       const allArrivals = Object.values(records || {}).flat();
       const targetArrival = allArrivals.find((r: any) => r.id === arrivalId) || pattiModalRecord;
       const pr = targetArrival?.purchaseRate || pattiModalRecord?.purchaseRate || {};
-      await axios.post('/purchase-rates', {
+      const payload = {
         arrivalId,
         sute: parseFloat(pr.sute || '0'),
         suteCalculationMethod: pr.suteCalculationMethod || 'per_bag',
@@ -347,19 +377,25 @@ const Records: React.FC = () => {
         lfCalculationMethod: pr.lfCalculationMethod || 'per_bag',
         egb: parseFloat(pr.egb || '0'),
         hCalculationMethod: pr.hCalculationMethod || 'per_bag'
-      });
+      };
+      const res = await axios.post('/purchase-rates', payload);
+      const savedPr = res.data?.purchaseRate || {
+        ...pr,
+        baseRate: updatedRate
+      };
       toast.success(`Rate ₹${updatedRate} saved for Lorry ${targetArrival?.lorryNumber || arrivalId}`);
-      fetchRecords();
-      // Update local state in pattiModalRecord
+      
+      // Update local state in pattiModalRecord and trips immediately
       if (pattiModalRecord && pattiModalRecord.id === arrivalId) {
         setPattiModalRecord((prev: any) => ({
           ...prev,
-          purchaseRate: {
-            ...prev?.purchaseRate,
-            baseRate: updatedRate
-          }
+          purchaseRate: savedPr
         }));
       }
+      if (targetArrival) {
+        targetArrival.purchaseRate = savedPr;
+      }
+      fetchRecords();
     } catch (err: any) {
       console.error('Failed to update patti rate:', err);
       toast.error(err.response?.data?.error || 'Failed to update rate');
@@ -425,10 +461,14 @@ const Records: React.FC = () => {
 
       return {
         ...trip,
+        wbNo: trip.wbNo || '-',
         tripBags: bags,
         tripNetWb: netWeight,
+        suteVal,
+        suteMethod,
         tripSute: suteAmount,
         tripSNetWb: sNetWb,
+        baseMethod,
         currentRate,
         divisor,
         amount
@@ -439,6 +479,8 @@ const Records: React.FC = () => {
     const hVal = parseFloat(pr.h || '0');
     const hMethod = pr.hCalculationMethod || 'per_bag';
     const hAmount = hMethod === 'per_quintal' ? (totalNetWb / 100) * hVal : hVal * totalBags;
+    // For MDL and MDWB: If H is negative (user signal to exclude), set to 0. If positive, add it.
+    const hContribution = isMd ? (hAmount < 0 ? 0 : hAmount) : hAmount;
 
     const bVal = parseFloat(pr.b || '0');
     const bMethod = pr.bCalculationMethod || 'per_bag';
@@ -456,11 +498,12 @@ const Records: React.FC = () => {
     const lfMethod = pr.lfCalculationMethod || 'per_bag';
     const lfAmount = lfMethod === 'per_quintal' ? (totalNetWb / 100) * lfVal : lfVal * totalBags;
 
-    const egbVal = parseFloat(pr.egb || '0');
+    const showEGB = ['CDL', 'MDL'].includes(rateType);
+    const egbVal = showEGB ? parseFloat(pr.egb || '0') : 0;
     const egbMethod = pr.egbCalculationMethod || 'per_bag';
-    const egbAmount = egbMethod === 'per_quintal' ? (totalNetWb / 100) * egbVal : egbVal * totalBags;
+    const egbAmount = showEGB ? (egbMethod === 'per_quintal' ? (totalNetWb / 100) * egbVal : egbVal * totalBags) : 0;
 
-    const totalAdditions = hAmount + bAmount + lfAmount + egbAmount;
+    const totalAdditions = hContribution + bAmount + lfAmount + egbAmount;
 
     // Deductions
     const dfVal = parseFloat(pr.df || '0');
@@ -473,7 +516,9 @@ const Records: React.FC = () => {
 
     const netPayable = totalBaseAmount + totalAdditions - totalDeductions;
     const avgWbPerBag = totalBags > 0 ? totalNetWb / totalBags : 0;
-    const avgRatePerBag = totalBags > 0 ? totalBaseAmount / totalBags : 0;
+    const avgBaseRate75 = totalNetWb > 0 ? (totalBaseAmount / totalNetWb) * 75 : 0;
+    const netAvgRate75 = totalNetWb > 0 ? (netPayable / totalNetWb) * 75 : 0;
+    const avgAmountPerBag = totalBags > 0 ? netPayable / totalBags : 0;
 
     return {
       tripsCalculated,
@@ -484,7 +529,7 @@ const Records: React.FC = () => {
       totalBaseAmount,
       hVal,
       hMethod,
-      hAmount,
+      hAmount: hContribution,
       bVal,
       bMethod,
       bAmount,
@@ -503,18 +548,33 @@ const Records: React.FC = () => {
       totalDeductions,
       netPayable,
       avgWbPerBag,
-      avgRatePerBag
+      avgBaseRate75,
+      netAvgRate75,
+      avgAmountPerBag
     };
   }, [pattiModalRecord, pattiTripRecords, pattiEditableRates]);
 
-  // Rice Stock Lot History Ledger State
-  const [selectedLotForLedger, setSelectedLotForLedger] = useState<any | null>(null);
+  // Rice Stock Inline Lot History Ledger State
+  const [expandedLotLedgerKey, setExpandedLotLedgerKey] = useState<string | null>(null);
+  const [expandedLotLedgerItem, setExpandedLotLedgerItem] = useState<any | null>(null);
   const [lotLedgerSearch, setLotLedgerSearch] = useState('');
   const [lotLedgerPage, setLotLedgerPage] = useState(1);
 
+  const toggleInlineLotLedger = (lotKey: string, item: any) => {
+    if (expandedLotLedgerKey === lotKey) {
+      setExpandedLotLedgerKey(null);
+      setExpandedLotLedgerItem(null);
+    } else {
+      setExpandedLotLedgerKey(lotKey);
+      setExpandedLotLedgerItem(item);
+      setLotLedgerSearch('');
+      setLotLedgerPage(1);
+    }
+  };
+
   // Computes the comprehensive chronological Lot History Ledger for the selected lot
   const lotHistoryData = useMemo(() => {
-    if (!selectedLotForLedger) {
+    if (!expandedLotLedgerItem) {
       return {
         entries: [],
         filteredEntries: [],
@@ -528,7 +588,7 @@ const Records: React.FC = () => {
       };
     }
 
-    const lot = selectedLotForLedger;
+    const lot = expandedLotLedgerItem;
     const lotVarietyNorm = (lot.variety || '').toLowerCase().trim();
     const lotCategory = (lot.category || lot.productType || '').toLowerCase().trim();
     const lotLocation = (lot.location || lot.locationCode || '').toLowerCase().trim();
@@ -684,7 +744,398 @@ const Records: React.FC = () => {
       closingQtls: runningQtls,
       totalShortageKg: totalShortage
     };
-  }, [selectedLotForLedger, riceStockData, lotLedgerSearch]);
+  }, [expandedLotLedgerItem, riceStockData, lotLedgerSearch]);
+
+  // Renders the Lot History Ledger inline directly below the expanded lot row
+  const renderInlineLotLedger = (lotItem: any) => {
+    const currentLot = expandedLotLedgerItem || lotItem;
+    return (
+      <div style={{
+        margin: '6px 0 10px 0',
+        padding: '12px 14px',
+        background: '#f8fafc',
+        border: '1.5px solid #94a3b8',
+        borderRadius: '8px',
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.08)'
+      }}>
+        {/* Ledger Header with title and collapse button */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+          color: '#ffffff',
+          padding: '8px 14px',
+          borderRadius: '6px',
+          marginBottom: '10px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '1.1rem' }}>📋</span>
+            <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+              Lot History Ledger — {currentLot.variety || '-'}
+            </span>
+            <span style={{ fontSize: '0.8rem', color: '#e0e7ff' }}>
+              ({currentLot.category || currentLot.productType || 'Rice'} • {currentLot.location || currentLot.locationCode || '-'} • {currentLot.packaging || currentLot.product || '-'} {currentLot.bagSizeKg || 26}kg)
+            </span>
+            {currentLot.daysOld !== undefined && currentLot.daysOld !== null && (
+              <span style={{
+                background: 'rgba(255, 255, 255, 0.25)',
+                padding: '1px 6px',
+                borderRadius: '4px',
+                fontSize: '0.75rem',
+                fontWeight: 700
+              }}>
+                ⏱️ {currentLot.daysOld} Days Old
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedLotLedgerKey(null);
+              setExpandedLotLedgerItem(null);
+            }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '3px 8px',
+              color: 'white',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '0.8rem'
+            }}
+            title="Collapse Ledger"
+          >
+            ✕ Close
+          </button>
+        </div>
+
+        {/* Summary Metric Cards (Kunchinittu Ledger Style) */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '8px',
+          marginBottom: '10px'
+        }}>
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '6px', padding: '6px 10px' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
+              🟢 Total Inward
+            </div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
+              {lotHistoryData.totalInwardBags} Bags
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#166534' }}>
+              {lotHistoryData.totalInwardQtls.toFixed(2)} Quintals
+            </div>
+          </div>
+
+          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '6px 10px' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>
+              🔴 Total Outward
+            </div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#b91c1c', marginTop: '2px' }}>
+              {lotHistoryData.totalOutwardBags} Bags
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>
+              {lotHistoryData.totalOutwardQtls.toFixed(2)} Quintals
+            </div>
+          </div>
+
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '6px 10px' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>
+              ⚠️ Conversion Shortage
+            </div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#b45309', marginTop: '2px' }}>
+              {lotHistoryData.totalShortageKg.toFixed(1)} Kg
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#92400e' }}>
+              {(lotHistoryData.totalShortageKg / 100).toFixed(2)} Qtls
+            </div>
+          </div>
+
+          <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: '6px', padding: '6px 10px' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+              📦 Closing Stock Balance
+            </div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px' }}>
+              {lotHistoryData.closingBags} Bags
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#1e40af' }}>
+              {lotHistoryData.closingQtls.toFixed(2)} Quintals
+            </div>
+          </div>
+        </div>
+
+        {/* Search & Filter Bar */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '8px',
+          background: '#ffffff',
+          padding: '6px 10px',
+          borderRadius: '6px',
+          border: '1px solid #e2e8f0'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, maxWidth: '350px' }}>
+            <span>🔍</span>
+            <input
+              type="text"
+              placeholder="Search by party, outturn, bill, lorry..."
+              value={lotLedgerSearch}
+              onChange={(e) => {
+                setLotLedgerSearch(e.target.value);
+                setLotLedgerPage(1);
+              }}
+              style={{
+                width: '100%',
+                padding: '4px 8px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '4px',
+                fontSize: '0.85rem'
+              }}
+            />
+            {lotLedgerSearch && (
+              <button
+                type="button"
+                onClick={() => setLotLedgerSearch('')}
+                style={{
+                  background: '#e2e8f0',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 6px',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem'
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+            {lotHistoryData.filteredEntries.length} movements
+          </div>
+        </div>
+
+        {/* Exact Table (Kunchinittu Ledger Styling) */}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontFamily: "'Calibri', 'Arial', sans-serif",
+            fontSize: '9pt',
+            border: '1px solid #ddd',
+            marginBottom: '8px'
+          }}>
+            <thead>
+              <tr style={{ background: '#4a90e2', color: '#ffffff' }}>
+                <th style={{ padding: '5px 4px', textAlign: 'center', border: '1px solid #ddd' }}>#</th>
+                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>Date</th>
+                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>Type</th>
+                <th style={{ padding: '5px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Particulars / Party / Outturn</th>
+                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>From → To</th>
+                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>Brand / Pkg</th>
+                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6' }}>In Bags</th>
+                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6' }}>In Qtls</th>
+                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444' }}>Out Bags</th>
+                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444' }}>Out Qtls</th>
+                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981' }}>Bal Bags</th>
+                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981' }}>Bal Qtls</th>
+                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>Lorry / Ref</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lotHistoryData.filteredEntries.length === 0 ? (
+                <tr>
+                  <td colSpan={13} style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
+                    No transactions found for this lot.
+                  </td>
+                </tr>
+              ) : (
+                (() => {
+                  const pageSize = 15;
+                  const totalPages = Math.ceil(lotHistoryData.filteredEntries.length / pageSize) || 1;
+                  const currentPage = Math.min(Math.max(lotLedgerPage, 1), totalPages);
+                  const startIndex = (currentPage - 1) * pageSize;
+                  const pageRows = lotHistoryData.filteredEntries.slice(startIndex, startIndex + pageSize);
+
+                  return (
+                    <>
+                      {pageRows.map((entry: any, idx: number) => {
+                        const isEven = idx % 2 === 0;
+                        return (
+                          <tr
+                            key={'ledger-row-' + (entry.id || idx)}
+                            style={{
+                              background: isEven ? '#ffffff' : '#f8f9fa'
+                            }}
+                          >
+                            <td style={{ padding: '4px 4px', textAlign: 'center', border: '1px solid #ddd', color: '#64748b' }}>
+                              {startIndex + idx + 1}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
+                              {entry.date ? new Date(entry.date).toLocaleDateString('en-GB') : '-'}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '1px 5px',
+                                borderRadius: '3px',
+                                fontSize: '7pt',
+                                fontWeight: 700,
+                                color: '#ffffff',
+                                background: entry.typeColor
+                              }}>
+                                {entry.typeLabel}
+                              </span>
+                            </td>
+                            <td style={{ padding: '4px 8px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 600 }}>
+                              <div>
+                                {entry.partyName || entry.from || entry.billNumber || 'Internal Movement'}
+                                {entry.outturn?.code && (
+                                  <span
+                                    onClick={() => navigateToOutturn(entry.outturn.code)}
+                                    style={{
+                                      marginLeft: '6px',
+                                      color: '#7c3aed',
+                                      cursor: 'pointer',
+                                      textDecoration: 'underline',
+                                      fontSize: '8pt'
+                                    }}
+                                    title="View Outturn Report"
+                                  >
+                                    → {entry.outturn.code}
+                                  </span>
+                                )}
+                              </div>
+                              {entry.billNumber && (
+                                <small style={{ color: '#64748b', fontSize: '7pt' }}>
+                                  Bill: {entry.billNumber}
+                                </small>
+                              )}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt' }}>
+                              {entry.fromLocation || entry.from || '-'} → {entry.toLocation || entry.to || '-'}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt' }}>
+                              {entry.packagingBrand || entry.packaging?.brandName || '-'}{entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.inBags > 0 ? 700 : 'normal', color: entry.inBags > 0 ? '#15803d' : '#9ca3af' }}>
+                              {entry.inBags > 0 ? `+${entry.inBags}` : '-'}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', color: entry.inQtls > 0 ? '#15803d' : '#9ca3af' }}>
+                              {entry.inQtls > 0 ? `+${entry.inQtls.toFixed(2)}` : '-'}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.outBags > 0 ? 700 : 'normal', color: entry.outBags > 0 ? '#b91c1c' : '#9ca3af' }}>
+                              {entry.outBags > 0 ? `-${entry.outBags}` : '-'}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', color: entry.outQtls > 0 ? '#b91c1c' : '#9ca3af' }}>
+                              {entry.outQtls > 0 ? `-${entry.outQtls.toFixed(2)}` : '-'}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 800, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe' }}>
+                              {entry.runningBags}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 700, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe' }}>
+                              {entry.runningQtls.toFixed(2)}
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt' }}>
+                              {entry.lorryNumber || entry.remarks || '-'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {/* Table Totals Row */}
+                      <tr style={{ background: '#000000', color: '#ffffff', fontWeight: 800 }}>
+                        <td colSpan={6} style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #333' }}>
+                          TOTAL MOVEMENTS
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #333', color: '#4ade80' }}>
+                          +{lotHistoryData.totalInwardBags}
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #333', color: '#4ade80' }}>
+                          +{lotHistoryData.totalInwardQtls.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #333', color: '#f87171' }}>
+                          -{lotHistoryData.totalOutwardBags}
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #333', color: '#f87171' }}>
+                          -{lotHistoryData.totalOutwardQtls.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #333', color: '#60a5fa', fontSize: '9.5pt' }}>
+                          {lotHistoryData.closingBags}
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #333', color: '#60a5fa', fontSize: '9.5pt' }}>
+                          {lotHistoryData.closingQtls.toFixed(2)}
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #333' }}>-</td>
+                      </tr>
+                    </>
+                  );
+                })()
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination Controls */}
+        {lotHistoryData.filteredEntries.length > 15 && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '6px 10px',
+            background: '#ffffff',
+            borderRadius: '4px',
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              Showing page {lotLedgerPage} of {Math.ceil(lotHistoryData.filteredEntries.length / 15)} ({lotHistoryData.filteredEntries.length} total entries)
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setLotLedgerPage(p => Math.max(p - 1, 1))}
+                disabled={lotLedgerPage <= 1}
+                style={{
+                  padding: '4px 10px',
+                  background: lotLedgerPage <= 1 ? '#e2e8f0' : '#3b82f6',
+                  color: lotLedgerPage <= 1 ? '#94a3b8' : 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: lotLedgerPage <= 1 ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.8rem'
+                }}
+              >
+                ← Prev
+              </button>
+              <button
+                type="button"
+                onClick={() => setLotLedgerPage(p => Math.min(p + 1, Math.ceil(lotHistoryData.filteredEntries.length / 15)))}
+                disabled={lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15)}
+                style={{
+                  padding: '4px 10px',
+                  background: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? '#e2e8f0' : '#3b82f6',
+                  color: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? '#94a3b8' : 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.8rem'
+                }}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Helper function to navigate to outturn
   const navigateToOutturn = (outturnCode: string) => {
@@ -6166,12 +6617,13 @@ return (
                                                     const hasSplits = splits.length > 0;
                                                     const totalShortage = splits.reduce((sum: number, s: any) => sum + (s.shortageKg || 0), 0);
 
+                                                    const lotKey = `rice-${dayData.date}-${idx}-${item.variety}-${item.location}`;
+                                                    const isLotExpanded = expandedLotLedgerKey === lotKey;
+
                                                     return (
                                                       <React.Fragment key={`bifurcation-${productType}-${idx}`}>
                                                         {/* Main Opening Stock Entry - Highlighted Yellow if has Palti splits */}
                                                         <div
-                                                          onClick={() => setSelectedLotForLedger(item)}
-                                                          title="Click to view complete Lot History Ledger"
                                                           style={{
                                                           display: 'grid',
                                                           gridTemplateColumns: '60px 80px 1fr 100px 100px 100px',
@@ -6182,8 +6634,7 @@ return (
                                                           marginBottom: hasSplits ? '0' : '2px',
                                                           borderRadius: hasSplits ? '3px 3px 0 0' : '3px',
                                                           border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
-                                                          borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef',
-                                                          cursor: 'pointer'
+                                                          borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
                                                         }}>
                                                           <div style={{ textAlign: 'center', fontSize: '8pt', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                           <div style={{ textAlign: 'center', fontSize: '8pt' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
@@ -6206,36 +6657,14 @@ return (
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
                                                                     gap: '2px',
-                                                                    cursor: 'pointer'
+                                                                    cursor: 'default'
                                                                   }}
-                                                                  onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setSelectedLotForLedger(item);
-                                                                  }}
-                                                                  title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed). Click to view full Lot History Ledger.`}
+                                                                  title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed)`}
                                                                 >
                                                                   ⏱️ {item.daysOld}d
                                                                 </span>
                                                               )}
-                                                              <span
-                                                                onClick={(e) => {
-                                                                  e.stopPropagation();
-                                                                  setSelectedLotForLedger(item);
-                                                                }}
-                                                                style={{
-                                                                  fontSize: '6.5pt',
-                                                                  color: '#0369a1',
-                                                                  background: '#e0f2fe',
-                                                                  border: '1px solid #bae6fd',
-                                                                  borderRadius: '3px',
-                                                                  padding: '0 4px',
-                                                                  fontWeight: 'bold',
-                                                                  cursor: 'pointer'
-                                                                }}
-                                                                title="View Lot History Ledger"
-                                                              >
-                                                                📋 Ledger
-                                                              </span>
+
                                                             </div>
                                                             {hasSplits && totalShortage > 0 && (
                                                               <div style={{
@@ -6265,9 +6694,41 @@ return (
                                                               </div>
                                                             )}
                                                           </div>
-                                                          <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.variety || 'Unknown'}</div>
+                                                          <div
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              toggleInlineLotLedger(lotKey, item);
+                                                            }}
+                                                            style={{
+                                                              fontSize: '8pt',
+                                                              textAlign: 'center',
+                                                              fontWeight: isLotExpanded ? 'bold' : (hasSplits ? 'bold' : '600'),
+                                                              color: '#1d4ed8',
+                                                              cursor: 'pointer',
+                                                              textDecoration: isLotExpanded ? 'underline' : 'none'
+                                                            }}
+                                                            title="Click to view inline Lot History Ledger"
+                                                          >
+                                                            {item.variety || 'Unknown'} {isLotExpanded ? '▲' : '▼'}
+                                                          </div>
                                                           <div style={{ fontSize: '8pt', textAlign: 'center' }}>{item.packaging?.brandName || item.packaging || 'A1'}</div>
-                                                          <div style={{ fontSize: '8pt', textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.location}</div>
+                                                          <div
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              toggleInlineLotLedger(lotKey, item);
+                                                            }}
+                                                            style={{
+                                                              fontSize: '8pt',
+                                                              textAlign: 'center',
+                                                              fontWeight: isLotExpanded ? 'bold' : (hasSplits ? 'bold' : '600'),
+                                                              color: '#1d4ed8',
+                                                              cursor: 'pointer',
+                                                              textDecoration: isLotExpanded ? 'underline' : 'none'
+                                                            }}
+                                                            title="Click to view inline Lot History Ledger"
+                                                          >
+                                                            {item.location}
+                                                          </div>
                                                         </div>
 
                                                         {/* Palti Splits - Shown below the source entry with reference-accurate styling */}
@@ -6378,6 +6839,9 @@ return (
                                                             )}
                                                           </div>
                                                         )}
+
+                                                        {/* Inline Lot History Ledger */}
+                                                        {isLotExpanded && renderInlineLotLedger(item)}
                                                       </React.Fragment>
                                                     );
                                                   })}
@@ -7026,11 +7490,12 @@ return (
                                                 console.groupEnd();
                                               }
 
+                                              const lotKey = `broken-${dayData.date}-${idx}-${item.variety}-${item.location}`;
+                                              const isLotExpanded = expandedLotLedgerKey === lotKey;
+
                                               return (
                                                 <React.Fragment key={`bifurcation-${productType}-${idx}`}>
                                                   <div
-                                                    onClick={() => setSelectedLotForLedger(item)}
-                                                    title="Click to view complete Lot History Ledger"
                                                     style={{
                                                     display: 'grid',
                                                     gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
@@ -7041,8 +7506,7 @@ return (
                                                     marginBottom: hasSplits ? '0' : '1px',
                                                     borderRadius: hasSplits ? '2px 2px 0 0' : '2px',
                                                     border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
-                                                    borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef',
-                                                    cursor: 'pointer'
+                                                    borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
                                                   }}>
                                                     <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                     <div style={{ textAlign: 'center' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
@@ -7065,36 +7529,14 @@ return (
                                                               display: 'inline-flex',
                                                               alignItems: 'center',
                                                               gap: '2px',
-                                                              cursor: 'pointer'
+                                                              cursor: 'default'
                                                             }}
-                                                            onClick={(e) => {
-                                                              e.stopPropagation();
-                                                              setSelectedLotForLedger(item);
-                                                            }}
-                                                            title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed). Click to view full Lot History Ledger.`}
+                                                            title={`Lot created: ${item.createdDate ? item.createdDate.split('T')[0] : 'N/A'} (${item.daysOld} day${item.daysOld === 1 ? '' : 's'} passed)`}
                                                           >
                                                             ⏱️ {item.daysOld}d
                                                           </span>
                                                         )}
-                                                        <span
-                                                          onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedLotForLedger(item);
-                                                          }}
-                                                          style={{
-                                                            fontSize: '6pt',
-                                                            color: '#0369a1',
-                                                            background: '#e0f2fe',
-                                                            border: '1px solid #bae6fd',
-                                                            borderRadius: '3px',
-                                                            padding: '0 3px',
-                                                            fontWeight: 'bold',
-                                                            cursor: 'pointer'
-                                                          }}
-                                                          title="View Lot History Ledger"
-                                                        >
-                                                          📋 Ledger
-                                                        </span>
+
                                                       </div>
                                                       {hasSplits && totalShortage > 0 && (
                                                         <div style={{
@@ -7124,9 +7566,39 @@ return (
                                                         </div>
                                                       )}
                                                     </div>
-                                                    <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.variety || 'Unknown'}</div>
+                                                    <div
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleInlineLotLedger(lotKey, item);
+                                                      }}
+                                                      style={{
+                                                        textAlign: 'center',
+                                                        fontWeight: isLotExpanded ? 'bold' : (hasSplits ? 'bold' : '600'),
+                                                        color: '#1d4ed8',
+                                                        cursor: 'pointer',
+                                                        textDecoration: isLotExpanded ? 'underline' : 'none'
+                                                      }}
+                                                      title="Click to view inline Lot History Ledger"
+                                                    >
+                                                      {item.variety || 'Unknown'} {isLotExpanded ? '▲' : '▼'}
+                                                    </div>
                                                     <div style={{ textAlign: 'center' }}>{item.packaging}</div>
-                                                    <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.location}</div>
+                                                    <div
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleInlineLotLedger(lotKey, item);
+                                                      }}
+                                                      style={{
+                                                        textAlign: 'center',
+                                                        fontWeight: isLotExpanded ? 'bold' : (hasSplits ? 'bold' : '600'),
+                                                        color: '#1d4ed8',
+                                                        cursor: 'pointer',
+                                                        textDecoration: isLotExpanded ? 'underline' : 'none'
+                                                      }}
+                                                      title="Click to view inline Lot History Ledger"
+                                                    >
+                                                      {item.location}
+                                                    </div>
                                                   </div>
 
                                                   {/* Palti Splits - Shown below the source entry with reference-accurate styling */}
@@ -7190,6 +7662,9 @@ return (
                                                       )}
                                                     </div>
                                                   )}
+
+                                                  {/* Inline Lot History Ledger */}
+                                                  {isLotExpanded && renderInlineLotLedger(item)}
                                                 </React.Fragment>
                                               );
                                             })}
@@ -7779,11 +8254,12 @@ return (
                                               console.groupEnd();
                                             }
 
+                                            const lotKey = `bran-${dayData.date}-${idx}-${item.variety}-${item.location}`;
+                                            const isLotExpanded = expandedLotLedgerKey === lotKey;
+
                                             return (
                                               <React.Fragment key={`bifurcation-${productType}-${idx}`}>
                                                 <div
-                                                  onClick={() => setSelectedLotForLedger(item)}
-                                                  title="Click to view complete Lot History Ledger"
                                                   style={{
                                                   display: 'grid',
                                                   gridTemplateColumns: '50px 60px 1fr 80px 80px 90px',
@@ -7794,8 +8270,7 @@ return (
                                                   marginBottom: hasSplits ? '0' : '1px',
                                                   borderRadius: hasSplits ? '2px 2px 0 0' : '2px',
                                                   border: hasSplits ? '2px solid #f59e0b' : '1px solid #e9ecef',
-                                                  borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef',
-                                                  cursor: 'pointer'
+                                                  borderBottom: hasSplits ? '1px dashed #f59e0b' : '1px solid #e9ecef'
                                                 }}>
                                                   <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.qtls.toFixed(2)}</div>
                                                   <div style={{ textAlign: 'center' }}>{item.bags}{item.bagSizeKg ? `/${item.bagSizeKg}kgs` : ''}</div>
@@ -7825,25 +8300,7 @@ return (
                                                           ⏱️ {item.daysOld}d
                                                         </span>
                                                       )}
-                                                      <span
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          setSelectedLotForLedger(item);
-                                                        }}
-                                                        style={{
-                                                          background: '#e0e7ff',
-                                                          color: '#3730a3',
-                                                          border: '1px solid #c7d2fe',
-                                                          fontSize: '6.5pt',
-                                                          padding: '1px 5px',
-                                                          borderRadius: '3px',
-                                                          fontWeight: 'bold',
-                                                          cursor: 'pointer'
-                                                        }}
-                                                        title="View Lot History Ledger"
-                                                      >
-                                                        📋 Ledger
-                                                      </span>
+
                                                     </div>
                                                     {hasSplits && totalShortage > 0 && (
                                                       <div style={{
@@ -7873,9 +8330,39 @@ return (
                                                       </div>
                                                     )}
                                                   </div>
-                                                  <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.variety || 'Unknown'}</div>
+                                                  <div
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      toggleInlineLotLedger(lotKey, item);
+                                                    }}
+                                                    style={{
+                                                      textAlign: 'center',
+                                                      fontWeight: isLotExpanded ? 'bold' : (hasSplits ? 'bold' : '600'),
+                                                      color: '#1d4ed8',
+                                                      cursor: 'pointer',
+                                                      textDecoration: isLotExpanded ? 'underline' : 'none'
+                                                    }}
+                                                    title="Click to view inline Lot History Ledger"
+                                                  >
+                                                    {item.variety || 'Unknown'} {isLotExpanded ? '▲' : '▼'}
+                                                  </div>
                                                   <div style={{ textAlign: 'center' }}>{item.packaging}</div>
-                                                  <div style={{ textAlign: 'center', fontWeight: hasSplits ? 'bold' : 'normal' }}>{item.location}</div>
+                                                  <div
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      toggleInlineLotLedger(lotKey, item);
+                                                    }}
+                                                    style={{
+                                                      textAlign: 'center',
+                                                      fontWeight: isLotExpanded ? 'bold' : (hasSplits ? 'bold' : '600'),
+                                                      color: '#1d4ed8',
+                                                      cursor: 'pointer',
+                                                      textDecoration: isLotExpanded ? 'underline' : 'none'
+                                                    }}
+                                                    title="Click to view inline Lot History Ledger"
+                                                  >
+                                                    {item.location}
+                                                  </div>
                                                 </div>
 
                                                 {/* Palti Splits - Shown below the source entry with reference-accurate styling */}
@@ -7939,6 +8426,9 @@ return (
                                                     )}
                                                   </div>
                                                 )}
+
+                                                {/* Inline Lot History Ledger */}
+                                                {isLotExpanded && renderInlineLotLedger(item)}
                                               </React.Fragment>
                                             );
                                           })}
@@ -12238,6 +12728,10 @@ return (
         >
           <style>{`
             @media print {
+              * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
               body * {
                 visibility: hidden !important;
               }
@@ -12250,20 +12744,38 @@ return (
                 top: 0 !important;
                 width: 100% !important;
                 margin: 0 !important;
-                padding: 10mm !important;
+                padding: 8mm !important;
                 background: white !important;
                 box-shadow: none !important;
                 border: none !important;
+                font-size: 9pt !important;
               }
               .patti-no-print {
                 display: none !important;
               }
+              .patti-print-only {
+                display: inline !important;
+              }
               .patti-rate-input {
-                border: none !important;
-                background: transparent !important;
-                font-weight: bold !important;
-                padding: 0 !important;
-                text-align: right !important;
+                display: none !important;
+              }
+              .patti-bottom-split {
+                display: flex !important;
+                justify-content: flex-end !important;
+                page-break-inside: avoid !important;
+              }
+              .patti-financial-box {
+                width: 460px !important;
+                border: 1.5px solid #000000 !important;
+                background: #ffffff !important;
+              }
+              table {
+                page-break-inside: auto !important;
+                border-collapse: collapse !important;
+              }
+              tr {
+                page-break-inside: avoid !important;
+                page-break-after: auto !important;
               }
             }
           `}</style>
@@ -12382,76 +12894,76 @@ return (
               {/* Sub-Header Details Grid */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '1.2fr 1fr',
-                gap: '8px 24px',
-                fontSize: '10pt',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '8px 18px',
+                fontSize: '9.5pt',
                 background: '#f8fafc',
-                padding: '10px 14px',
+                padding: '12px 16px',
                 borderRadius: '6px',
-                border: '1px solid #e2e8f0',
+                border: '1.5px solid #cbd5e1',
                 marginBottom: '16px'
               }}>
                 <div>
-                  <div style={{ marginBottom: '4px' }}>
-                    <strong style={{ color: '#475569' }}>Party: </strong>
-                    <span style={{ fontWeight: 800, fontSize: '10.5pt', color: '#0f172a' }}>
-                      {pattiModalRecord.fromLocation || pattiModalRecord.party || '-'}
-                    </span>
+                  <div style={{ color: '#64748b', fontSize: '8pt', textTransform: 'uppercase', fontWeight: 700 }}>Party / Supplier</div>
+                  <div style={{ fontWeight: 800, fontSize: '11pt', color: '#0f172a' }}>
+                    {pattiModalRecord.fromLocation || pattiModalRecord.party || '-'}
                   </div>
-                  <div style={{ marginBottom: '4px' }}>
-                    <strong style={{ color: '#475569' }}>Broker: </strong>
-                    <span style={{ fontWeight: 700 }}>{pattiModalRecord.broker || '-'}</span>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '8pt', textTransform: 'uppercase', fontWeight: 700 }}>Broker</div>
+                  <div style={{ fontWeight: 700, fontSize: '10pt', color: '#1e293b' }}>
+                    {pattiModalRecord.broker || '-'}
                   </div>
-                  <div>
-                    <strong style={{ color: '#475569' }}>Rate Type: </strong>
-                    <span style={{ fontWeight: 700, color: '#2563eb' }}>
-                      {pattiModalRecord.purchaseRate?.rateType || 'CDL'}
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '8pt', textTransform: 'uppercase', fontWeight: 700 }}>Rate Type / Sute Rate</div>
+                  <div style={{ fontWeight: 700, fontSize: '10pt' }}>
+                    <span style={{ color: '#2563eb', fontWeight: 800 }}>{pattiModalRecord.purchaseRate?.rateType || 'CDL'}</span>
+                    <span style={{ color: '#64748b', marginLeft: '6px' }}>
+                      (Sute: {pattiModalRecord.purchaseRate?.sute || '0'} {pattiModalRecord.purchaseRate?.suteCalculationMethod === 'per_quintal' ? 'kg/qtl' : 'kg/bag'})
                     </span>
                   </div>
                 </div>
-
                 <div>
-                  <div style={{ marginBottom: '4px' }}>
-                    <strong style={{ color: '#475569' }}>Date: </strong>
-                    <span style={{ fontWeight: 700 }}>
-                      {pattiModalRecord.date ? new Date(pattiModalRecord.date).toLocaleDateString('en-GB') : '-'}
-                    </span>
-                  </div>
-                  <div style={{ marginBottom: '4px' }}>
-                    <strong style={{ color: '#475569' }}>Location / Mill: </strong>
-                    <span style={{ fontWeight: 700 }}>
-                      {pattiModalRecord.toWarehouse?.name || pattiModalRecord.toLocation || 'Mother India Mill'}
-                    </span>
-                  </div>
-                  <div>
-                    <strong style={{ color: '#475569' }}>Pkg Base: </strong>
-                    <span style={{ fontWeight: 700 }}>
-                      {pattiModalRecord.purchaseRate?.baseRateCalculationMethod === 'per_quintal' ? '100 Kg (Quintal)' : '75 Kg / Bag'}
-                    </span>
+                  <div style={{ color: '#64748b', fontSize: '8pt', textTransform: 'uppercase', fontWeight: 700 }}>Date & Mill Location</div>
+                  <div style={{ fontWeight: 700, fontSize: '10pt', color: '#1e293b' }}>
+                    {pattiModalRecord.date ? new Date(pattiModalRecord.date).toLocaleDateString('en-GB') : '-'}
+                    <span style={{ color: '#64748b', marginLeft: '6px' }}>• {pattiModalRecord.toWarehouse?.name || pattiModalRecord.toLocation || 'Mother India Mill'}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Lorry Trips Table */}
+              {/* Lorry Trips Table with Complete Column Details */}
               <table style={{
                 width: '100%',
                 borderCollapse: 'collapse',
-                fontSize: '9.5pt',
+                fontSize: '9pt',
                 marginBottom: '14px',
                 border: '1.5px solid #334155'
               }}>
                 <thead>
                   <tr style={{ background: '#1e293b', color: '#ffffff' }}>
-                    <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>#</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'center', border: '1px solid #475569', width: '32px' }}>#</th>
                     <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Date</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>Bags</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Variety</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>Net W.B.</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>Shoot</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>S.Net W.B.</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #475569', minWidth: '95px' }}>Rate (₹)</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #475569', minWidth: '100px' }}>Amount (₹)</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>W.B. No</th>
                     <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Lorry No</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Variety</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>Bags</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>
+                      Net W.B. (Kg)
+                    </th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>
+                      Sute (Kg)
+                    </th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #475569' }}>
+                      S.Net W.B. (Kg)
+                    </th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #475569', minWidth: '95px' }}>
+                      Base Rate (₹)
+                    </th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #475569', minWidth: '105px' }}>
+                      Goods Amount (₹)
+                    </th>
                     <th className="patti-no-print" style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #475569' }}>Action</th>
                   </tr>
                 </thead>
@@ -12465,56 +12977,73 @@ return (
                         background: idx % 2 === 0 ? '#ffffff' : '#f8fafc',
                         borderBottom: '1px solid #cbd5e1'
                       }}>
-                        <td style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #cbd5e1' }}>{idx + 1}</td>
-                        <td style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '6px 4px', textAlign: 'center', border: '1px solid #cbd5e1' }}>{idx + 1}</td>
+                        <td style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>
                           {trip.date ? new Date(trip.date).toLocaleDateString('en-GB') : '-'}
                         </td>
-                        <td style={{ padding: '5px 6px', textAlign: 'right', fontWeight: 700, border: '1px solid #cbd5e1' }}>
-                          {trip.tripBags}
+                        <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 600, border: '1px solid #cbd5e1' }}>
+                          {trip.wbNo || '-'}
                         </td>
-                        <td style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                        <td style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9pt', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                          {trip.lorryNumber || '-'}
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'center', border: '1px solid #cbd5e1' }}>
                           {trip.variety || '-'}
                         </td>
-                        <td style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #cbd5e1' }}>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                          {trip.tripBags}
+                        </td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', border: '1px solid #cbd5e1' }}>
                           {trip.tripNetWb.toFixed(2)}
                         </td>
-                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#b91c1c', border: '1px solid #cbd5e1' }}>
-                          {trip.tripSute > 0 ? `-${trip.tripSute.toFixed(2)}` : '0.00'}
+                        <td style={{ padding: '6px 6px', textAlign: 'right', color: '#b91c1c', border: '1px solid #cbd5e1' }}>
+                          <span style={{ fontWeight: 600 }}>{trip.tripSute > 0 ? `-${trip.tripSute.toFixed(2)}` : '0.00'}</span>
+                          {trip.suteVal > 0 && (
+                            <span style={{ display: 'block', fontSize: '7.5pt', color: '#64748b' }}>
+                              (@{trip.suteVal}{trip.suteMethod === 'per_quintal' ? 'kg/q' : 'kg/b'})
+                            </span>
+                          )}
                         </td>
-                        <td style={{ padding: '5px 6px', textAlign: 'right', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, border: '1px solid #cbd5e1', color: '#0f172a' }}>
                           {trip.tripSNetWb.toFixed(2)}
                         </td>
                         <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #cbd5e1' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
-                            <span className="patti-no-print" style={{ color: '#64748b', fontSize: '8pt' }}>₹</span>
-                            <input
-                              type="number"
-                              step="0.5"
-                              className="patti-rate-input"
-                              value={pattiEditableRates[trip.id] !== undefined ? pattiEditableRates[trip.id] : (trip.purchaseRate?.baseRate || '')}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0;
-                                setPattiEditableRates(prev => ({ ...prev, [trip.id]: val }));
-                              }}
-                              style={{
-                                width: '75px',
-                                padding: '3px 4px',
-                                border: isChanged ? '2px solid #2563eb' : '1px solid #cbd5e1',
-                                borderRadius: '4px',
-                                textAlign: 'right',
-                                fontWeight: 700,
-                                fontSize: '9pt',
-                                background: isChanged ? '#eff6ff' : 'white'
-                              }}
-                              title="Edit purchase rate (recalculates immediately)"
-                            />
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px' }}>
+                              <span className="patti-no-print" style={{ color: '#64748b', fontSize: '8pt' }}>₹</span>
+                              <input
+                                type="number"
+                                step="0.5"
+                                className="patti-rate-input"
+                                value={pattiEditableRates[trip.id] !== undefined && pattiEditableRates[trip.id] !== 0 ? pattiEditableRates[trip.id] : (trip.purchaseRate?.baseRate ? Number(trip.purchaseRate.baseRate) : '')}
+                                placeholder="0.00"
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setPattiEditableRates(prev => ({ ...prev, [trip.id]: val }));
+                                }}
+                                style={{
+                                  width: '78px',
+                                  padding: '3px 4px',
+                                  border: isChanged ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                                  borderRadius: '4px',
+                                  textAlign: 'right',
+                                  fontWeight: 700,
+                                  fontSize: '9pt',
+                                  background: isChanged ? '#eff6ff' : 'white'
+                                }}
+                                title="Edit purchase rate (recalculates immediately)"
+                              />
+                              <span className="patti-print-only" style={{ display: 'none', fontWeight: 700, fontSize: '9.5pt' }}>
+                                ₹{Number(trip.currentRate || 0).toFixed(2)}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '7pt', color: '#64748b' }}>
+                              /{trip.divisor === 100 ? 'Quintal' : '75kg Bag'}
+                            </span>
                           </div>
                         </td>
-                        <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, color: '#0f172a', border: '1px solid #cbd5e1' }}>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#0f172a', border: '1px solid #cbd5e1' }}>
                           ₹{trip.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td style={{ padding: '5px 6px', textAlign: 'center', fontSize: '9pt', fontWeight: 600, border: '1px solid #cbd5e1' }}>
-                          {trip.lorryNumber || '-'}
                         </td>
                         <td className="patti-no-print" style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #cbd5e1' }}>
                           <button
@@ -12541,41 +13070,39 @@ return (
 
                   {/* Totals Row */}
                   <tr style={{ background: '#0f172a', color: '#ffffff', fontWeight: 800, borderTop: '2px solid #0f172a' }}>
-                    <td colSpan={2} style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #334155' }}>
+                    <td colSpan={5} style={{ padding: '8px 8px', textAlign: 'center', border: '1px solid #334155', letterSpacing: '1px' }}>
                       TOTAL
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', border: '1px solid #334155', fontSize: '10pt' }}>
+                    <td style={{ padding: '8px 6px', textAlign: 'right', border: '1px solid #334155', fontSize: '10pt', color: '#38bdf8' }}>
                       {pattiCalculations.totalBags}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', border: '1px solid #334155' }}>
+                    <td style={{ padding: '8px 6px', textAlign: 'right', border: '1px solid #334155' }}>
                       {pattiCalculations.totalNetWb.toFixed(2)}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', border: '1px solid #334155' }}>
+                    <td style={{ padding: '8px 6px', textAlign: 'right', border: '1px solid #334155', color: '#f87171' }}>
                       {pattiCalculations.totalSute.toFixed(2)}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', border: '1px solid #334155' }}>
+                    <td style={{ padding: '8px 6px', textAlign: 'right', border: '1px solid #334155', color: '#4ade80' }}>
                       {pattiCalculations.totalSNetWb.toFixed(2)}
                     </td>
-                    <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
-                    <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #334155', fontSize: '10.5pt', color: '#38bdf8' }}>
+                    <td style={{ padding: '8px 6px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
+                    <td style={{ padding: '8px 8px', textAlign: 'right', border: '1px solid #334155', fontSize: '10.5pt', color: '#38bdf8' }}>
                       ₹{pattiCalculations.totalBaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
-                    <td className="patti-no-print" style={{ padding: '7px 6px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
+                    <td className="patti-no-print" style={{ padding: '8px 6px', textAlign: 'center', border: '1px solid #334155' }}>-</td>
                   </tr>
                 </tbody>
               </table>
 
               {/* Bottom Calculations Split Section */}
-              <div style={{
+              <div className="patti-bottom-split" style={{
                 display: 'grid',
                 gridTemplateColumns: '1fr 1.35fr',
                 gap: '18px',
                 fontSize: '9.5pt'
               }}>
-                {/* Left Column: Averages & Weighment Summary */}
-                <div style={{
+                {/* Left Column: Averages & Weighment Summary (Preview only) */}
+                <div className="patti-no-print" style={{
                   border: '1.5px solid #cbd5e1',
                   borderRadius: '6px',
                   padding: '12px 14px',
@@ -12600,16 +13127,24 @@ return (
                     <strong style={{ fontWeight: 800, color: '#0369a1' }}>{pattiCalculations.avgWbPerBag.toFixed(3)} Kg</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', background: '#ecfdf5', paddingLeft: '6px', paddingRight: '6px', borderRadius: '4px' }}>
-                    <span style={{ fontWeight: 700, color: '#047857' }}>Avg. Rate per 75kg Bag:</span>
-                    <strong style={{ fontWeight: 800, color: '#047857' }}>₹{pattiCalculations.avgRatePerBag.toFixed(2)}</strong>
+                    <span style={{ fontWeight: 700, color: '#047857' }}>Avg. Base Rate per 75kg:</span>
+                    <strong style={{ fontWeight: 800, color: '#047857' }}>₹{pattiCalculations.avgBaseRate75.toFixed(2)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', background: '#fef3c7', paddingLeft: '6px', paddingRight: '6px', borderRadius: '4px' }}>
+                    <span style={{ fontWeight: 700, color: '#b45309' }}>Net Avg. Rate per 75kg:</span>
+                    <strong style={{ fontWeight: 800, color: '#b45309' }}>₹{pattiCalculations.netAvgRate75.toFixed(2)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                    <span style={{ color: '#475569' }}>Avg. Amount per Bag:</span>
+                    <strong style={{ color: '#0f172a' }}>₹{pattiCalculations.avgAmountPerBag.toFixed(2)}</strong>
                   </div>
                   <div style={{ marginTop: 'auto', paddingTop: '6px', fontSize: '8pt', color: '#64748b', fontStyle: 'italic' }}>
                     Note: Brokerage percentage (%) is calculated strictly on Base Goods Amount.
                   </div>
                 </div>
 
-                {/* Right Column: Financial Deductions & Net Payable */}
-                <div style={{
+                {/* Right Column: Financial Deductions & Net Payable (Shown in both preview & print) */}
+                <div className="patti-financial-box" style={{
                   border: '1.5px solid #cbd5e1',
                   borderRadius: '6px',
                   padding: '12px 14px',
@@ -12724,445 +13259,7 @@ return (
         </div>
       )}
 
-      {/* =========================================================================
-          RICE STOCK - LOT HISTORY LEDGER MODAL (KUNCHINITTIU LEDGER STYLE)
-          ========================================================================= */}
-      {selectedLotForLedger && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.75)',
-            backdropFilter: 'blur(3px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000,
-            padding: '16px',
-            overflowY: 'auto'
-          }}
-          onClick={() => setSelectedLotForLedger(null)}
-        >
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '12px',
-              maxWidth: '1200px',
-              width: '100%',
-              maxHeight: '94vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-              overflow: 'hidden',
-              border: '1px solid #cbd5e1'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div style={{
-              background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
-              color: '#ffffff',
-              padding: '16px 22px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '1.4rem' }}>📋</span>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>
-                    Lot History Ledger — {selectedLotForLedger.variety || '-'}
-                  </h2>
-                </div>
-                <div style={{ display: 'flex', gap: '12px', marginTop: '6px', fontSize: '0.85rem', color: '#e0e7ff', flexWrap: 'wrap' }}>
-                  <span><strong>Category:</strong> {selectedLotForLedger.category || selectedLotForLedger.productType || 'Rice'}</span>
-                  <span>•</span>
-                  <span><strong>Location:</strong> {selectedLotForLedger.location || selectedLotForLedger.locationCode || '-'}</span>
-                  <span>•</span>
-                  <span><strong>Packaging:</strong> {selectedLotForLedger.packaging || selectedLotForLedger.product || '-'} ({selectedLotForLedger.bagSizeKg || 26} kg)</span>
-                  <span>•</span>
-                  <span style={{
-                    background: 'rgba(255, 255, 255, 0.2)',
-                    padding: '1px 8px',
-                    borderRadius: '4px',
-                    fontWeight: 700
-                  }}>
-                    ⏱️ {selectedLotForLedger.daysOld ?? 0} Days Old
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedLotForLedger(null)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '6px 14px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  color: 'white',
-                  fontSize: '0.95rem'
-                }}
-              >
-                ✕ Close
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div style={{ padding: '18px 22px', overflowY: 'auto' }}>
-              {/* Summary Metric Cards (Kunchinittu Ledger Style) */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '12px',
-                marginBottom: '18px'
-              }}>
-                {/* Total Inward */}
-                <div style={{
-                  background: '#f0fdf4',
-                  border: '1.5px solid #86efac',
-                  borderRadius: '8px',
-                  padding: '10px 14px'
-                }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
-                    🟢 Total Inward (Prod / Pur / Palti In)
-                  </div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>
-                    {lotHistoryData.totalInwardBags} Bags
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#166534' }}>
-                    {lotHistoryData.totalInwardQtls.toFixed(2)} Quintals
-                  </div>
-                </div>
-
-                {/* Total Outward */}
-                <div style={{
-                  background: '#fef2f2',
-                  border: '1.5px solid #fca5a5',
-                  borderRadius: '8px',
-                  padding: '10px 14px'
-                }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>
-                    🔴 Total Outward (Sales / Palti Out)
-                  </div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#b91c1c', marginTop: '4px' }}>
-                    {lotHistoryData.totalOutwardBags} Bags
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#991b1b' }}>
-                    {lotHistoryData.totalOutwardQtls.toFixed(2)} Quintals
-                  </div>
-                </div>
-
-                {/* Total Shortage */}
-                <div style={{
-                  background: '#fffbeb',
-                  border: '1.5px solid #fde68a',
-                  borderRadius: '8px',
-                  padding: '10px 14px'
-                }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>
-                    ⚠️ Conversion Shortage
-                  </div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>
-                    {lotHistoryData.totalShortageKg.toFixed(1)} Kg
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#92400e' }}>
-                    {(lotHistoryData.totalShortageKg / 100).toFixed(2)} Qtls
-                  </div>
-                </div>
-
-                {/* Closing Stock */}
-                <div style={{
-                  background: '#eff6ff',
-                  border: '1.5px solid #93c5fd',
-                  borderRadius: '8px',
-                  padding: '10px 14px'
-                }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
-                    📦 Closing Stock Balance
-                  </div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1d4ed8', marginTop: '4px' }}>
-                    {lotHistoryData.closingBags} Bags
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#1e40af' }}>
-                    {lotHistoryData.closingQtls.toFixed(2)} Quintals
-                  </div>
-                </div>
-              </div>
-
-              {/* Search & Filter Bar */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '12px',
-                marginBottom: '14px',
-                background: '#f8fafc',
-                padding: '10px 14px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '400px' }}>
-                  <span>🔍</span>
-                  <input
-                    type="text"
-                    placeholder="Search by party, outturn, bill, lorry..."
-                    value={lotLedgerSearch}
-                    onChange={(e) => {
-                      setLotLedgerSearch(e.target.value);
-                      setLotLedgerPage(1);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      border: '1.5px solid #cbd5e1',
-                      borderRadius: '6px',
-                      fontSize: '0.9rem'
-                    }}
-                  />
-                  {lotLedgerSearch && (
-                    <button
-                      onClick={() => setLotLedgerSearch('')}
-                      style={{
-                        background: '#e2e8f0',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '4px 8px',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem'
-                      }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>
-                  Showing {lotHistoryData.filteredEntries.length} transactions
-                </div>
-              </div>
-
-              {/* Exact Format Table (Kunchinittu Ledger Styling) */}
-              <table style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontFamily: `'Calibri', 'Arial', sans-serif`,
-                fontSize: '9.5pt',
-                border: '1px solid #ddd',
-                marginBottom: '14px'
-              }}>
-                <thead>
-                  <tr style={{ background: '#4a90e2', color: '#ffffff' }}>
-                    <th style={{ padding: '7px 6px', textAlign: 'center', border: '1px solid #ddd' }}>#</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Date</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Type</th>
-                    <th style={{ padding: '7px 10px', textAlign: 'left', border: '1px solid #ddd' }}>Particulars / Party / Outturn</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>From → To</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Brand / Pkg</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6' }}>In Bags</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6' }}>In Qtls</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444' }}>Out Bags</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444' }}>Out Qtls</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981' }}>Bal Bags</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981' }}>Bal Qtls</th>
-                    <th style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Lorry / Ref</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lotHistoryData.filteredEntries.length === 0 ? (
-                    <tr>
-                      <td colSpan={13} style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
-                        No transactions found for this lot.
-                      </td>
-                    </tr>
-                  ) : (
-                    (() => {
-                      const pageSize = 15;
-                      const totalPages = Math.ceil(lotHistoryData.filteredEntries.length / pageSize) || 1;
-                      const currentPage = Math.min(Math.max(lotLedgerPage, 1), totalPages);
-                      const startIndex = (currentPage - 1) * pageSize;
-                      const pageRows = lotHistoryData.filteredEntries.slice(startIndex, startIndex + pageSize);
-
-                      return (
-                        <>
-                          {pageRows.map((entry: any, idx: number) => {
-                            const isEven = idx % 2 === 0;
-
-                            return (
-                              <tr
-                                key={`ledger-row-${entry.id || idx}`}
-                                style={{
-                                  background: isEven ? '#ffffff' : '#f8f9fa',
-                                  transition: 'background 0.2s'
-                                }}
-                              >
-                                <td style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd', color: '#64748b' }}>
-                                  {startIndex + idx + 1}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
-                                  {entry.date ? new Date(entry.date).toLocaleDateString('en-GB') : '-'}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd' }}>
-                                  <span style={{
-                                    display: 'inline-block',
-                                    padding: '2px 7px',
-                                    borderRadius: '4px',
-                                    fontSize: '7.5pt',
-                                    fontWeight: 700,
-                                    color: '#ffffff',
-                                    background: entry.typeColor
-                                  }}>
-                                    {entry.typeLabel}
-                                  </span>
-                                </td>
-                                <td style={{ padding: '5px 10px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 600 }}>
-                                  <div>
-                                    {entry.partyName || entry.from || entry.billNumber || 'Internal Movement'}
-                                    {entry.outturn?.code && (
-                                      <span
-                                        onClick={() => {
-                                          setSelectedLotForLedger(null);
-                                          navigateToOutturn(entry.outturn.code);
-                                        }}
-                                        style={{
-                                          marginLeft: '6px',
-                                          color: '#7c3aed',
-                                          cursor: 'pointer',
-                                          textDecoration: 'underline',
-                                          fontSize: '8.5pt'
-                                        }}
-                                        title="View Outturn Report"
-                                      >
-                                        → {entry.outturn.code}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {entry.billNumber && (
-                                    <small style={{ color: '#64748b', fontSize: '7.5pt' }}>
-                                      Bill: {entry.billNumber}
-                                    </small>
-                                  )}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8.5pt' }}>
-                                  {entry.fromLocation || entry.from || '-'} → {entry.toLocation || entry.to || '-'}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8.5pt' }}>
-                                  {entry.packagingBrand || entry.packaging?.brandName || '-'}{entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.inBags > 0 ? 700 : 'normal', color: entry.inBags > 0 ? '#15803d' : '#9ca3af' }}>
-                                  {entry.inBags > 0 ? `+${entry.inBags}` : '-'}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', color: entry.inQtls > 0 ? '#15803d' : '#9ca3af' }}>
-                                  {entry.inQtls > 0 ? `+${entry.inQtls.toFixed(2)}` : '-'}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.outBags > 0 ? 700 : 'normal', color: entry.outBags > 0 ? '#b91c1c' : '#9ca3af' }}>
-                                  {entry.outBags > 0 ? `-${entry.outBags}` : '-'}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', color: entry.outQtls > 0 ? '#b91c1c' : '#9ca3af' }}>
-                                  {entry.outQtls > 0 ? `-${entry.outQtls.toFixed(2)}` : '-'}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 800, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe' }}>
-                                  {entry.runningBags}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 700, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe' }}>
-                                  {entry.runningQtls.toFixed(2)}
-                                </td>
-                                <td style={{ padding: '5px 8px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8.5pt' }}>
-                                  {entry.lorryNumber || entry.remarks || '-'}
-                                </td>
-                              </tr>
-                            );
-                          })}
-
-                          {/* Table Totals Row */}
-                          <tr style={{ background: '#000000', color: '#ffffff', fontWeight: 800 }}>
-                            <td colSpan={6} style={{ padding: '7px 10px', textAlign: 'center', border: '1px solid #333' }}>
-                              TOTAL MOVEMENTS
-                            </td>
-                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#4ade80' }}>
-                              +{lotHistoryData.totalInwardBags}
-                            </td>
-                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#4ade80' }}>
-                              +{lotHistoryData.totalInwardQtls.toFixed(2)}
-                            </td>
-                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#f87171' }}>
-                              -{lotHistoryData.totalOutwardBags}
-                            </td>
-                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#f87171' }}>
-                              -{lotHistoryData.totalOutwardQtls.toFixed(2)}
-                            </td>
-                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#60a5fa', fontSize: '10pt' }}>
-                              {lotHistoryData.closingBags}
-                            </td>
-                            <td style={{ padding: '7px 8px', textAlign: 'right', border: '1px solid #333', color: '#60a5fa', fontSize: '10pt' }}>
-                              {lotHistoryData.closingQtls.toFixed(2)}
-                            </td>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #333' }}>-</td>
-                          </tr>
-                        </>
-                      );
-                    })()
-                  )}
-                </tbody>
-              </table>
-
-              {/* Cursor / In-Memory Pagination Controls */}
-              {lotHistoryData.filteredEntries.length > 15 && (
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '8px 12px',
-                  background: '#f8fafc',
-                  borderRadius: '6px',
-                  border: '1px solid #e2e8f0'
-                }}>
-                  <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                    Showing page {lotLedgerPage} of {Math.ceil(lotHistoryData.filteredEntries.length / 15)} ({lotHistoryData.filteredEntries.length} total entries)
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => setLotLedgerPage(p => Math.max(p - 1, 1))}
-                      disabled={lotLedgerPage <= 1}
-                      style={{
-                        padding: '5px 14px',
-                        background: lotLedgerPage <= 1 ? '#e2e8f0' : '#3b82f6',
-                        color: lotLedgerPage <= 1 ? '#94a3b8' : 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: lotLedgerPage <= 1 ? 'not-allowed' : 'pointer',
-                        fontWeight: 600,
-                        fontSize: '0.85rem'
-                      }}
-                    >
-                      ← Previous
-                    </button>
-                    <button
-                      onClick={() => setLotLedgerPage(p => Math.min(p + 1, Math.ceil(lotHistoryData.filteredEntries.length / 15)))}
-                      disabled={lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15)}
-                      style={{
-                        padding: '5px 14px',
-                        background: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? '#e2e8f0' : '#3b82f6',
-                        color: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? '#94a3b8' : 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: lotLedgerPage >= Math.ceil(lotHistoryData.filteredEntries.length / 15) ? 'not-allowed' : 'pointer',
-                        fontWeight: 600,
-                        fontSize: '0.85rem'
-                      }}
-                    >
-                      Next →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </Container>
+          </Container>
   );
 };
 
