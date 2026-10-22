@@ -335,18 +335,17 @@ const Records: React.FC = () => {
       const printOnlyEls = clone.querySelectorAll('.patti-print-only');
       printOnlyEls.forEach((el) => ((el as HTMLElement).style.display = 'inline'));
 
-      // Replace or hide inputs cleanly so they render as clean printed text
-      const allInputs = clone.querySelectorAll('input');
-      allInputs.forEach((inp) => {
+      // In clone, directly remove .patti-rate-input and any other inputs
+      const rateInputs = clone.querySelectorAll('.patti-rate-input');
+      rateInputs.forEach((el) => el.parentNode?.removeChild(el));
+
+      // Remove any remaining input elements in clone
+      const remainingInputs = clone.querySelectorAll('input');
+      remainingInputs.forEach((inp) => {
         const val = inp.value;
         const span = document.createElement('span');
         span.textContent = val;
         span.style.fontWeight = '700';
-        span.style.fontSize = '12px';
-        span.style.color = '#1e293b';
-        span.style.display = 'inline-block';
-        span.style.minWidth = '24px';
-        span.style.textAlign = 'center';
         inp.parentNode?.replaceChild(span, inp);
       });
 
