@@ -18,22 +18,9 @@ const Locations = React.lazy(() => import('./pages/Locations'));
 const KunchinintuLedger = React.lazy(() => import('./pages/KunchinintuLedger'));
 const RiceLedger = React.lazy(() => import('./pages/RiceLedger'));
 const Hamali = React.lazy(() => import('./pages/Hamali'));
-const AddPurchaseRate = React.lazy(() => import('./pages/AddPurchaseRate'));
 const HamaliBookSimple = React.lazy(() => import('./pages/HamaliBookSimple'));
 const UserManagement = React.lazy(() => import('./pages/UserManagement'));
 const PendingApprovals = React.lazy(() => import('./pages/PendingApprovals'));
-const SampleEntry = React.lazy(() => import('./pages/SampleEntry'));
-const SampleEntryLedger = React.lazy(() => import('./pages/SampleEntryLedger'));
-const OwnerSampleReports = React.lazy(() => import('./pages/OwnerSampleReports'));
-const AssigningSupervisor = React.lazy(() => import('./pages/AssigningSupervisor'));
-const AllottedSupervisors = React.lazy(() => import('./pages/AllottedSupervisors'));
-const AllottingSupervisors = React.lazy(() => import('./pages/AllottingSupervisors'));
-const PhysicalInspection = React.lazy(() => import('./pages/PhysicalInspection'));
-const InventoryEntry = React.lazy(() => import('./pages/InventoryEntry'));
-const OwnerFinancialPage = React.lazy(() => import('./pages/OwnerFinancialPage'));
-const ManagerFinancialPage = React.lazy(() => import('./pages/ManagerFinancialPage'));
-const FinalReviewPage = React.lazy(() => import('./pages/FinalReviewPage'));
-const SampleWorkflow = React.lazy(() => import('./pages/SampleWorkflow'));
 
 // Lightweight loading spinner for page transitions
 const PageLoader = () => (
@@ -135,16 +122,6 @@ const AppContent: React.FC = () => {
               }
             />
             <Route
-              path="/records/purchase/:arrivalId/add-rate"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <AddPurchaseRate />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="/hamali-book"
               element={
                 <ProtectedRoute roles={['manager', 'admin']}>
@@ -170,106 +147,6 @@ const AppContent: React.FC = () => {
                 <ProtectedRoute roles={['manager', 'admin']}>
                   <Layout>
                     <PendingApprovals />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sample-entry"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <SampleEntry />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sample-entry-ledger"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <SampleEntryLedger />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/owner-sample-reports"
-              element={
-                <ProtectedRoute roles={['admin']}>
-                  <Layout>
-                    <OwnerSampleReports />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/allotting-supervisors"
-              element={
-                <ProtectedRoute roles={['manager']}>
-                  <Layout>
-                    <AllottingSupervisors />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/physical-inspection"
-              element={
-                <ProtectedRoute roles={['physical_supervisor']}>
-                  <Layout>
-                    <PhysicalInspection />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/inventory-entry"
-              element={
-                <ProtectedRoute roles={['inventory_staff', 'admin']}>
-                  <Layout>
-                    <InventoryEntry />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/owner-financial"
-              element={
-                <ProtectedRoute roles={['admin']}>
-                  <Layout>
-                    <OwnerFinancialPage />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/manager-financial"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <ManagerFinancialPage />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/final-review"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <FinalReviewPage />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sample-workflow"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <SampleWorkflow />
                   </Layout>
                 </ProtectedRoute>
               }

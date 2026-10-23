@@ -292,20 +292,15 @@ const Navbar: React.FC = () => {
   const location = useLocation();
   const [pendingCount, setPendingCount] = useState(0);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
-  const [workflowDropdownOpen, setWorkflowDropdownOpen] = useState(false);
   const [ledgersDropdownOpen, setLedgersDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const ledgersRef = useRef<HTMLDivElement>(null);
-  const workflowRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (ledgersRef.current && !ledgersRef.current.contains(event.target as Node)) {
         setLedgersDropdownOpen(false);
-      }
-      if (workflowRef.current && !workflowRef.current.contains(event.target as Node)) {
-        setWorkflowDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -315,7 +310,6 @@ const Navbar: React.FC = () => {
   // Close all dropdowns + mobile menu on route change
   useEffect(() => {
     setLedgersDropdownOpen(false);
-    setWorkflowDropdownOpen(false);
     setMobileMenuOpen(false);
   }, [location.pathname]);
 
@@ -349,15 +343,7 @@ const Navbar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const workflowPaths = [
-    '/sample-entry', '/sample-entry-ledger', '/sample-workflow',
-    '/inventory-entry', '/owner-financial', '/manager-financial',
-    '/final-review', '/owner-sample-reports', '/allotting-supervisors',
-    '/physical-inspection', '/pending-approvals'
-  ];
   const ledgersPaths = ['/ledger', '/rice-ledger', '/hamali-book'];
-
-  const isWorkflowActive = workflowPaths.some(p => location.pathname === p);
   const isLedgersActive = ledgersPaths.some(p => location.pathname === p);
 
   return (
@@ -365,7 +351,7 @@ const Navbar: React.FC = () => {
       <NavContainer>
         <Logo to="/dashboard">Mother India Management</Logo>
         <HamburgerButton onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-          {mobileMenuOpen ? '✕' : '☰'}
+          ☰
         </HamburgerButton>
         <MobileOverlay $open={mobileMenuOpen} onClick={() => setMobileMenuOpen(false)} />
         <NavLinks $mobileOpen={mobileMenuOpen}>
@@ -379,7 +365,6 @@ const Navbar: React.FC = () => {
               $active={isLedgersActive}
               onClick={() => {
                 setLedgersDropdownOpen(!ledgersDropdownOpen);
-                setWorkflowDropdownOpen(false);
               }}
             >Ledgers ▾</DropdownTrigger>
             {ledgersDropdownOpen && (

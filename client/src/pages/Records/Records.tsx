@@ -656,31 +656,67 @@ const Records: React.FC = () => {
 
     const lot = expandedLotLedgerItem;
     const lotVarietyNorm = (lot.variety || '').toLowerCase().trim();
-    const lotCategory = (lot.category || lot.productType || '').toLowerCase().trim();
+    const lotCategory = (lot.category || lot.productType || lot.product || '').toLowerCase().trim();
     const lotLocation = (lot.location || lot.locationCode || '').toLowerCase().trim();
+
+    // Helper to extract base variety name (removes 'raw', 'steam', 'boiler' and non-alphanumeric noise)
+    const getBaseVariety = (v: string) => {
+      if (!v) return '';
+      let clean = v.toLowerCase().trim();
+      clean = clean.replace(/\b(steam|raw|boiler|boiled)\b/gi, '').trim();
+      clean = clean.replace(/[^a-z0-9]/gi, ' ').replace(/\s+/g, ' ').trim();
+      return clean;
+    };
+
+    const cleanAlphanumeric = (str: string) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+
+    const baseLotVar = getBaseVariety(lotVarietyNorm);
+    const lotLocClean = cleanAlphanumeric(lotLocation);
 
     // Match movements from riceStockData
     const matching = (riceStockData || []).filter((m: any) => {
-      // 1. Variety matching
+      // 1. Variety matching: exact, substring, or base variety (so 'SUM25 RNR' matches 'SUM25 RNR RAW/STEAM')
       const mVar = (m.variety || '').toLowerCase().trim();
-      const varOk = !lotVarietyNorm || mVar === lotVarietyNorm || mVar.includes(lotVarietyNorm) || lotVarietyNorm.includes(mVar);
+      const baseMVar = getBaseVariety(mVar);
+      const varOk = !lotVarietyNorm ||
+        mVar === lotVarietyNorm ||
+        mVar.includes(lotVarietyNorm) ||
+        lotVarietyNorm.includes(mVar) ||
+        (baseLotVar && baseMVar && (baseLotVar === baseMVar || baseLotVar.includes(baseMVar) || baseMVar.includes(baseLotVar)));
       if (!varOk) return false;
 
       // 2. Product Category matching
-      const mCat = (m.productType || '').toLowerCase().trim();
-      if (lotCategory && mCat && lotCategory !== mCat) return false;
+      const mCat = (m.productType || m.product || '').toLowerCase().trim();
+      if (lotCategory && mCat) {
+        const normLotCat = lotCategory.includes('rice') && !lotCategory.includes('rj') ? 'rice' : lotCategory;
+        const normMCat = mCat.includes('rice') && !mCat.includes('rj') ? 'rice' : mCat;
+        if (normLotCat !== normMCat) return false;
+      }
 
-      // 3. Location matching
+      // 3. Location matching: check fromLocation, toLocation, and locationCode
       const fromLoc = (m.fromLocation || m.from || '').toLowerCase().trim();
       const toLoc = (m.toLocation || m.to || '').toLowerCase().trim();
       const locCode = (m.locationCode || '').toLowerCase().trim();
+
+      const fromClean = cleanAlphanumeric(fromLoc);
+      const toClean = cleanAlphanumeric(toLoc);
+      const codeClean = cleanAlphanumeric(locCode);
 
       const locOk = !lotLocation ||
         fromLoc === lotLocation ||
         toLoc === lotLocation ||
         locCode === lotLocation ||
         fromLoc.includes(lotLocation) ||
-        toLoc.includes(lotLocation);
+        toLoc.includes(lotLocation) ||
+        (lotLocClean && (
+          fromClean === lotLocClean ||
+          toClean === lotLocClean ||
+          codeClean === lotLocClean ||
+          toClean.includes(lotLocClean) ||
+          codeClean.includes(lotLocClean) ||
+          lotLocClean.includes(toClean) ||
+          lotLocClean.includes(codeClean)
+        ));
 
       return locOk;
     });
@@ -730,23 +766,31 @@ const Records: React.FC = () => {
         typeLabel = 'SALE';
         typeColor = '#dc2626';
       } else if (mvtType === 'palti') {
-        if (toLoc === lotLocation) {
+        const cleanL = (l: string) => (l || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const targetClean = cleanL(toLoc);
+        const sourceClean = cleanL(fromLoc);
+        const currentLotClean = cleanL(lotLocation);
+
+        const isTarget = targetClean === currentLotClean || toLoc === lotLocation || (currentLotClean && targetClean.includes(currentLotClean));
+        const isSource = sourceClean === currentLotClean || fromLoc === lotLocation || (currentLotClean && sourceClean.includes(currentLotClean));
+
+        if (isTarget) {
           isInward = true;
           inBags = bags;
           inQtls = qtls;
           typeLabel = 'PALTI IN';
-          typeColor = '#7c3aed';
-        } else if (fromLoc === lotLocation) {
+          typeColor = '#7c3aed'; // Purple
+        } else if (isSource) {
           outBags = m.sourceBags ? Number(m.sourceBags) : bags;
           outQtls = qtls;
           typeLabel = 'PALTI OUT';
-          typeColor = '#ea580c';
+          typeColor = '#ea580c'; // Orange
           totalShortage += Number(m.shortageKg || 0);
         } else {
           isInward = true;
           inBags = bags;
           inQtls = qtls;
-          typeLabel = 'PALTI';
+          typeLabel = 'PALTI IN';
           typeColor = '#7c3aed';
         }
       } else {
@@ -1060,31 +1104,73 @@ const Records: React.FC = () => {
                             </td>
                             <td style={{ padding: '4px 8px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 600 }}>
                               <div>
-                                {entry.partyName || entry.from || entry.billNumber || 'Internal Movement'}
-                                {entry.outturn?.code && (
-                                  <span
-                                    onClick={() => navigateToOutturn(entry.outturn.code)}
-                                    style={{
-                                      marginLeft: '6px',
-                                      color: '#7c3aed',
-                                      cursor: 'pointer',
-                                      textDecoration: 'underline',
-                                      fontSize: '8pt'
-                                    }}
-                                    title="View Outturn Report"
-                                  >
-                                    → {entry.outturn.code}
-                                  </span>
-                                )}
+                                {(() => {
+                                  const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
+                                  if (mType === 'production') {
+                                    const outturnCode = entry.outturn?.code || entry.outturnNumber || (typeof entry.outturn === 'string' ? entry.outturn : null) || (entry.from?.startsWith('OUTT') ? entry.from : null);
+                                    if (outturnCode) {
+                                      return (
+                                        <span
+                                          onClick={() => navigateToOutturn(outturnCode)}
+                                          style={{
+                                            color: '#7c3aed',
+                                            cursor: 'pointer',
+                                            textDecoration: 'underline',
+                                            fontSize: '8.5pt',
+                                            fontWeight: 700
+                                          }}
+                                          title="View Outturn Report"
+                                        >
+                                          {outturnCode}
+                                        </span>
+                                      );
+                                    }
+                                    return entry.partyName || 'Milling Production';
+                                  }
+                                  if (mType === 'sale') {
+                                    const customer = entry.partyName ||
+                                      (entry.toLocation && !['sale', 'direct_load', 'unknown'].includes(entry.toLocation.toLowerCase()) ? entry.toLocation : '') ||
+                                      (entry.to && !['sale', 'direct_load', 'unknown'].includes(entry.to.toLowerCase()) ? entry.to : '') ||
+                                      'Customer Sale';
+                                    return customer;
+                                  }
+                                  if (mType === 'purchase') {
+                                    const vendor = entry.partyName ||
+                                      (entry.fromLocation && !['purchase', 'unknown'].includes(entry.fromLocation.toLowerCase()) ? entry.fromLocation : '') ||
+                                      (entry.from && !['purchase', 'unknown'].includes(entry.from.toLowerCase()) ? entry.from : '') ||
+                                      'Rice Purchase';
+                                    return (
+                                      <span style={{ color: '#2563eb', fontWeight: 600 }}>
+                                        📦 {vendor}
+                                      </span>
+                                    );
+                                  }
+                                  if (mType === 'palti' || mType.includes('palti')) {
+                                    return (
+                                      <span style={{ color: '#7c3aed', fontWeight: 600 }}>
+                                        🔄 Palti Conversion
+                                      </span>
+                                    );
+                                  }
+                                  return entry.partyName || 'Internal Movement';
+                                })()}
                               </div>
                               {entry.billNumber && (
-                                <small style={{ color: '#64748b', fontSize: '7pt' }}>
+                                <small style={{ color: '#64748b', fontSize: '7pt', display: 'block', marginTop: '2px' }}>
                                   Bill: {entry.billNumber}
                                 </small>
                               )}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt' }}>
-                              {entry.fromLocation || entry.from || '-'} → {entry.toLocation || entry.to || '-'}
+                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt', whiteSpace: 'nowrap' }}>
+                              {(() => {
+                                const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
+                                if (mType === 'production') {
+                                  // Avoid repeating OUTT 1 if it is already shown in Particulars column
+                                  const toGodown = entry.toLocation && entry.toLocation !== '-' ? entry.toLocation : (entry.to || 'Godown');
+                                  return `Milling → ${toGodown}`;
+                                }
+                                return `${entry.fromLocation || entry.from || '-'} → ${entry.toLocation || entry.to || '-'}`;
+                              })()}
                             </td>
                             <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt' }}>
                               {entry.packagingBrand || entry.packaging?.brandName || '-'}{entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}

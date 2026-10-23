@@ -35,7 +35,6 @@ const riceStockVarietiesRoutes = require('./routes/rice-stock-varieties');
 const yieldRoutes = require('./routes/yield');
 const adminUsersRoutes = require('./routes/admin-users');
 const unifiedVarietiesRoutes = require('./routes/unified-varieties');
-const sampleEntriesRoutes = require('./routes/sample-entries');
 
 const compression = require('compression');
 const performanceMonitor = require('./middleware/performanceMonitor');
@@ -151,7 +150,6 @@ app.use('/api', riceStockVarietiesRoutes); // Rice stock varieties API endpoints
 app.use('/api/yield', yieldRoutes);
 app.use('/api/admin', adminUsersRoutes);
 app.use('/api/unified-varieties', unifiedVarietiesRoutes);
-app.use('/api/sample-entries', sampleEntriesRoutes);
 
 
 const { exec } = require('child_process');
