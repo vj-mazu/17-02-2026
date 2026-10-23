@@ -1038,58 +1038,66 @@ const Records: React.FC = () => {
           </button>
         </div>
 
-        {/* Summary Metric Cards (Kunchinittu Ledger Style) */}
+        {/* Compact Summary Metric Bar */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '8px',
-          marginBottom: '10px'
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '6px',
+          marginBottom: '6px'
         }}>
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '6px', padding: '6px 10px' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
-              🟢 Total Inward
-            </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
-              {lotHistoryData.totalInwardBags} Bags
-            </div>
-            <div style={{ fontSize: '0.75rem', color: '#166534' }}>
-              {lotHistoryData.totalInwardQtls.toFixed(2)} Quintals
-            </div>
-          </div>
-
-          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '6px 10px' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>
-              🔴 Total Outward
-            </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#b91c1c', marginTop: '2px' }}>
-              {lotHistoryData.totalOutwardBags} Bags
-            </div>
-            <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>
-              {lotHistoryData.totalOutwardQtls.toFixed(2)} Quintals
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '4px', padding: '3px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '6.5pt', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
+              🟢 Total In
+            </span>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '8.5pt', fontWeight: 800, color: '#15803d' }}>
+                {lotHistoryData.totalInwardBags} Bags
+              </span>
+              <span style={{ fontSize: '6.5pt', color: '#166534', marginLeft: '4px' }}>
+                ({lotHistoryData.totalInwardQtls.toFixed(2)} Q)
+              </span>
             </div>
           </div>
 
-          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '6px 10px' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>
-              ⚠️ Conversion Shortage
-            </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#b45309', marginTop: '2px' }}>
-              {lotHistoryData.totalShortageKg.toFixed(1)} Kg
-            </div>
-            <div style={{ fontSize: '0.75rem', color: '#92400e' }}>
-              {(lotHistoryData.totalShortageKg / 100).toFixed(2)} Qtls
+          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '4px', padding: '3px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '6.5pt', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>
+              🔴 Total Out
+            </span>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '8.5pt', fontWeight: 800, color: '#b91c1c' }}>
+                {lotHistoryData.totalOutwardBags} Bags
+              </span>
+              <span style={{ fontSize: '6.5pt', color: '#991b1b', marginLeft: '4px' }}>
+                ({lotHistoryData.totalOutwardQtls.toFixed(2)} Q)
+              </span>
             </div>
           </div>
 
-          <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: '6px', padding: '6px 10px' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
-              📦 Closing Stock Balance
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '4px', padding: '3px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '6.5pt', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>
+              ⚠️ Shortage
+            </span>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '8.5pt', fontWeight: 800, color: '#b45309' }}>
+                {lotHistoryData.totalShortageKg.toFixed(1)} Kg
+              </span>
+              <span style={{ fontSize: '6.5pt', color: '#92400e', marginLeft: '4px' }}>
+                ({(lotHistoryData.totalShortageKg / 100).toFixed(2)} Q)
+              </span>
             </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px' }}>
-              {lotHistoryData.closingBags} Bags
-            </div>
-            <div style={{ fontSize: '0.75rem', color: '#1e40af' }}>
-              {lotHistoryData.closingQtls.toFixed(2)} Quintals
+          </div>
+
+          <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: '4px', padding: '3px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '6.5pt', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+              📦 Balance
+            </span>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '8.5pt', fontWeight: 800, color: '#1d4ed8' }}>
+                {lotHistoryData.closingBags} Bags
+              </span>
+              <span style={{ fontSize: '6.5pt', color: '#1e40af', marginLeft: '4px' }}>
+                ({lotHistoryData.closingQtls.toFixed(2)} Q)
+              </span>
             </div>
           </div>
         </div>
@@ -1100,9 +1108,9 @@ const Records: React.FC = () => {
           justifyContent: 'space-between',
           alignItems: 'center',
           gap: '8px',
-          marginBottom: '8px',
+          marginBottom: '5px',
           background: '#ffffff',
-          padding: '6px 10px',
+          padding: '3px 8px',
           borderRadius: '6px',
           border: '1px solid #e2e8f0'
         }}>
