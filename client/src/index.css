@@ -129,20 +129,20 @@ div[class*="Toastify__toast-container"] {
 /* Responsive containers */
 @media screen and (min-width: 768px) {
   .container {
-    max-width: 1200px;
-    padding: 0 24px;
+    max-width: 100%;
+    padding: 0 16px;
   }
 }
 
 @media screen and (min-width: 1024px) {
   .container {
-    padding: 0 32px;
+    padding: 0 20px;
   }
 }
 
 @media screen and (min-width: 1440px) {
   .container {
-    max-width: 1400px;
+    max-width: 100%;
   }
 }
 

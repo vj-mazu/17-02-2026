@@ -721,8 +721,52 @@ const Records: React.FC = () => {
       return locOk;
     });
 
-    // Chronological order (oldest first) to compute running balance
-    const sorted = [...matching].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // Priority order for movements occurring on the same date:
+    // 1. Production (inward milled stock)
+    // 2. Purchase (inward vendor stock, or 1 if from production)
+    // 3. Palti In (inward converted stock)
+    // 4. Palti Out (outward stock being converted)
+    // 5. Sale (outward dispatch to customer)
+    const getMovementPriority = (m: any) => {
+      const type = (m.movementType || '').toLowerCase();
+      const fromLoc = (m.fromLocation || m.from || '').toLowerCase().trim();
+      const cleanL = (l: string) => (l || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const isSource = cleanL(fromLoc) === lotLocClean || fromLoc === lotLocation || (lotLocClean && cleanL(fromLoc).includes(lotLocClean));
+
+      if (type === 'production') return 1;
+      if (type === 'purchase') {
+        if (fromLoc.includes('production') || (m.partyName || '').toLowerCase().includes('production')) {
+          return 1;
+        }
+        return 2;
+      }
+      if (type === 'palti') {
+        return isSource ? 4 : 3;
+      }
+      if (type === 'palti in') return 3;
+      if (type === 'palti out') return 4;
+      if (type === 'sale') return 5;
+      return 6;
+    };
+
+    // Chronological order (oldest first) with business sequence priority on same date
+    const sorted = [...matching].sort((a, b) => {
+      const timeA = new Date(a.date).getTime();
+      const timeB = new Date(b.date).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+
+      // On same date: sort by business operation sequence
+      const prioA = getMovementPriority(a);
+      const prioB = getMovementPriority(b);
+      if (prioA !== prioB) return prioA - prioB;
+
+      // Secondary: creation timestamp if available
+      const createdA = a.createdAt || a.created_at ? new Date(a.createdAt || a.created_at).getTime() : 0;
+      const createdB = b.createdAt || b.created_at ? new Date(b.createdAt || b.created_at).getTime() : 0;
+      if (createdA !== createdB) return createdA - createdB;
+
+      return 0;
+    });
 
     let runningBags = 0;
     let runningQtls = 0;
@@ -758,8 +802,15 @@ const Records: React.FC = () => {
         isInward = true;
         inBags = bags;
         inQtls = qtls;
-        typeLabel = 'PURCHASE';
-        typeColor = '#2563eb';
+        const fromLocLower = fromLoc.toLowerCase();
+        const partyLower = (m.partyName || '').toLowerCase();
+        if (fromLocLower.includes('production') || partyLower.includes('production')) {
+          typeLabel = 'PRODUCTION';
+          typeColor = '#059669';
+        } else {
+          typeLabel = 'PURCHASE';
+          typeColor = '#2563eb';
+        }
       } else if (mvtType === 'sale') {
         outBags = bags;
         outQtls = qtls;
@@ -861,13 +912,56 @@ const Records: React.FC = () => {
     const currentLot = expandedLotLedgerItem || lotItem;
     return (
       <div style={{
-        margin: '6px 0 10px 0',
-        padding: '12px 14px',
+        margin: '4px 0 8px 0',
+        padding: '8px 10px',
         background: '#f8fafc',
         border: '1.5px solid #94a3b8',
         borderRadius: '8px',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.08)'
       }}>
+        <style>{`
+          .lot-tooltip-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+          }
+          .lot-tooltip-wrap .lot-tooltip-content {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            position: absolute;
+            bottom: calc(100% + 5px);
+            left: 50%;
+            transform: translateX(-50%) translateY(3px);
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 7.5pt;
+            line-height: 1.4;
+            white-space: nowrap;
+            box-shadow: 0 10px 22px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+            z-index: 99999;
+            pointer-events: none;
+            text-align: left;
+            font-weight: normal;
+          }
+          .lot-tooltip-wrap:hover .lot-tooltip-content {
+            visibility: visible;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+          }
+          .lot-tooltip-wrap .lot-tooltip-content::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #0f172a transparent transparent transparent;
+          }
+        `}</style>
         {/* Ledger Header with title and collapse button */}
         <div style={{
           display: 'flex',
@@ -1042,19 +1136,19 @@ const Records: React.FC = () => {
           }}>
             <thead>
               <tr style={{ background: '#4a90e2', color: '#ffffff' }}>
-                <th style={{ padding: '5px 4px', textAlign: 'center', border: '1px solid #ddd' }}>#</th>
-                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>Date</th>
-                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>Type</th>
-                <th style={{ padding: '5px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Particulars / Party / Outturn</th>
-                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>From → To</th>
-                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>Brand / Pkg</th>
-                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6' }}>In Bags</th>
-                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6' }}>In Qtls</th>
-                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444' }}>Out Bags</th>
-                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444' }}>Out Qtls</th>
-                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981' }}>Bal Bags</th>
-                <th style={{ padding: '5px 6px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981' }}>Bal Qtls</th>
-                <th style={{ padding: '5px 6px', textAlign: 'center', border: '1px solid #ddd' }}>Lorry / Ref</th>
+                <th style={{ padding: '3px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>#</th>
+                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>Date</th>
+                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>Type</th>
+                <th style={{ padding: '3px 6px', textAlign: 'left', border: '1px solid #ddd', fontSize: '7.5pt' }}>Particulars / Party / Outturn</th>
+                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>From → To</th>
+                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>Brand / Pkg</th>
+                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6', fontSize: '7.5pt' }}>In Bags</th>
+                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6', fontSize: '7.5pt' }}>In Qtls</th>
+                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444', fontSize: '7.5pt' }}>Out Bags</th>
+                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444', fontSize: '7.5pt' }}>Out Qtls</th>
+                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981', fontSize: '7.5pt' }}>Bal Bags</th>
+                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981', fontSize: '7.5pt' }}>Bal Qtls</th>
+                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>Lorry / Ref</th>
               </tr>
             </thead>
             <tbody>
@@ -1066,7 +1160,7 @@ const Records: React.FC = () => {
                 </tr>
               ) : (
                 (() => {
-                  const pageSize = 15;
+                  const pageSize = 25;
                   const totalPages = Math.ceil(lotHistoryData.filteredEntries.length / pageSize) || 1;
                   const currentPage = Math.min(Math.max(lotLedgerPage, 1), totalPages);
                   const startIndex = (currentPage - 1) * pageSize;
@@ -1083,18 +1177,18 @@ const Records: React.FC = () => {
                               background: isEven ? '#ffffff' : '#f8f9fa'
                             }}
                           >
-                            <td style={{ padding: '4px 4px', textAlign: 'center', border: '1px solid #ddd', color: '#64748b' }}>
+                            <td style={{ padding: '2px 3px', textAlign: 'center', border: '1px solid #ddd', color: '#64748b', fontSize: '7.5pt' }}>
                               {startIndex + idx + 1}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', whiteSpace: 'nowrap', fontSize: '7.5pt' }}>
                               {entry.date ? new Date(entry.date).toLocaleDateString('en-GB') : '-'}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
                               <span style={{
                                 display: 'inline-block',
-                                padding: '1px 5px',
-                                borderRadius: '3px',
-                                fontSize: '7pt',
+                                padding: '1px 4px',
+                                borderRadius: '2px',
+                                fontSize: '6.5pt',
                                 fontWeight: 700,
                                 color: '#ffffff',
                                 background: entry.typeColor
@@ -1102,8 +1196,8 @@ const Records: React.FC = () => {
                                 {entry.typeLabel}
                               </span>
                             </td>
-                            <td style={{ padding: '4px 8px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 600 }}>
-                              <div>
+                            <td style={{ padding: '2px 5px', textAlign: 'left', border: '1px solid #ddd', fontWeight: 600, fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', flexWrap: 'nowrap' }}>
                                 {(() => {
                                   const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
                                   if (mType === 'production') {
@@ -1116,7 +1210,7 @@ const Records: React.FC = () => {
                                             color: '#7c3aed',
                                             cursor: 'pointer',
                                             textDecoration: 'underline',
-                                            fontSize: '8.5pt',
+                                            fontSize: '7.5pt',
                                             fontWeight: 700
                                           }}
                                           title="View Outturn Report"
@@ -1132,16 +1226,16 @@ const Records: React.FC = () => {
                                       (entry.toLocation && !['sale', 'direct_load', 'unknown'].includes(entry.toLocation.toLowerCase()) ? entry.toLocation : '') ||
                                       (entry.to && !['sale', 'direct_load', 'unknown'].includes(entry.to.toLowerCase()) ? entry.to : '') ||
                                       'Customer Sale';
-                                    return customer;
+                                    return <span>👤 {customer}</span>;
                                   }
                                   if (mType === 'purchase') {
-                                    const vendor = entry.partyName ||
-                                      (entry.fromLocation && !['purchase', 'unknown'].includes(entry.fromLocation.toLowerCase()) ? entry.fromLocation : '') ||
-                                      (entry.from && !['purchase', 'unknown'].includes(entry.from.toLowerCase()) ? entry.from : '') ||
-                                      'Rice Purchase';
+                                    const fromLocLower = (entry.fromLocation || entry.from || '').toLowerCase();
+                                    const partyLower = (entry.partyName || '').toLowerCase();
+                                    const isProd = fromLocLower.includes('production') || partyLower.includes('production');
+                                    const vendor = isProd ? 'Production Arrival' : (entry.partyName || 'Rice Purchase');
                                     return (
-                                      <span style={{ color: '#2563eb', fontWeight: 600 }}>
-                                        📦 {vendor}
+                                      <span style={{ color: isProd ? '#059669' : '#2563eb', fontWeight: 600 }}>
+                                        {isProd ? '🏭' : '📦'} {vendor}
                                       </span>
                                     );
                                   }
@@ -1151,45 +1245,46 @@ const Records: React.FC = () => {
                                     const srcBrand = entry.sourcePackaging?.brandName || entry.sourcePackagingBrand || entry.source_packaging_brand || sPkg?.brandName || '';
                                     const tgtBrand = entry.targetPackaging?.brandName || entry.targetPackagingBrand || entry.target_packaging_brand || tPkg?.brandName || '';
                                     const isOut = (entry.typeLabel || '').includes('OUT');
+                                    const otherBrand = isOut ? (tgtBrand || 'Target') : (srcBrand || 'Source');
                                     return (
-                                      <div>
-                                        <span style={{ color: isOut ? '#ea580c' : '#7c3aed', fontWeight: 600 }}>
-                                          🔄 Palti Conversion
+                                      <div className="lot-tooltip-wrap" style={{ cursor: 'pointer' }}>
+                                        <span style={{ color: isOut ? '#ea580c' : '#7c3aed', fontWeight: 700, fontSize: '7.5pt' }}>
+                                          🔄 Palti {isOut ? '→' : '←'} {otherBrand}
                                         </span>
-                                        {tgtBrand && isOut && (
-                                          <small style={{ color: '#64748b', fontSize: '7pt', display: 'block', marginTop: '1px' }}>
-                                            → To: {tgtBrand}
-                                          </small>
-                                        )}
-                                        {srcBrand && !isOut && (
-                                          <small style={{ color: '#64748b', fontSize: '7pt', display: 'block', marginTop: '1px' }}>
-                                            ← From: {srcBrand}
-                                          </small>
-                                        )}
+                                        <div className="lot-tooltip-content">
+                                          <div style={{ fontWeight: 800, color: isOut ? '#fb923c' : '#c084fc', marginBottom: '3px', borderBottom: '1px solid #475569', paddingBottom: '2px' }}>
+                                            🔄 Palti Conversion ({isOut ? 'Outward' : 'Inward'})
+                                          </div>
+                                          <div><b>Bill:</b> {entry.billNumber || '-'}</div>
+                                          <div><b>From:</b> {entry.fromLocation || entry.from || '-'} ({srcBrand || '-'})</div>
+                                          <div><b>To:</b> {entry.toLocation || entry.to || '-'} ({tgtBrand || '-'})</div>
+                                          {entry.sourceBags > 0 && <div><b>Source Bags:</b> {entry.sourceBags} Bags</div>}
+                                          {entry.conversionShortageKg > 0 && <div><b>Shortage:</b> {entry.conversionShortageKg} Kg</div>}
+                                          {entry.remarks && <div><b>Remarks:</b> {entry.remarks}</div>}
+                                        </div>
                                       </div>
                                     );
                                   }
                                   return entry.partyName || 'Internal Movement';
                                 })()}
+                                {entry.billNumber && !((entry.movementType || entry.typeLabel || '').toLowerCase().includes('palti')) && (
+                                  <span style={{ color: '#94a3b8', fontSize: '6.5pt', marginLeft: '3px' }}>
+                                    #{entry.billNumber}
+                                  </span>
+                                )}
                               </div>
-                              {entry.billNumber && (
-                                <small style={{ color: '#64748b', fontSize: '7pt', display: 'block', marginTop: '2px' }}>
-                                  Bill: {entry.billNumber}
-                                </small>
-                              )}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {(() => {
                                 const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
                                 if (mType === 'production') {
-                                  // Avoid repeating OUTT 1 if it is already shown in Particulars column
                                   const toGodown = entry.toLocation && entry.toLocation !== '-' ? entry.toLocation : (entry.to || 'Godown');
                                   return `Milling → ${toGodown}`;
                                 }
                                 return `${entry.fromLocation || entry.from || '-'} → ${entry.toLocation || entry.to || '-'}`;
                               })()}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {(() => {
                                 const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
                                 if (mType === 'palti' || mType.includes('palti')) {
@@ -1200,7 +1295,6 @@ const Records: React.FC = () => {
                                                  entry.sourcePackagingBrand || 
                                                  entry.source_packaging_brand || 
                                                  sPkg?.brandName || 
-                                                 (typeof entry.packaging === 'string' && entry.packaging.includes('→') ? entry.packaging.split('→')[0].trim() : '') ||
                                                  entry.packagingBrand || 
                                                  '';
                                   if (srcBrand === 'A1' && sPkg?.brandName) srcBrand = sPkg.brandName;
@@ -1216,7 +1310,6 @@ const Records: React.FC = () => {
                                                  entry.targetPackagingBrand || 
                                                  entry.target_packaging_brand || 
                                                  tPkg?.brandName || 
-                                                 (typeof entry.packaging === 'string' && entry.packaging.includes('→') ? entry.packaging.split('→')[1].trim() : '') ||
                                                  '';
                                   if (tgtBrand === 'A1' && tPkg?.brandName) tgtBrand = tPkg.brandName;
 
@@ -1227,42 +1320,55 @@ const Records: React.FC = () => {
                                                 entry.packagingKg || 
                                                 srcKg;
 
-                                  if (srcBrand && tgtBrand) {
-                                    return (
-                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                                        <span>{srcBrand} ({srcKg}k)</span>
-                                        <span style={{ color: '#7c3aed', fontWeight: 'bold' }}>→</span>
-                                        <span style={{ color: '#7c3aed', fontWeight: 700 }}>{tgtBrand} ({tgtKg}k)</span>
-                                      </span>
-                                    );
-                                  } else if (tgtBrand) {
-                                    return `${tgtBrand} (${tgtKg}k)`;
-                                  } else if (srcBrand) {
-                                    return `${srcBrand} (${srcKg}k)`;
-                                  }
+                                  const isSameBrand = srcBrand && tgtBrand && srcBrand.toLowerCase() === tgtBrand.toLowerCase();
+
+                                  return (
+                                    <div className="lot-tooltip-wrap" style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                      {isSameBrand ? (
+                                        <span>
+                                          <span style={{ fontWeight: 600 }}>{srcBrand}</span>
+                                          <span style={{ color: '#64748b', fontSize: '6.5pt', marginLeft: '2px' }}>({srcKg}k)</span>
+                                          {srcKg !== tgtKg && <span style={{ color: '#7c3aed', fontWeight: 700, marginLeft: '2px' }}>→ ({tgtKg}k)</span>}
+                                        </span>
+                                      ) : srcBrand && tgtBrand ? (
+                                        <span>
+                                          <span>{srcBrand} ({srcKg}k)</span>
+                                          <span style={{ color: '#7c3aed', fontWeight: 'bold', margin: '0 2px' }}>→</span>
+                                          <span style={{ color: '#7c3aed', fontWeight: 700 }}>{tgtBrand} ({tgtKg}k)</span>
+                                        </span>
+                                      ) : (
+                                        <span>{tgtBrand || srcBrand || '-'}{entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}</span>
+                                      )}
+                                      <div className="lot-tooltip-content">
+                                        <div style={{ fontWeight: 700, color: '#a78bfa', marginBottom: '2px' }}>📦 Packaging Conversion</div>
+                                        <div><b>From:</b> {srcBrand || 'Unknown'} ({srcKg} kg)</div>
+                                        <div><b>To:</b> {tgtBrand || 'Unknown'} ({tgtKg} kg)</div>
+                                      </div>
+                                    </div>
+                                  );
                                 }
                                 return `${entry.packagingBrand || entry.packaging?.brandName || '-'}${entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}`;
                               })()}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.inBags > 0 ? 700 : 'normal', color: entry.inBags > 0 ? '#15803d' : '#9ca3af' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.inBags > 0 ? 700 : 'normal', color: entry.inBags > 0 ? '#15803d' : '#9ca3af', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {entry.inBags > 0 ? `+${entry.inBags}` : '-'}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', color: entry.inQtls > 0 ? '#15803d' : '#9ca3af' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', color: entry.inQtls > 0 ? '#15803d' : '#9ca3af', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {entry.inQtls > 0 ? `+${entry.inQtls.toFixed(2)}` : '-'}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.outBags > 0 ? 700 : 'normal', color: entry.outBags > 0 ? '#b91c1c' : '#9ca3af' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.outBags > 0 ? 700 : 'normal', color: entry.outBags > 0 ? '#b91c1c' : '#9ca3af', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {entry.outBags > 0 ? `-${entry.outBags}` : '-'}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', color: entry.outQtls > 0 ? '#b91c1c' : '#9ca3af' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', color: entry.outQtls > 0 ? '#b91c1c' : '#9ca3af', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {entry.outQtls > 0 ? `-${entry.outQtls.toFixed(2)}` : '-'}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 800, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 800, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {entry.runningBags}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 700, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 700, color: '#1e3a8a', background: isEven ? '#f0f9ff' : '#e0f2fe', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {entry.runningQtls.toFixed(2)}
                             </td>
-                            <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt' }}>
+                            <td style={{ padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7pt', whiteSpace: 'nowrap' }}>
                               {entry.lorryNumber || entry.remarks || '-'}
                             </td>
                           </tr>
