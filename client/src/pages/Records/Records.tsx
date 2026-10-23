@@ -1145,26 +1145,27 @@ const Records: React.FC = () => {
           <table style={{
             width: '100%',
             borderCollapse: 'collapse',
-            fontFamily: "'Calibri', 'Arial', sans-serif",
-            fontSize: '9pt',
+            fontFamily: "'Segoe UI', 'Calibri', 'Arial', sans-serif",
+            fontSize: '7.5pt',
+            lineHeight: 1.15,
             border: '1px solid #ddd',
-            marginBottom: '8px'
+            marginBottom: '6px'
           }}>
             <thead>
-              <tr style={{ background: '#4a90e2', color: '#ffffff' }}>
-                <th style={{ padding: '3px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>#</th>
-                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>Date</th>
-                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>Type</th>
-                <th style={{ padding: '3px 6px', textAlign: 'left', border: '1px solid #ddd', fontSize: '7.5pt' }}>Particulars / Party / Outturn</th>
-                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>From → To</th>
-                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>Brand / Pkg</th>
-                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6', fontSize: '7.5pt' }}>In Bags</th>
-                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6', fontSize: '7.5pt' }}>In Qtls</th>
-                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444', fontSize: '7.5pt' }}>Out Bags</th>
-                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444', fontSize: '7.5pt' }}>Out Qtls</th>
-                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981', fontSize: '7.5pt' }}>Bal Bags</th>
-                <th style={{ padding: '3px 5px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981', fontSize: '7.5pt' }}>Bal Qtls</th>
-                <th style={{ padding: '3px 5px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt' }}>Lorry / Ref</th>
+              <tr style={{ background: '#4a90e2', color: '#ffffff', height: '22px' }}>
+                <th style={{ width: '26px', padding: '2px 2px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7pt' }}>#</th>
+                <th style={{ width: '70px', padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7pt', whiteSpace: 'nowrap' }}>Date</th>
+                <th style={{ width: '60px', padding: '2px 3px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7pt', whiteSpace: 'nowrap' }}>Type</th>
+                <th style={{ padding: '2px 5px', textAlign: 'left', border: '1px solid #ddd', fontSize: '7pt' }}>Particulars / Party / Outturn</th>
+                <th style={{ width: '85px', padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7pt', whiteSpace: 'nowrap' }}>From → To</th>
+                <th style={{ width: '130px', padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7pt', whiteSpace: 'nowrap' }}>Brand / Pkg</th>
+                <th style={{ width: '52px', padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6', fontSize: '7pt', whiteSpace: 'nowrap' }}>In Bags</th>
+                <th style={{ width: '58px', padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', background: '#3b82f6', fontSize: '7pt', whiteSpace: 'nowrap' }}>In Qtls</th>
+                <th style={{ width: '52px', padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444', fontSize: '7pt', whiteSpace: 'nowrap' }}>Out Bags</th>
+                <th style={{ width: '58px', padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', background: '#ef4444', fontSize: '7pt', whiteSpace: 'nowrap' }}>Out Qtls</th>
+                <th style={{ width: '55px', padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981', fontSize: '7pt', whiteSpace: 'nowrap' }}>Bal Bags</th>
+                <th style={{ width: '58px', padding: '2px 4px', textAlign: 'right', border: '1px solid #ddd', background: '#10b981', fontSize: '7pt', whiteSpace: 'nowrap' }}>Bal Qtls</th>
+                <th style={{ width: '70px', padding: '2px 3px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7pt', whiteSpace: 'nowrap' }}>Lorry / Ref</th>
               </tr>
             </thead>
             <tbody>
@@ -1190,7 +1191,8 @@ const Records: React.FC = () => {
                           <tr
                             key={'ledger-row-' + (entry.id || idx)}
                             style={{
-                              background: isEven ? '#ffffff' : '#f8f9fa'
+                              background: isEven ? '#ffffff' : '#f8f9fa',
+                              height: '22px'
                             }}
                           >
                             <td style={{ padding: '2px 3px', textAlign: 'center', border: '1px solid #ddd', color: '#64748b', fontSize: '7.5pt' }}>
