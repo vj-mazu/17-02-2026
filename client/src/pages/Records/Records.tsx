@@ -625,16 +625,19 @@ const Records: React.FC = () => {
   const [expandedLotLedgerItem, setExpandedLotLedgerItem] = useState<any | null>(null);
   const [lotLedgerSearch, setLotLedgerSearch] = useState('');
   const [lotLedgerPage, setLotLedgerPage] = useState(1);
+  const [selectedPaltiDetail, setSelectedPaltiDetail] = useState<any | null>(null);
 
   const toggleInlineLotLedger = (lotKey: string, item: any) => {
     if (expandedLotLedgerKey === lotKey) {
       setExpandedLotLedgerKey(null);
       setExpandedLotLedgerItem(null);
+      setSelectedPaltiDetail(null);
     } else {
       setExpandedLotLedgerKey(lotKey);
       setExpandedLotLedgerItem(item);
       setLotLedgerSearch('');
       setLotLedgerPage(1);
+      setSelectedPaltiDetail(null);
     }
   };
 
@@ -942,120 +945,199 @@ const Records: React.FC = () => {
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.08)'
       }}>
         <style>{`
-          .lot-tooltip-wrap {
+          .lot-ledger-table tr:hover {
+            position: relative;
+            z-index: 50;
+          }
+          .lot-ledger-table tr:hover td {
+            position: relative;
+          }
+          .lot-tooltip-anchor {
             position: relative;
             display: inline-flex;
             align-items: center;
+          }
+          .lot-tooltip-anchor:hover {
+            z-index: 999999;
           }
           .lot-tooltip-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 13px;
-            height: 13px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             background: #e0e7ff;
             color: #4f46e5;
             font-size: 7pt;
             font-weight: 700;
             cursor: pointer;
+            border: 1px solid #c7d2fe;
             margin-left: 4px;
-            vertical-align: middle;
+            padding: 0;
+            line-height: 1;
             transition: all 0.15s ease;
             user-select: none;
           }
           .lot-tooltip-icon:hover {
             background: #7c3aed;
             color: #ffffff;
-            transform: scale(1.08);
+            border-color: #6d28d9;
+            transform: scale(1.1);
           }
-          .lot-tooltip-wrap .lot-tooltip-content {
+          .lot-tooltip-anchor .lot-tooltip-content {
             visibility: hidden;
             opacity: 0;
             transition: opacity 0.15s ease;
             position: absolute;
-            top: calc(100% + 4px);
-            left: 0;
+            top: calc(100% + 5px);
+            right: 0;
             background: #0f172a;
             color: #f8fafc;
-            padding: 5px 8px;
-            border-radius: 5px;
+            padding: 6px 10px;
+            border-radius: 6px;
             font-size: 7pt;
-            line-height: 1.35;
+            line-height: 1.4;
             white-space: nowrap;
-            box-shadow: 0 8px 18px -2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12);
-            z-index: 999999;
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.15);
+            z-index: 9999999;
             pointer-events: none;
             text-align: left;
             font-weight: normal;
           }
-          .lot-tooltip-icon:hover + .lot-tooltip-content {
+          .lot-tooltip-anchor:hover .lot-tooltip-content {
             visibility: visible;
             opacity: 1;
           }
-          .lot-tooltip-wrap .lot-tooltip-content::after {
+          .lot-tooltip-anchor .lot-tooltip-content::after {
             content: "";
             position: absolute;
             bottom: 100%;
-            left: 14px;
-            border-width: 4px;
+            right: 5px;
+            border-width: 5px;
             border-style: solid;
             border-color: transparent transparent #0f172a transparent;
           }
         `}</style>
         {/* Ledger Header with title and collapse button */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
-          color: '#ffffff',
-          padding: '8px 14px',
-          borderRadius: '6px',
-          marginBottom: '10px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '1.1rem' }}>📋</span>
-            <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>
-              Lot History Ledger — {currentLot.variety || '-'}
-            </span>
-            <span style={{ fontSize: '0.8rem', color: '#e0e7ff' }}>
-              ({currentLot.category || currentLot.productType || 'Rice'} • {currentLot.location || currentLot.locationCode || '-'} • {currentLot.packaging || currentLot.product || '-'} {currentLot.bagSizeKg || 26}kg)
-            </span>
-            {currentLot.daysOld !== undefined && currentLot.daysOld !== null && (
-              <span style={{
-                background: 'rgba(255, 255, 255, 0.25)',
-                padding: '1px 6px',
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                fontWeight: 700
-              }}>
-                ⏱️ {currentLot.daysOld} Days Old
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setExpandedLotLedgerKey(null);
-              setExpandedLotLedgerItem(null);
-            }}
-            style={{
-              background: 'rgba(255, 255, 255, 0.2)',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '3px 8px',
-              color: 'white',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              fontSize: '0.8rem'
-            }}
-            title="Collapse Ledger"
-          >
-            ✕ Close
-          </button>
-        </div>
+        {(() => {
+          const lotCreationDateStr = (() => {
+            const raw = currentLot.createdDate || currentLot.createdAt || currentLot.lotDate || currentLot.millingDate || currentLot.arrivalDate;
+            if (raw) {
+              try {
+                const d = new Date(raw);
+                if (!isNaN(d.getTime())) {
+                  return d.toLocaleDateString('en-GB');
+                }
+              } catch (e) {}
+              const s = String(raw).split('T')[0];
+              if (s.includes('-')) {
+                const parts = s.split('-');
+                if (parts.length === 3 && parts[0].length === 4) {
+                  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                }
+              }
+            }
+            if (lotHistoryData.entries && lotHistoryData.entries.length > 0) {
+              const firstEntryDate = lotHistoryData.entries[0]?.date;
+              if (firstEntryDate) {
+                try {
+                  const d = new Date(firstEntryDate);
+                  if (!isNaN(d.getTime())) {
+                    return d.toLocaleDateString('en-GB');
+                  }
+                } catch (e) {}
+              }
+            }
+            if (currentLot.daysOld !== undefined && currentLot.daysOld !== null) {
+              try {
+                const baseDateStr = paltiDate || new Date().toISOString().split('T')[0];
+                const activeD = new Date(baseDateStr.split('T')[0] + 'T00:00:00');
+                const calcD = new Date(activeD.getTime() - currentLot.daysOld * 86400000);
+                if (!isNaN(calcD.getTime())) {
+                  return calcD.toLocaleDateString('en-GB');
+                }
+              } catch (e) {}
+            }
+            return null;
+          })();
+
+          return (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+              color: '#ffffff',
+              padding: '8px 14px',
+              borderRadius: '6px',
+              marginBottom: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '1.1rem' }}>📋</span>
+                <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+                  Lot History Ledger — {currentLot.variety || '-'}
+                </span>
+                <span style={{ fontSize: '0.8rem', color: '#e0e7ff' }}>
+                  ({currentLot.category || currentLot.productType || 'Rice'} • {currentLot.location || currentLot.locationCode || '-'} • {currentLot.packaging || currentLot.product || '-'} {currentLot.bagSizeKg || 26}kg)
+                </span>
+                {lotCreationDateStr ? (
+                  <span style={{
+                    background: 'rgba(255, 255, 255, 0.22)',
+                    border: '1px solid rgba(255, 255, 255, 0.35)',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}>
+                    <span>📅 Lot Created:</span>
+                    <b style={{ color: '#fef08a' }}>{lotCreationDateStr}</b>
+                    {currentLot.daysOld !== undefined && currentLot.daysOld !== null && (
+                      <span style={{ color: '#e0e7ff', marginLeft: '2px' }}>
+                        • ⏱️ {currentLot.daysOld} Days Old
+                      </span>
+                    )}
+                  </span>
+                ) : currentLot.daysOld !== undefined && currentLot.daysOld !== null ? (
+                  <span style={{
+                    background: 'rgba(255, 255, 255, 0.25)',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700
+                  }}>
+                    ⏱️ {currentLot.daysOld} Days Old
+                  </span>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedLotLedgerKey(null);
+                  setExpandedLotLedgerItem(null);
+                  setSelectedPaltiDetail(null);
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 8px',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '0.8rem'
+                }}
+                title="Collapse Ledger"
+              >
+                ✕ Close
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Compact Summary Metric Bar */}
         <div style={{
@@ -1175,7 +1257,7 @@ const Records: React.FC = () => {
 
         {/* Exact Table (Kunchinittu Ledger Styling) */}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{
+          <table className="lot-ledger-table" style={{
             width: '100%',
             borderCollapse: 'collapse',
             fontFamily: "'Segoe UI', 'Calibri', 'Arial', sans-serif",
@@ -1344,15 +1426,39 @@ const Records: React.FC = () => {
                                   if (mType === 'palti' || mType.includes('palti')) {
                                     const sPkg = (packagings || []).find((p: any) => String(p.id) === String(entry.sourcePackagingId || entry.source_packaging_id));
                                     const tPkg = (packagings || []).find((p: any) => String(p.id) === String(entry.targetPackagingId || entry.target_packaging_id));
-                                    const srcBrand = entry.sourcePackaging?.brandName || entry.sourcePackagingBrand || entry.source_packaging_brand || sPkg?.brandName || '';
-                                    const tgtBrand = entry.targetPackaging?.brandName || entry.targetPackagingBrand || entry.target_packaging_brand || tPkg?.brandName || '';
+                                    let srcBrand = entry.sourcePackaging?.brandName || entry.sourcePackagingBrand || entry.source_packaging_brand || sPkg?.brandName || '';
+                                    if (srcBrand === 'A1' && sPkg?.brandName) srcBrand = sPkg.brandName;
+                                    const srcKg = entry.sourcePackaging?.allottedKg || entry.sourcePackagingKg || entry.source_packaging_kg || sPkg?.allottedKg || entry.bagSizeKg || 26;
+
+                                    let tgtBrand = entry.targetPackaging?.brandName || entry.targetPackagingBrand || entry.target_packaging_brand || tPkg?.brandName || '';
+                                    if (tgtBrand === 'A1' && tPkg?.brandName) tgtBrand = tPkg.brandName;
+                                    const tgtKg = entry.targetPackaging?.allottedKg || entry.targetPackagingKg || entry.target_packaging_kg || tPkg?.allottedKg || entry.packagingKg || srcKg;
+
                                     const isOut = (entry.typeLabel || '').includes('OUT');
                                     const otherBrand = isOut ? (tgtBrand || 'Target') : (srcBrand || 'Source');
                                     const entryShortage = Number(entry.shortageKg || entry.conversionShortageKg || 0);
-                                    const paltiTitle = `Palti Conversion (${isOut ? 'Outward' : 'Inward'})\nBill: ${entry.billNumber || '-'}\nFrom: ${entry.fromLocation || entry.from || '-'} (${srcBrand || '-'})\nTo: ${entry.toLocation || entry.to || '-'} (${tgtBrand || '-'})${entry.sourceBags > 0 ? `\nSource Bags: ${entry.sourceBags} Bags` : ''}${entryShortage > 0 ? `\nShortage: ${entryShortage.toFixed(1)} Kg` : ''}${entry.remarks ? `\nRemarks: ${entry.remarks}` : ''}`;
+                                    const paltiTitle = `Palti Conversion (${isOut ? 'Outward' : 'Inward'})\nBill: ${entry.billNumber || '-'}\nFrom: ${entry.fromLocation || entry.from || '-'} (${srcBrand || '-'})\nTo: ${entry.toLocation || entry.to || '-'} (${tgtBrand || '-'})${entry.sourceBags > 0 ? `\nSource Bags: ${entry.sourceBags} Bags` : ''}${entryShortage > 0 ? `\nShortage: ${entryShortage.toFixed(1)} Kg` : ''}${entry.remarks ? `\nRemarks: ${entry.remarks}` : ''}\n\n👉 Click ℹ️ for details`;
+
+                                    const openDetailModal = (e: React.MouseEvent) => {
+                                      e.stopPropagation();
+                                      setSelectedPaltiDetail({
+                                        ...entry,
+                                        isOut,
+                                        srcBrand,
+                                        tgtBrand,
+                                        srcKg,
+                                        tgtKg,
+                                        entryShortage
+                                      });
+                                    };
+
                                     return (
-                                      <div className="lot-tooltip-wrap" title={paltiTitle} style={{ cursor: 'pointer' }}>
-                                        <span style={{ color: isOut ? '#ea580c' : '#7c3aed', fontWeight: 700, fontSize: '7.5pt' }}>
+                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', position: 'relative' }}>
+                                        <span
+                                          onClick={openDetailModal}
+                                          style={{ color: isOut ? '#ea580c' : '#7c3aed', fontWeight: 700, fontSize: '7.5pt', cursor: 'pointer' }}
+                                          title={paltiTitle}
+                                        >
                                           🔄 Palti {isOut ? '→' : '←'} {otherBrand}
                                         </span>
                                         {entryShortage > 0 && (
@@ -1360,17 +1466,27 @@ const Records: React.FC = () => {
                                             ⚠️ {entryShortage.toFixed(1)}k short
                                           </span>
                                         )}
-                                        <span className="lot-tooltip-icon" title="View conversion details">i</span>
-                                        <div className="lot-tooltip-content">
-                                          <div style={{ fontWeight: 800, color: isOut ? '#fb923c' : '#c084fc', marginBottom: '3px', borderBottom: '1px solid #475569', paddingBottom: '2px' }}>
-                                            🔄 Palti Conversion ({isOut ? 'Outward' : 'Inward'})
+                                        <div className="lot-tooltip-anchor">
+                                          <button
+                                            type="button"
+                                            className="lot-tooltip-icon"
+                                            title="Click to view conversion details"
+                                            onClick={openDetailModal}
+                                          >
+                                            i
+                                          </button>
+                                          <div className="lot-tooltip-content">
+                                            <div style={{ fontWeight: 800, color: isOut ? '#fb923c' : '#c084fc', marginBottom: '3px', borderBottom: '1px solid #475569', paddingBottom: '2px' }}>
+                                              🔄 Palti Conversion ({isOut ? 'Outward' : 'Inward'})
+                                            </div>
+                                            <div><b>Bill:</b> {entry.billNumber || '-'}</div>
+                                            <div><b>From:</b> {entry.fromLocation || entry.from || '-'} ({srcBrand || '-'})</div>
+                                            <div><b>To:</b> {entry.toLocation || entry.to || '-'} ({tgtBrand || '-'})</div>
+                                            {entry.sourceBags > 0 && <div><b>Source Bags:</b> {entry.sourceBags} Bags</div>}
+                                            {entryShortage > 0 && <div style={{ color: '#fde047', fontWeight: 700 }}><b>Shortage:</b> {entryShortage.toFixed(1)} Kg ({(entryShortage / 100).toFixed(2)} Qtls)</div>}
+                                            {entry.remarks && <div><b>Remarks:</b> {entry.remarks}</div>}
+                                            <div style={{ marginTop: '3px', fontSize: '6pt', color: '#94a3b8', textAlign: 'right' }}>Click for full view</div>
                                           </div>
-                                          <div><b>Bill:</b> {entry.billNumber || '-'}</div>
-                                          <div><b>From:</b> {entry.fromLocation || entry.from || '-'} ({srcBrand || '-'})</div>
-                                          <div><b>To:</b> {entry.toLocation || entry.to || '-'} ({tgtBrand || '-'})</div>
-                                          {entry.sourceBags > 0 && <div><b>Source Bags:</b> {entry.sourceBags} Bags</div>}
-                                          {entryShortage > 0 && <div style={{ color: '#fde047', fontWeight: 700 }}><b>Shortage:</b> {entryShortage.toFixed(1)} Kg ({(entryShortage / 100).toFixed(2)} Qtls)</div>}
-                                          {entry.remarks && <div><b>Remarks:</b> {entry.remarks}</div>}
                                         </div>
                                       </div>
                                     );
@@ -1567,6 +1683,150 @@ const Records: React.FC = () => {
               >
                 Next →
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Full Palti Details Modal Dialog */}
+        {selectedPaltiDetail && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(15, 23, 42, 0.55)',
+              zIndex: 99999999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(2px)'
+            }}
+            onClick={() => setSelectedPaltiDetail(null)}
+          >
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '8px',
+                width: '390px',
+                maxWidth: '92vw',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.35), 0 8px 10px -6px rgba(0, 0, 0, 0.2)',
+                border: '1px solid #cbd5e1',
+                overflow: 'hidden',
+                fontFamily: "'Segoe UI', sans-serif"
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{
+                background: selectedPaltiDetail.isOut ? '#ea580c' : '#7c3aed',
+                color: '#ffffff',
+                padding: '10px 14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ fontWeight: 800, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🔄</span> Palti Conversion ({selectedPaltiDetail.isOut ? 'Outward' : 'Inward'})
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPaltiDetail(null)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    padding: '2px 7px'
+                  }}
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ padding: '12px 14px', fontSize: '8.5pt', lineHeight: 1.6, color: '#1e293b' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '5px 0', color: '#64748b', fontWeight: 600, width: '110px' }}>Date:</td>
+                      <td style={{ padding: '5px 0', fontWeight: 700 }}>
+                        {selectedPaltiDetail.date ? new Date(selectedPaltiDetail.date).toLocaleDateString('en-GB') : '-'}
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '5px 0', color: '#64748b', fontWeight: 600 }}>Bill / Ref:</td>
+                      <td style={{ padding: '5px 0', fontWeight: 600 }}>
+                        {selectedPaltiDetail.billNumber || '-'}
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '5px 0', color: '#64748b', fontWeight: 600 }}>From Location:</td>
+                      <td style={{ padding: '5px 0', fontWeight: 600 }}>
+                        {selectedPaltiDetail.fromLocation || selectedPaltiDetail.from || '-'} {selectedPaltiDetail.srcBrand ? `(${selectedPaltiDetail.srcBrand})` : ''}
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '5px 0', color: '#64748b', fontWeight: 600 }}>To Location:</td>
+                      <td style={{ padding: '5px 0', fontWeight: 600 }}>
+                        {selectedPaltiDetail.toLocation || selectedPaltiDetail.to || '-'} {selectedPaltiDetail.tgtBrand ? `(${selectedPaltiDetail.tgtBrand})` : ''}
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '5px 0', color: '#64748b', fontWeight: 600 }}>Packaging:</td>
+                      <td style={{ padding: '5px 0', fontWeight: 600 }}>
+                        {selectedPaltiDetail.srcBrand || 'Unknown'} ({selectedPaltiDetail.srcKg || 26}k) → {selectedPaltiDetail.tgtBrand || 'Unknown'} ({selectedPaltiDetail.tgtKg || 26}k)
+                      </td>
+                    </tr>
+                    {selectedPaltiDetail.sourceBags > 0 && (
+                      <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '5px 0', color: '#64748b', fontWeight: 600 }}>Source Bags:</td>
+                        <td style={{ padding: '5px 0', fontWeight: 700, color: '#0f172a' }}>
+                          {selectedPaltiDetail.sourceBags} Bags
+                        </td>
+                      </tr>
+                    )}
+                    {selectedPaltiDetail.entryShortage > 0 && (
+                      <tr style={{ borderBottom: '1px solid #fef3c7', background: '#fffbeb' }}>
+                        <td style={{ padding: '5px 0', color: '#b45309', fontWeight: 700 }}>⚠️ Shortage:</td>
+                        <td style={{ padding: '5px 0', fontWeight: 800, color: '#b45309' }}>
+                          {selectedPaltiDetail.entryShortage.toFixed(1)} Kg ({(selectedPaltiDetail.entryShortage / 100).toFixed(2)} Qtls)
+                        </td>
+                      </tr>
+                    )}
+                    {selectedPaltiDetail.remarks && (
+                      <tr>
+                        <td style={{ padding: '5px 0', color: '#64748b', fontWeight: 600 }}>Remarks:</td>
+                        <td style={{ padding: '5px 0', fontStyle: 'italic', color: '#475569' }}>
+                          {selectedPaltiDetail.remarks}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '8px 14px', textAlign: 'right', borderTop: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPaltiDetail(null)}
+                  style={{
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 14px',
+                    fontSize: '8pt',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}
