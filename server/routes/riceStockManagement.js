@@ -143,6 +143,8 @@ router.get('/movements', auth, async (req, res) => {
                 rsm.status as "status",
                 rsm.created_at as "createdAt",
                 rsm.updated_at as "updatedAt",
+                rsm.outturn_id as "outturnId",
+                o.code as "outturnCode",
                 p1."brandName" as "packagingBrand",
                 p1."allottedKg" as "packagingKg",
                 p2."brandName" as "sourcePackagingBrand",
@@ -150,6 +152,7 @@ router.get('/movements', auth, async (req, res) => {
                 p3."brandName" as "targetPackagingBrand",
                 p3."allottedKg" as "targetPackagingKg"
             FROM rice_stock_movements rsm
+            LEFT JOIN outturns o ON rsm.outturn_id = o.id
             LEFT JOIN packagings p1 ON rsm.packaging_id = p1.id
             LEFT JOIN packagings p2 ON rsm.source_packaging_id = p2.id
             LEFT JOIN packagings p3 ON rsm.target_packaging_id = p3.id

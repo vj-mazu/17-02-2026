@@ -930,7 +930,7 @@ const Records: React.FC = () => {
       closingQtls: runningQtls,
       totalShortageKg: totalShortage
     };
-  }, [expandedLotLedgerItem, riceStockData, lotLedgerSearch]);
+  }, [expandedLotLedgerItem, riceStockData, lotLedgerSearch, outturns]);
 
   // Renders the Lot History Ledger inline directly below the expanded lot row
   const renderInlineLotLedger = (lotItem: any) => {
@@ -1335,42 +1335,55 @@ const Records: React.FC = () => {
                                   const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
                                   const fromLocLower = (entry.fromLocation || entry.from || '').toLowerCase();
                                   const partyLower = (entry.partyName || '').toLowerCase();
-                                  const isProd = mType === 'production' || entry.typeLabel === 'PRODUCTION' || fromLocLower.includes('production') || partyLower.includes('production');
+                                  const isProd = mType === 'production' || entry.typeLabel === 'PRODUCTION' || fromLocLower.includes('production') || partyLower.includes('production') || (entry.fromLocation || entry.from || '').toLowerCase().includes('milling');
 
                                   if (isProd) {
                                     let outturnCode = entry.outturn?.code ||
-                                      entry.outturnNumber ||
-                                      entry.outturn_number ||
                                       entry.outturnCode ||
                                       entry.outturn_code ||
-                                      (typeof entry.outturn === 'string' && entry.outturn.trim() ? entry.outturn.trim() : null) ||
-                                      (entry.from?.startsWith('OUTT') ? entry.from : null) ||
-                                      (entry.fromLocation?.startsWith('OUTT') ? entry.fromLocation : null);
+                                      entry.outturnNumber ||
+                                      entry.outturn_number ||
+                                      (typeof entry.outturn === 'string' && entry.outturn.trim() && !['production', 'milling', 'unknown', '-'].includes(entry.outturn.trim().toLowerCase()) ? entry.outturn.trim() : null);
 
-                                    // Look up by outturnId in outturns list
-                                    if (!outturnCode && (entry.outturnId || entry.outturn_id || entry.fromOutturnId || entry.from_outturn_id)) {
-                                      const oId = entry.outturnId || entry.outturn_id || entry.fromOutturnId || entry.from_outturn_id;
-                                      const found = (outturns || []).find((o: any) => String(o.id) === String(oId));
+                                    // 1. Check entry.from / fromLocation if it represents an outturn code
+                                    if (!outturnCode) {
+                                      const rawFrom = (entry.fromLocation || entry.from || '').trim();
+                                      if (rawFrom && !['production', 'milling', 'purchase', 'unknown', '-', ''].includes(rawFrom.toLowerCase())) {
+                                        outturnCode = rawFrom;
+                                      }
+                                    }
+
+                                    // 2. Look up by outturnId in outturns list
+                                    const oId = entry.outturnId || entry.outturn_id || entry.fromOutturnId || entry.from_outturn_id;
+                                    if (!outturnCode && oId && outturns && outturns.length > 0) {
+                                      const found = outturns.find((o: any) => String(o.id) === String(oId));
                                       if (found) outturnCode = found.code || found.outturnNumber;
                                     }
 
-                                    // Check remarks, billNumber, or from for OUTT pattern
+                                    // 3. Check remarks, billNumber, partyName, or from for outturn patterns (OT-..., OUT-..., OUTT-..., etc.)
                                     if (!outturnCode) {
-                                      const matchRemarks = (entry.remarks || '').match(/OUTT[-_\s0-9A-Za-z]+/i);
-                                      if (matchRemarks) outturnCode = matchRemarks[0].trim();
-                                    }
-                                    if (!outturnCode) {
-                                      const matchBill = (entry.billNumber || '').match(/OUTT[-_\s0-9A-Za-z]+/i);
-                                      if (matchBill) outturnCode = matchBill[0].trim();
-                                    }
-                                    if (!outturnCode) {
-                                      const matchFrom = (entry.from || entry.fromLocation || '').match(/OUTT[-_\s0-9A-Za-z]+/i);
-                                      if (matchFrom) outturnCode = matchFrom[0].trim();
+                                      const textToSearch = `${entry.remarks || ''} ${entry.billNumber || ''} ${entry.partyName || ''} ${entry.from || ''} ${entry.fromLocation || ''}`;
+                                      const matchOut = textToSearch.match(/(?:OUTT|OUT|OT)[-_\s]?[0-9A-Za-z]+/i);
+                                      if (matchOut) outturnCode = matchOut[0].trim();
                                     }
 
-                                    // Match by variety & date from loaded outturns
-                                    if (!outturnCode && entry.variety && outturns && outturns.length > 0) {
-                                      const entryVarClean = (entry.variety || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                                    // 4. Check if any loaded outturn's code appears in the variety or currentLot.variety (e.g. 'DEC24' in 'DEC24 JSR RICE RAW')
+                                    if (!outturnCode && outturns && outturns.length > 0) {
+                                      const combinedVar = `${entry.variety || ''} ${currentLot.variety || ''}`.toLowerCase();
+                                      const matchedByCode = outturns.find((o: any) => {
+                                        if (!o.code) return false;
+                                        const cleanCode = o.code.toLowerCase().trim();
+                                        if (cleanCode.length < 2) return false;
+                                        return combinedVar.includes(cleanCode);
+                                      });
+                                      if (matchedByCode) {
+                                        outturnCode = matchedByCode.code || matchedByCode.outturnNumber;
+                                      }
+                                    }
+
+                                    // 5. Match by variety name and/or date in outturns
+                                    if (!outturnCode && outturns && outturns.length > 0) {
+                                      const entryVarClean = (entry.variety || currentLot.variety || '').toLowerCase().replace(/[^a-z0-9]/g, '');
                                       const matchedOut = outturns.find((o: any) => {
                                         const oVarClean = (o.allottedVariety || o.variety || '').toLowerCase().replace(/[^a-z0-9]/g, '');
                                         const varMatches = oVarClean && entryVarClean && (entryVarClean.includes(oVarClean) || oVarClean.includes(entryVarClean));
@@ -1383,6 +1396,19 @@ const Records: React.FC = () => {
                                       });
                                       if (matchedOut) {
                                         outturnCode = matchedOut.code || matchedOut.outturnNumber;
+                                      }
+                                    }
+
+                                    // 6. Check if currentLot has an outturn code directly
+                                    if (!outturnCode && (currentLot.outturnCode || currentLot.outturnNumber || currentLot.outturn)) {
+                                      outturnCode = currentLot.outturnCode || currentLot.outturnNumber || (typeof currentLot.outturn === 'string' ? currentLot.outturn : currentLot.outturn?.code);
+                                    }
+
+                                    // 7. Extract outturn code from variety string if it starts with a batch/lot code (e.g. 'DEC24' in 'DEC24 JSR RICE RAW')
+                                    if (!outturnCode) {
+                                      const varParts = (entry.variety || currentLot.variety || '').trim().split(/\s+/);
+                                      if (varParts.length > 0 && /^[A-Z0-9_-]{2,15}$/i.test(varParts[0]) && !['RICE', 'RAW', 'STEAM', 'BOILER', 'BROKEN', 'BRAN', 'NEW', 'OLD', 'A1'].includes(varParts[0].toUpperCase())) {
+                                        outturnCode = varParts[0];
                                       }
                                     }
 
@@ -1840,16 +1866,19 @@ const Records: React.FC = () => {
     setActiveTab('outturn-report');
 
     // Find the outturn by code and select it
+    const cleanTarget = (outturnCode || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const outturn = outturns.find((o: any) =>
       (o.code === outturnCode) ||
-      (o.outturnNumber === outturnCode)
+      (o.outturnNumber === outturnCode) ||
+      (cleanTarget && (o.code || '').toLowerCase().replace(/[^a-z0-9]/g, '') === cleanTarget) ||
+      (cleanTarget && (o.code || '').toLowerCase().includes(cleanTarget))
     );
 
     if (outturn) {
       setSelectedOutturnId(outturn.id.toString());
-      toast.success(`Navigated to outturn: ${outturnCode}`);
+      toast.success(`Navigated to outturn: ${outturn.code || outturnCode}`);
     } else {
-      toast.warning(`Outturn ${outturnCode} not found`);
+      toast.info(`Opened Outturn Report (${outturnCode})`);
     }
   };
 
@@ -2055,8 +2084,8 @@ const Records: React.FC = () => {
   }, [activeTab, showAllRecords]);
 
   useEffect(() => {
+    fetchOutturns(); // Always ensure outturns are loaded for hyperlinks
     if (activeTab === 'outturn-report') {
-      fetchOutturns();
       fetchPackagings();
       fetchLocationsData();
       fetchRiceStockLocations();
@@ -2064,10 +2093,8 @@ const Records: React.FC = () => {
       fetchRiceStock();
       fetchPackagings();
       fetchRiceStockLocations();
-      fetchOutturns(); // Fetch outturns for hyperlinks to work
     } else if (activeTab === 'stock') {
       fetchAllRiceProductions();
-      fetchOutturns(); // Fetch outturns for hyperlinks to work
     }
   }, [activeTab]);
 
@@ -3239,7 +3266,11 @@ const Records: React.FC = () => {
             partyName: null,
             billNumber: prod.billNumber,
             lorryNumber: prod.lorryNumber,
-            remarks: prod.remarks || null
+            remarks: prod.remarks || null,
+            outturn: prod.outturn,
+            outturnCode: prod.outturn?.code || prod.outturnNumber || prod.outturn_code,
+            outturnNumber: prod.outturn?.code || prod.outturnNumber || prod.outturn_code,
+            outturnId: prod.outturnId || prod.outturn_id || prod.outturn?.id
           })),
 
           // Purchase/Sale/Palti entries
@@ -3367,7 +3398,8 @@ const Records: React.FC = () => {
               ratePerBag: movement.ratePerBag || movement.rate_per_bag,
               totalAmount: movement.totalAmount || movement.total_amount,
               remarks: movement.remarks || movement.REMARKS || null,
-              outturn: movement.outturn,
+              outturn: movement.outturn || (movement.outturnCode ? { code: movement.outturnCode, id: movement.outturnId } : null),
+              outturnCode: movement.outturnCode || movement.outturn_code || movement.outturnNumber || movement.outturn_number,
               outturnNumber: movement.outturnNumber || movement.outturn_number || movement.outturnCode || movement.outturn_code,
               outturnId: movement.outturnId || movement.outturn_id || movement.fromOutturnId || movement.from_outturn_id
             };
