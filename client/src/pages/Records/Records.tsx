@@ -749,18 +749,34 @@ const Records: React.FC = () => {
       return 6;
     };
 
-    // Chronological order (oldest first) with business sequence priority on same date
-    const sorted = [...matching].sort((a, b) => {
-      const timeA = new Date(a.date).getTime();
-      const timeB = new Date(b.date).getTime();
-      if (timeA !== timeB) return timeA - timeB;
+    // Helper to get pure calendar date string YYYY-MM-DD
+    const getCalendarDate = (d: any) => {
+      if (!d) return '';
+      if (typeof d === 'string') {
+        return d.includes('T') ? d.split('T')[0].trim() : d.trim();
+      }
+      try {
+        const dt = new Date(d);
+        return isNaN(dt.getTime()) ? '' : dt.toISOString().split('T')[0];
+      } catch {
+        return '';
+      }
+    };
 
-      // On same date: sort by business operation sequence
+    // Chronological order (oldest date first) with strict business sequence on that particular date:
+    // On that day: 1. Production -> 2. Purchase -> 3. Palti In -> 4. Palti Out -> 5. Sale
+    const sorted = [...matching].sort((a, b) => {
+      const dayA = getCalendarDate(a.date);
+      const dayB = getCalendarDate(b.date);
+      if (dayA !== dayB) return dayA.localeCompare(dayB);
+
+      // On that particular date (dayA === dayB):
+      // Business sequence strictly takes precedence:
       const prioA = getMovementPriority(a);
       const prioB = getMovementPriority(b);
       if (prioA !== prioB) return prioA - prioB;
 
-      // Secondary: creation timestamp if available
+      // Secondary within the same category on that date: creation timestamp
       const createdA = a.createdAt || a.created_at ? new Date(a.createdAt || a.created_at).getTime() : 0;
       const createdB = b.createdAt || b.created_at ? new Date(b.createdAt || b.created_at).getTime() : 0;
       if (createdA !== createdB) return createdA - createdB;
