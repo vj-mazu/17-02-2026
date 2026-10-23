@@ -1232,8 +1232,59 @@ const Records: React.FC = () => {
                               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', flexWrap: 'nowrap' }}>
                                 {(() => {
                                   const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
-                                  if (mType === 'production') {
-                                    const outturnCode = entry.outturn?.code || entry.outturnNumber || (typeof entry.outturn === 'string' ? entry.outturn : null) || (entry.from?.startsWith('OUTT') ? entry.from : null);
+                                  const fromLocLower = (entry.fromLocation || entry.from || '').toLowerCase();
+                                  const partyLower = (entry.partyName || '').toLowerCase();
+                                  const isProd = mType === 'production' || entry.typeLabel === 'PRODUCTION' || fromLocLower.includes('production') || partyLower.includes('production');
+
+                                  if (isProd) {
+                                    let outturnCode = entry.outturn?.code ||
+                                      entry.outturnNumber ||
+                                      entry.outturn_number ||
+                                      entry.outturnCode ||
+                                      entry.outturn_code ||
+                                      (typeof entry.outturn === 'string' && entry.outturn.trim() ? entry.outturn.trim() : null) ||
+                                      (entry.from?.startsWith('OUTT') ? entry.from : null) ||
+                                      (entry.fromLocation?.startsWith('OUTT') ? entry.fromLocation : null);
+
+                                    // Look up by outturnId in outturns list
+                                    if (!outturnCode && (entry.outturnId || entry.outturn_id || entry.fromOutturnId || entry.from_outturn_id)) {
+                                      const oId = entry.outturnId || entry.outturn_id || entry.fromOutturnId || entry.from_outturn_id;
+                                      const found = (outturns || []).find((o: any) => String(o.id) === String(oId));
+                                      if (found) outturnCode = found.code || found.outturnNumber;
+                                    }
+
+                                    // Check remarks, billNumber, or from for OUTT pattern
+                                    if (!outturnCode) {
+                                      const matchRemarks = (entry.remarks || '').match(/OUTT[-_\s0-9A-Za-z]+/i);
+                                      if (matchRemarks) outturnCode = matchRemarks[0].trim();
+                                    }
+                                    if (!outturnCode) {
+                                      const matchBill = (entry.billNumber || '').match(/OUTT[-_\s0-9A-Za-z]+/i);
+                                      if (matchBill) outturnCode = matchBill[0].trim();
+                                    }
+                                    if (!outturnCode) {
+                                      const matchFrom = (entry.from || entry.fromLocation || '').match(/OUTT[-_\s0-9A-Za-z]+/i);
+                                      if (matchFrom) outturnCode = matchFrom[0].trim();
+                                    }
+
+                                    // Match by variety & date from loaded outturns
+                                    if (!outturnCode && entry.variety && outturns && outturns.length > 0) {
+                                      const entryVarClean = (entry.variety || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                                      const matchedOut = outturns.find((o: any) => {
+                                        const oVarClean = (o.allottedVariety || o.variety || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                                        const varMatches = oVarClean && entryVarClean && (entryVarClean.includes(oVarClean) || oVarClean.includes(entryVarClean));
+                                        const oDate = o.paddyDate || (o.date ? o.date.split('T')[0] : '') || (o.createdAt ? o.createdAt.split('T')[0] : '');
+                                        const dateMatches = !oDate || !entry.date || oDate === entry.date.split('T')[0];
+                                        return varMatches && dateMatches;
+                                      }) || outturns.find((o: any) => {
+                                        const oVarClean = (o.allottedVariety || o.variety || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                                        return oVarClean && entryVarClean && (entryVarClean.includes(oVarClean) || oVarClean.includes(entryVarClean));
+                                      });
+                                      if (matchedOut) {
+                                        outturnCode = matchedOut.code || matchedOut.outturnNumber;
+                                      }
+                                    }
+
                                     if (outturnCode) {
                                       return (
                                         <span
@@ -1247,11 +1298,15 @@ const Records: React.FC = () => {
                                           }}
                                           title="View Outturn Report"
                                         >
-                                          {outturnCode}
+                                          🏭 {outturnCode}
                                         </span>
                                       );
                                     }
-                                    return entry.partyName || 'Milling Production';
+                                    return (
+                                      <span style={{ color: '#059669', fontWeight: 600 }}>
+                                        🏭 Production Arrival
+                                      </span>
+                                    );
                                   }
                                   if (mType === 'sale') {
                                     const customer = entry.partyName ||
@@ -1261,13 +1316,9 @@ const Records: React.FC = () => {
                                     return <span>👤 {customer}</span>;
                                   }
                                   if (mType === 'purchase') {
-                                    const fromLocLower = (entry.fromLocation || entry.from || '').toLowerCase();
-                                    const partyLower = (entry.partyName || '').toLowerCase();
-                                    const isProd = fromLocLower.includes('production') || partyLower.includes('production');
-                                    const vendor = isProd ? 'Production Arrival' : (entry.partyName || 'Rice Purchase');
                                     return (
-                                      <span style={{ color: isProd ? '#059669' : '#2563eb', fontWeight: 600 }}>
-                                        {isProd ? '🏭' : '📦'} {vendor}
+                                      <span style={{ color: '#2563eb', fontWeight: 600 }}>
+                                        📦 {entry.partyName || 'Rice Purchase'}
                                       </span>
                                     );
                                   }
@@ -1305,7 +1356,10 @@ const Records: React.FC = () => {
                                   }
                                   return entry.partyName || 'Internal Movement';
                                 })()}
-                                {entry.billNumber && !((entry.movementType || entry.typeLabel || '').toLowerCase().includes('palti')) && (
+                                {entry.billNumber &&
+                                  !((entry.movementType || entry.typeLabel || '').toLowerCase().includes('palti')) &&
+                                  !((entry.movementType || entry.typeLabel || '').toLowerCase().includes('production')) &&
+                                  entry.billNumber !== '0000' && (
                                   <span style={{ color: '#94a3b8', fontSize: '6.5pt', marginLeft: '3px' }}>
                                     #{entry.billNumber}
                                   </span>
@@ -1315,7 +1369,8 @@ const Records: React.FC = () => {
                             <td style={{ padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {(() => {
                                 const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
-                                if (mType === 'production') {
+                                const isProdMvt = mType === 'production' || entry.typeLabel === 'PRODUCTION' || (entry.fromLocation || entry.from || '').toLowerCase().includes('production');
+                                if (isProdMvt) {
                                   const toGodown = entry.toLocation && entry.toLocation !== '-' ? entry.toLocation : (entry.to || 'Godown');
                                   return `Milling → ${toGodown}`;
                                 }
@@ -3034,7 +3089,10 @@ const Records: React.FC = () => {
               lorryNumber: movement.lorryNumber || movement.lorry_number,
               ratePerBag: movement.ratePerBag || movement.rate_per_bag,
               totalAmount: movement.totalAmount || movement.total_amount,
-              remarks: movement.remarks || movement.REMARKS || null
+              remarks: movement.remarks || movement.REMARKS || null,
+              outturn: movement.outturn,
+              outturnNumber: movement.outturnNumber || movement.outturn_number || movement.outturnCode || movement.outturn_code,
+              outturnId: movement.outturnId || movement.outturn_id || movement.fromOutturnId || movement.from_outturn_id
             };
           })
         ];
