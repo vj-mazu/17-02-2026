@@ -6475,7 +6475,7 @@ const Records: React.FC = () => {
             }
 
             return (
-              <div style={{ padding: '1rem' }}>
+              <div style={{ padding: '0.5rem 0', width: '100%' }}>
                 {filteredData.map((dayData: any) => {
                   // Group data by product types - Excel style
                   const groupDataByProductType = (data: any[]) => {

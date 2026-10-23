@@ -5,6 +5,12 @@ import styled from 'styled-components';
 // ═══════════════════════════════════════════════════════
 
 export const Container = styled.div`
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box;
+
   @media (max-width: 768px) {
     .hide-mobile {
       display: none !important;

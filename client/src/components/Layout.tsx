@@ -14,18 +14,18 @@ const LayoutContainer = styled.div`
 
 const MainContent = styled.main`
   flex: 1;
-  padding: 1rem 1.25rem;
-  max-width: 100%;
-  width: 100%;
-  margin: 0;
+  padding: 0.5rem 0.5rem;
+  max-width: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
   box-sizing: border-box;
 
   @media (max-width: 768px) {
-    padding: 0.5rem;
+    padding: 0.25rem;
   }
 
   @media (max-width: 480px) {
-    padding: 0.25rem;
+    padding: 0.15rem;
   }
 `;
 
