@@ -841,6 +841,9 @@ const Records: React.FC = () => {
         const isTarget = targetClean === currentLotClean || toLoc === lotLocation || (currentLotClean && targetClean.includes(currentLotClean));
         const isSource = sourceClean === currentLotClean || fromLoc === lotLocation || (currentLotClean && sourceClean.includes(currentLotClean));
 
+        const paltiShortage = Number(m.shortageKg || m.conversionShortageKg || m.conversion_shortage_kg || m.shortage_kg || 0) || 0;
+        totalShortage += paltiShortage;
+
         if (isTarget) {
           isInward = true;
           inBags = bags;
@@ -852,7 +855,6 @@ const Records: React.FC = () => {
           outQtls = qtls;
           typeLabel = 'PALTI OUT';
           typeColor = '#ea580c'; // Orange
-          totalShortage += Number(m.shortageKg || 0);
         } else {
           isInward = true;
           inBags = bags;
@@ -880,6 +882,8 @@ const Records: React.FC = () => {
         totalOutQtls += outQtls;
       }
 
+      const entryShortageKg = Number(m.shortageKg || m.conversionShortageKg || m.conversion_shortage_kg || m.shortage_kg || 0) || 0;
+
       return {
         ...m,
         entryIndex: index + 1,
@@ -891,7 +895,9 @@ const Records: React.FC = () => {
         outBags,
         outQtls,
         runningBags,
-        runningQtls
+        runningQtls,
+        shortageKg: entryShortageKg,
+        conversionShortageKg: entryShortageKg
       };
     });
 
@@ -1264,11 +1270,17 @@ const Records: React.FC = () => {
                                     const tgtBrand = entry.targetPackaging?.brandName || entry.targetPackagingBrand || entry.target_packaging_brand || tPkg?.brandName || '';
                                     const isOut = (entry.typeLabel || '').includes('OUT');
                                     const otherBrand = isOut ? (tgtBrand || 'Target') : (srcBrand || 'Source');
+                                    const entryShortage = Number(entry.shortageKg || entry.conversionShortageKg || 0);
                                     return (
                                       <div className="lot-tooltip-wrap" style={{ cursor: 'pointer' }}>
                                         <span style={{ color: isOut ? '#ea580c' : '#7c3aed', fontWeight: 700, fontSize: '7.5pt' }}>
                                           🔄 Palti {isOut ? '→' : '←'} {otherBrand}
                                         </span>
+                                        {entryShortage > 0 && (
+                                          <span style={{ color: '#d97706', fontSize: '6.5pt', marginLeft: '3px', fontWeight: 700, background: '#fef3c7', padding: '1px 3px', borderRadius: '3px' }}>
+                                            ⚠️ {entryShortage.toFixed(1)}k short
+                                          </span>
+                                        )}
                                         <div className="lot-tooltip-content">
                                           <div style={{ fontWeight: 800, color: isOut ? '#fb923c' : '#c084fc', marginBottom: '3px', borderBottom: '1px solid #475569', paddingBottom: '2px' }}>
                                             🔄 Palti Conversion ({isOut ? 'Outward' : 'Inward'})
@@ -1277,7 +1289,7 @@ const Records: React.FC = () => {
                                           <div><b>From:</b> {entry.fromLocation || entry.from || '-'} ({srcBrand || '-'})</div>
                                           <div><b>To:</b> {entry.toLocation || entry.to || '-'} ({tgtBrand || '-'})</div>
                                           {entry.sourceBags > 0 && <div><b>Source Bags:</b> {entry.sourceBags} Bags</div>}
-                                          {entry.conversionShortageKg > 0 && <div><b>Shortage:</b> {entry.conversionShortageKg} Kg</div>}
+                                          {entryShortage > 0 && <div style={{ color: '#fde047', fontWeight: 700 }}><b>Shortage:</b> {entryShortage.toFixed(1)} Kg ({(entryShortage / 100).toFixed(2)} Qtls)</div>}
                                           {entry.remarks && <div><b>Remarks:</b> {entry.remarks}</div>}
                                         </div>
                                       </div>
@@ -2994,8 +3006,10 @@ const Records: React.FC = () => {
                 brandName: resolvedTgtBrand,
                 allottedKg: resolvedTgtKg
               } : null,
-              shortageKg: parseFloat(movement.conversionShortageKg || movement.conversion_shortage_kg || 0),
-              shortageBags: parseFloat(movement.conversionShortageBags || movement.conversion_shortage_bags || 0),
+              shortageKg: parseFloat(movement.conversionShortageKg || movement.conversion_shortage_kg || movement.shortageKg || movement.shortage_kg || 0) || 0,
+              shortageBags: parseFloat(movement.conversionShortageBags || movement.conversion_shortage_bags || movement.shortageBags || movement.shortage_bags || 0) || 0,
+              conversionShortageKg: parseFloat(movement.conversionShortageKg || movement.conversion_shortage_kg || movement.shortageKg || movement.shortage_kg || 0) || 0,
+              conversionShortageBags: parseFloat(movement.conversionShortageBags || movement.conversion_shortage_bags || movement.shortageBags || movement.shortage_bags || 0) || 0,
               from: fromLoc,
               to: toLoc,
               fromLocation: fromLoc,
