@@ -947,41 +947,60 @@ const Records: React.FC = () => {
             display: inline-flex;
             align-items: center;
           }
+          .lot-tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: #e0e7ff;
+            color: #4f46e5;
+            font-size: 7pt;
+            font-weight: 700;
+            cursor: pointer;
+            margin-left: 4px;
+            vertical-align: middle;
+            transition: all 0.15s ease;
+            user-select: none;
+          }
+          .lot-tooltip-icon:hover {
+            background: #7c3aed;
+            color: #ffffff;
+            transform: scale(1.08);
+          }
           .lot-tooltip-wrap .lot-tooltip-content {
             visibility: hidden;
             opacity: 0;
-            transition: opacity 0.15s ease, transform 0.15s ease;
+            transition: opacity 0.15s ease;
             position: absolute;
-            bottom: calc(100% + 5px);
-            left: 50%;
-            transform: translateX(-50%) translateY(3px);
+            top: calc(100% + 4px);
+            left: 0;
             background: #0f172a;
             color: #f8fafc;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 7.5pt;
-            line-height: 1.4;
+            padding: 5px 8px;
+            border-radius: 5px;
+            font-size: 7pt;
+            line-height: 1.35;
             white-space: nowrap;
-            box-shadow: 0 10px 22px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
-            z-index: 99999;
+            box-shadow: 0 8px 18px -2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12);
+            z-index: 999999;
             pointer-events: none;
             text-align: left;
             font-weight: normal;
           }
-          .lot-tooltip-wrap:hover .lot-tooltip-content {
+          .lot-tooltip-icon:hover + .lot-tooltip-content {
             visibility: visible;
             opacity: 1;
-            transform: translateX(-50%) translateY(0);
           }
           .lot-tooltip-wrap .lot-tooltip-content::after {
             content: "";
             position: absolute;
-            top: 100%;
-            left: 50%;
-            margin-left: -5px;
-            border-width: 5px;
+            bottom: 100%;
+            left: 14px;
+            border-width: 4px;
             border-style: solid;
-            border-color: #0f172a transparent transparent transparent;
+            border-color: transparent transparent #0f172a transparent;
           }
         `}</style>
         {/* Ledger Header with title and collapse button */}
@@ -1330,8 +1349,9 @@ const Records: React.FC = () => {
                                     const isOut = (entry.typeLabel || '').includes('OUT');
                                     const otherBrand = isOut ? (tgtBrand || 'Target') : (srcBrand || 'Source');
                                     const entryShortage = Number(entry.shortageKg || entry.conversionShortageKg || 0);
+                                    const paltiTitle = `Palti Conversion (${isOut ? 'Outward' : 'Inward'})\nBill: ${entry.billNumber || '-'}\nFrom: ${entry.fromLocation || entry.from || '-'} (${srcBrand || '-'})\nTo: ${entry.toLocation || entry.to || '-'} (${tgtBrand || '-'})${entry.sourceBags > 0 ? `\nSource Bags: ${entry.sourceBags} Bags` : ''}${entryShortage > 0 ? `\nShortage: ${entryShortage.toFixed(1)} Kg` : ''}${entry.remarks ? `\nRemarks: ${entry.remarks}` : ''}`;
                                     return (
-                                      <div className="lot-tooltip-wrap" style={{ cursor: 'pointer' }}>
+                                      <div className="lot-tooltip-wrap" title={paltiTitle} style={{ cursor: 'pointer' }}>
                                         <span style={{ color: isOut ? '#ea580c' : '#7c3aed', fontWeight: 700, fontSize: '7.5pt' }}>
                                           🔄 Palti {isOut ? '→' : '←'} {otherBrand}
                                         </span>
@@ -1340,6 +1360,7 @@ const Records: React.FC = () => {
                                             ⚠️ {entryShortage.toFixed(1)}k short
                                           </span>
                                         )}
+                                        <span className="lot-tooltip-icon" title="View conversion details">i</span>
                                         <div className="lot-tooltip-content">
                                           <div style={{ fontWeight: 800, color: isOut ? '#fb923c' : '#c084fc', marginBottom: '3px', borderBottom: '1px solid #475569', paddingBottom: '2px' }}>
                                             🔄 Palti Conversion ({isOut ? 'Outward' : 'Inward'})
@@ -1414,9 +1435,10 @@ const Records: React.FC = () => {
                                                 srcKg;
 
                                   const isSameBrand = srcBrand && tgtBrand && srcBrand.toLowerCase() === tgtBrand.toLowerCase();
+                                  const pkgTitle = `Packaging Conversion\nFrom: ${srcBrand || 'Unknown'} (${srcKg} kg)\nTo: ${tgtBrand || 'Unknown'} (${tgtKg} kg)`;
 
                                   return (
-                                    <div className="lot-tooltip-wrap" style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    <div title={pkgTitle} style={{ cursor: 'default', whiteSpace: 'nowrap' }}>
                                       {isSameBrand ? (
                                         <span>
                                           <span style={{ fontWeight: 600 }}>{srcBrand}</span>
@@ -1432,11 +1454,6 @@ const Records: React.FC = () => {
                                       ) : (
                                         <span>{tgtBrand || srcBrand || '-'}{entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}</span>
                                       )}
-                                      <div className="lot-tooltip-content">
-                                        <div style={{ fontWeight: 700, color: '#a78bfa', marginBottom: '2px' }}>📦 Packaging Conversion</div>
-                                        <div><b>From:</b> {srcBrand || 'Unknown'} ({srcKg} kg)</div>
-                                        <div><b>To:</b> {tgtBrand || 'Unknown'} ({tgtKg} kg)</div>
-                                      </div>
                                     </div>
                                   );
                                 }
