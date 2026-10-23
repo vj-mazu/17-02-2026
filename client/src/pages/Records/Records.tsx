@@ -1146,10 +1146,27 @@ const Records: React.FC = () => {
                                     );
                                   }
                                   if (mType === 'palti' || mType.includes('palti')) {
+                                    const sPkg = (packagings || []).find((p: any) => String(p.id) === String(entry.sourcePackagingId || entry.source_packaging_id));
+                                    const tPkg = (packagings || []).find((p: any) => String(p.id) === String(entry.targetPackagingId || entry.target_packaging_id));
+                                    const srcBrand = entry.sourcePackaging?.brandName || entry.sourcePackagingBrand || entry.source_packaging_brand || sPkg?.brandName || '';
+                                    const tgtBrand = entry.targetPackaging?.brandName || entry.targetPackagingBrand || entry.target_packaging_brand || tPkg?.brandName || '';
+                                    const isOut = (entry.typeLabel || '').includes('OUT');
                                     return (
-                                      <span style={{ color: '#7c3aed', fontWeight: 600 }}>
-                                        🔄 Palti Conversion
-                                      </span>
+                                      <div>
+                                        <span style={{ color: isOut ? '#ea580c' : '#7c3aed', fontWeight: 600 }}>
+                                          🔄 Palti Conversion
+                                        </span>
+                                        {tgtBrand && isOut && (
+                                          <small style={{ color: '#64748b', fontSize: '7pt', display: 'block', marginTop: '1px' }}>
+                                            → To: {tgtBrand}
+                                          </small>
+                                        )}
+                                        {srcBrand && !isOut && (
+                                          <small style={{ color: '#64748b', fontSize: '7pt', display: 'block', marginTop: '1px' }}>
+                                            ← From: {srcBrand}
+                                          </small>
+                                        )}
+                                      </div>
                                     );
                                   }
                                   return entry.partyName || 'Internal Movement';
@@ -1173,7 +1190,59 @@ const Records: React.FC = () => {
                               })()}
                             </td>
                             <td style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', fontSize: '8pt' }}>
-                              {entry.packagingBrand || entry.packaging?.brandName || '-'}{entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}
+                              {(() => {
+                                const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
+                                if (mType === 'palti' || mType.includes('palti')) {
+                                  const sPkg = (packagings || []).find((p: any) => String(p.id) === String(entry.sourcePackagingId || entry.source_packaging_id));
+                                  const tPkg = (packagings || []).find((p: any) => String(p.id) === String(entry.targetPackagingId || entry.target_packaging_id));
+
+                                  let srcBrand = entry.sourcePackaging?.brandName || 
+                                                 entry.sourcePackagingBrand || 
+                                                 entry.source_packaging_brand || 
+                                                 sPkg?.brandName || 
+                                                 (typeof entry.packaging === 'string' && entry.packaging.includes('→') ? entry.packaging.split('→')[0].trim() : '') ||
+                                                 entry.packagingBrand || 
+                                                 '';
+                                  if (srcBrand === 'A1' && sPkg?.brandName) srcBrand = sPkg.brandName;
+
+                                  const srcKg = entry.sourcePackaging?.allottedKg || 
+                                                entry.sourcePackagingKg || 
+                                                entry.source_packaging_kg || 
+                                                sPkg?.allottedKg || 
+                                                entry.bagSizeKg || 
+                                                26;
+
+                                  let tgtBrand = entry.targetPackaging?.brandName || 
+                                                 entry.targetPackagingBrand || 
+                                                 entry.target_packaging_brand || 
+                                                 tPkg?.brandName || 
+                                                 (typeof entry.packaging === 'string' && entry.packaging.includes('→') ? entry.packaging.split('→')[1].trim() : '') ||
+                                                 '';
+                                  if (tgtBrand === 'A1' && tPkg?.brandName) tgtBrand = tPkg.brandName;
+
+                                  const tgtKg = entry.targetPackaging?.allottedKg || 
+                                                entry.targetPackagingKg || 
+                                                entry.target_packaging_kg || 
+                                                tPkg?.allottedKg || 
+                                                entry.packagingKg || 
+                                                srcKg;
+
+                                  if (srcBrand && tgtBrand) {
+                                    return (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                        <span>{srcBrand} ({srcKg}k)</span>
+                                        <span style={{ color: '#7c3aed', fontWeight: 'bold' }}>→</span>
+                                        <span style={{ color: '#7c3aed', fontWeight: 700 }}>{tgtBrand} ({tgtKg}k)</span>
+                                      </span>
+                                    );
+                                  } else if (tgtBrand) {
+                                    return `${tgtBrand} (${tgtKg}k)`;
+                                  } else if (srcBrand) {
+                                    return `${srcBrand} (${srcKg}k)`;
+                                  }
+                                }
+                                return `${entry.packagingBrand || entry.packaging?.brandName || '-'}${entry.bagSizeKg ? ` (${entry.bagSizeKg}k)` : ''}`;
+                              })()}
                             </td>
                             <td style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', fontWeight: entry.inBags > 0 ? 700 : 'normal', color: entry.inBags > 0 ? '#15803d' : '#9ca3af' }}>
                               {entry.inBags > 0 ? `+${entry.inBags}` : '-'}
@@ -2746,6 +2815,20 @@ const Records: React.FC = () => {
               toLoc = toLocExplicit || locationCode || '-';
             }
 
+            // Resolve packaging details with packagings array lookup
+            const sId = movement.sourcePackagingId || movement.source_packaging_id;
+            const tId = movement.targetPackagingId || movement.target_packaging_id;
+            const pId = movement.packagingId || movement.packaging_id;
+
+            const srcPkgObj = (packagings || []).find((p: any) => String(p.id) === String(sId));
+            const tgtPkgObj = (packagings || []).find((p: any) => String(p.id) === String(tId));
+            const pkgObj = (packagings || []).find((p: any) => String(p.id) === String(pId));
+
+            const resolvedSrcBrand = movement.sourcePackagingBrand || movement.source_packaging_brand || movement.sourcepackagingbrand || srcPkgObj?.brandName || (mvtType === 'palti' && movement.packagingBrand ? movement.packagingBrand : '');
+            const resolvedTgtBrand = movement.targetPackagingBrand || movement.target_packaging_brand || movement.targetpackagingbrand || tgtPkgObj?.brandName || '';
+            const resolvedSrcKg = parseFloat(movement.sourcePackagingKg || movement.source_packaging_kg || srcPkgObj?.allottedKg || 26);
+            const resolvedTgtKg = parseFloat(movement.targetPackagingKg || movement.target_packaging_kg || tgtPkgObj?.allottedKg || resolvedSrcKg);
+
             return {
               id: `movement-${movement.id || movement.ID}`,
               date: movement.date || movement.DATE || movement.Date,
@@ -2758,28 +2841,34 @@ const Records: React.FC = () => {
               bag_size_kg: bagSize,
               packagingId: movement.packagingId || movement.targetPackagingId || movement.packaging_id || movement.target_packaging_id,
               packaging_id: movement.packagingId || movement.targetPackagingId || movement.packaging_id || movement.target_packaging_id,
-              sourcePackagingId: movement.sourcePackagingId || movement.source_packaging_id,
-              source_packaging_id: movement.sourcePackagingId || movement.source_packaging_id,
-              targetPackagingId: movement.targetPackagingId || movement.target_packaging_id,
-              target_packaging_id: movement.targetPackagingId || movement.target_packaging_id,
-              packagingBrand: movement.packagingBrand || movement.packaging_brand || movement.packagingbrand || movement.targetPackagingBrand || movement.target_packaging_brand || 'A1',
-              packaging_brand: movement.packagingBrand || movement.packaging_brand || movement.packagingbrand || movement.targetPackagingBrand || movement.target_packaging_brand || 'A1',
-              source_packaging_brand: movement.sourcePackagingBrand || movement.source_packaging_brand || movement.sourcepackagingbrand || 'A1',
-              target_packaging_brand: movement.targetPackagingBrand || movement.target_packaging_brand || movement.targetpackagingbrand || 'A1',
-              packagingKg: movement.packagingKg || movement.packaging_kg || movement.packagingkg || bagSize,
-              packaging_kg: movement.packagingKg || movement.packaging_kg || movement.packagingkg || bagSize,
+              sourcePackagingId: sId,
+              source_packaging_id: sId,
+              targetPackagingId: tId,
+              target_packaging_id: tId,
+              packagingBrand: movement.packagingBrand || movement.packaging_brand || movement.packagingbrand || pkgObj?.brandName || (mvtType === 'palti' ? (resolvedTgtBrand || resolvedSrcBrand) : 'A1'),
+              packaging_brand: movement.packagingBrand || movement.packaging_brand || movement.packagingbrand || pkgObj?.brandName || (mvtType === 'palti' ? (resolvedTgtBrand || resolvedSrcBrand) : 'A1'),
+              sourcePackagingBrand: resolvedSrcBrand,
+              source_packaging_brand: resolvedSrcBrand,
+              targetPackagingBrand: resolvedTgtBrand,
+              target_packaging_brand: resolvedTgtBrand,
+              sourcePackagingKg: resolvedSrcKg,
+              source_packaging_kg: resolvedSrcKg,
+              targetPackagingKg: resolvedTgtKg,
+              target_packaging_kg: resolvedTgtKg,
+              packagingKg: movement.packagingKg || movement.packaging_kg || pkgObj?.allottedKg || bagSize,
+              packaging_kg: movement.packagingKg || movement.packaging_kg || pkgObj?.allottedKg || bagSize,
               quantityQuintals: qtls,
               packaging: {
-                brandName: movement.packagingBrand || movement.packaging_brand || movement.packagingbrand || movement.targetPackagingBrand || movement.target_packaging_brand || 'A1',
-                allottedKg: movement.packagingKg || movement.packaging_kg || movement.packagingkg || bagSize
+                brandName: movement.packagingBrand || movement.packaging_brand || pkgObj?.brandName || (mvtType === 'palti' ? (resolvedTgtBrand || resolvedSrcBrand) : 'A1'),
+                allottedKg: movement.packagingKg || movement.packaging_kg || pkgObj?.allottedKg || bagSize
               },
               sourcePackaging: mvtType === 'palti' ? {
-                brandName: movement.sourcePackagingBrand || movement.source_packaging_brand || movement.sourcepackagingbrand || 'A1',
-                allottedKg: movement.sourcePackagingKg || movement.source_packaging_kg || 26
+                brandName: resolvedSrcBrand,
+                allottedKg: resolvedSrcKg
               } : null,
               targetPackaging: mvtType === 'palti' ? {
-                brandName: movement.targetPackagingBrand || movement.target_packaging_brand || movement.targetpackagingbrand || 'A1',
-                allottedKg: movement.targetPackagingKg || movement.target_packaging_kg || 26
+                brandName: resolvedTgtBrand,
+                allottedKg: resolvedTgtKg
               } : null,
               shortageKg: parseFloat(movement.conversionShortageKg || movement.conversion_shortage_kg || 0),
               shortageBags: parseFloat(movement.conversionShortageBags || movement.conversion_shortage_bags || 0),
