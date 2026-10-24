@@ -1454,6 +1454,15 @@ const startServer = async () => {
         console.log('⚠️ Migration 85 warning:', error.message);
       }
 
+      // Migration 86: Add remix columns to rice_productions
+      try {
+        const migration86 = require('./migrations/86_add_remix_columns_to_rice_productions');
+        await migration86.up();
+        console.log('✅ Migration 86: remix columns added to rice_productions');
+      } catch (error) {
+        console.log('⚠️ Migration 86 warning:', error.message);
+      }
+
       console.log('✅ Migrations completed.');
 
       // DIAGNOSTIC CHECK FOR ARRIVALS COLUMNS

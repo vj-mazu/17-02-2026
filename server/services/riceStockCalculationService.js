@@ -71,7 +71,7 @@ class RiceStockCalculationService {
             COALESCE(
               CASE 
                 WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."brandName"
-                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.to_location IS NOT NULL AND LOWER(TRIM(REGEXP_REPLACE(rsm.to_location, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
                 ELSE p."brandName"
               END,
               p."brandName"
@@ -79,7 +79,7 @@ class RiceStockCalculationService {
             COALESCE(
               CASE 
                 WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."allottedKg"
-                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.to_location IS NOT NULL AND LOWER(TRIM(REGEXP_REPLACE(rsm.to_location, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
                 ELSE p."allottedKg"
               END,
               p."allottedKg"
@@ -95,7 +95,8 @@ class RiceStockCalculationService {
                    AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN -COALESCE(rsm.source_bags, rsm.bags)
               WHEN rsm.movement_type IN ('palti', 'remix') 
-                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   AND rsm.to_location IS NOT NULL
+                   AND LOWER(TRIM(REGEXP_REPLACE(rsm.to_location, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN rsm.bags
               ELSE 0
             END) as movement_bags,
@@ -110,7 +111,8 @@ class RiceStockCalculationService {
                    AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN -rsm.quantity_quintals
               WHEN rsm.movement_type IN ('palti', 'remix') 
-                   AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+                   AND rsm.to_location IS NOT NULL
+                   AND LOWER(TRIM(REGEXP_REPLACE(rsm.to_location, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN rsm.quantity_quintals
               ELSE 0
             END) as movement_qtls
@@ -123,7 +125,7 @@ class RiceStockCalculationService {
             AND (
               LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
               OR LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
-              OR LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
+              OR (rsm.to_location IS NOT NULL AND LOWER(TRIM(REGEXP_REPLACE(rsm.to_location, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))))
               OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = ''))
               OR (:locationCode = 'NULL' AND (rsm.location_code IS NULL OR TRIM(rsm.location_code) = '' OR UPPER(rsm.location_code) = 'NULL'))
             )
@@ -146,7 +148,7 @@ class RiceStockCalculationService {
             COALESCE(
               CASE 
                 WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."brandName"
-                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.to_location IS NOT NULL AND LOWER(TRIM(REGEXP_REPLACE(rsm.to_location, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
                 ELSE p."brandName"
               END,
               p."brandName"
@@ -154,7 +156,7 @@ class RiceStockCalculationService {
             COALESCE(
               CASE 
                 WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."allottedKg"
-                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.to_location IS NOT NULL AND LOWER(TRIM(REGEXP_REPLACE(rsm.to_location, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
                 ELSE p."allottedKg"
               END,
               p."allottedKg"

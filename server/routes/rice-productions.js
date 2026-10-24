@@ -288,10 +288,31 @@ router.get('/outturn/:id/available-bags', auth, async (req, res) => {
     // Calculate available bags (Total - Paddy Bags Deducted)
     const availableBags = productionShiftingBags - usedPaddyBagsDeducted;
 
+    // Get total remixed old bags brought into this outturn
+    const [remixRows] = await sequelize.query(`
+      SELECT COALESCE(SUM(source_bags), 0) as total_remix_bags 
+      FROM rice_stock_movements 
+      WHERE outturn_id = :outturnId AND movement_type = 'remix' AND status = 'approved'
+    `, { replacements: { outturnId: parseInt(outturnId) }, type: sequelize.QueryTypes.SELECT });
+    const totalRemixBags = remixRows ? parseInt(remixRows.total_remix_bags || 0) : 0;
+
+    // Get total remixed bags already absorbed in rice productions
+    const usedRemixBags = await RiceProduction.sum('remixBags', {
+      where: {
+        outturnId: outturnId,
+        status: { [Op.in]: ['pending', 'approved'] }
+      }
+    }) || 0;
+
+    const availableRemixBags = Math.max(0, totalRemixBags - usedRemixBags);
+
     res.json({
       availableBags,
       totalBags: productionShiftingBags,
       usedBags: usedPaddyBagsDeducted,
+      totalRemixBags,
+      usedRemixBags,
+      availableRemixBags,
       isCleared: false
     });
   } catch (error) {
@@ -485,8 +506,13 @@ router.post('/', auth, async (req, res) => {
     const kgPerBag = parseFloat(packaging.allottedKg);
     const quantityQuintals = (bagsNum * kgPerBag) / 100;
 
-    // Calculate paddy bags deducted using new formula
-    const paddyBagsDeducted = calculatePaddyBagsDeducted(quantityQuintals, dbProductType);
+    // Handle remixed old rice bags included in this production run
+    const remixBagsNum = parseInt(req.body.remixBags || 0) || 0;
+    const remixQuintals = (remixBagsNum * kgPerBag) / 100;
+    const netPaddyQuintals = Math.max(0, quantityQuintals - remixQuintals);
+
+    // Calculate paddy bags deducted using formula ONLY ON NET PADDY QUINTALS (Zero paddy bags deducted for remixed old rice)
+    const paddyBagsDeducted = calculatePaddyBagsDeducted(netPaddyQuintals, dbProductType);
 
     // Validate available paddy bags for this outturn
     // Get total paddy bags for this outturn (production-shifting + for-production purchases)
@@ -533,6 +559,8 @@ router.post('/', auth, async (req, res) => {
       packagingId,
       bags: bagsNum,
       paddyBagsDeducted,
+      remixBags: remixBagsNum,
+      remixQuintals,
       movementType,
       locationCode: movementType === 'kunchinittu' ? locationCode : null,
       lorryNumber: movementType === 'loading' ? lorryNumber : null,
@@ -786,8 +814,13 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       // Calculate quintals: (bags × kg_per_bag) / 100
       quantityQuintals = (finalBags * kgPerBag) / 100;
 
-      // Calculate paddy bags deducted using new formula
-      paddyBagsDeducted = calculatePaddyBagsDeducted(quantityQuintals, productType || production.productType);
+      // Handle remixed old rice bags included in this production run
+      const remixBagsNum = req.body.remixBags !== undefined ? (parseInt(req.body.remixBags) || 0) : (production.remixBags || 0);
+      const remixQuintals = (remixBagsNum * kgPerBag) / 100;
+      const netPaddyQuintals = Math.max(0, quantityQuintals - remixQuintals);
+
+      // Calculate paddy bags deducted using formula ONLY ON NET PADDY QUINTALS
+      paddyBagsDeducted = calculatePaddyBagsDeducted(netPaddyQuintals, productType || production.productType);
 
       // Validate available paddy bags (if outturnId exists)
       if (production.outturnId) {
@@ -829,6 +862,8 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       packagingId: packagingId ? parseInt(packagingId) : production.packagingId,
       bags: finalBags,
       paddyBagsDeducted,
+      remixBags: remixBagsNum,
+      remixQuintals,
       movementType: finalMovementType,
       locationCode: finalMovementType === 'kunchinittu' ? finalLocationCode : (finalLocationCode || null),
       lorryNumber: finalMovementType === 'loading' ? (lorryNumber !== undefined ? lorryNumber : production.lorryNumber) : null,

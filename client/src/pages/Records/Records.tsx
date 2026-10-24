@@ -51,7 +51,14 @@ import {
 const Pagination = PaginationStyled;
 const InlineRateForm = InlineRateFormStyled;
 
-
+interface RemixSourceItem {
+  id: string;
+  locationCode: string;
+  packagingId: string;
+  bags: string;
+  availableStock: number | null;
+  checkingStock: boolean;
+}
 
 const Records: React.FC = () => {
   const { user } = useAuth();
@@ -275,19 +282,24 @@ const Records: React.FC = () => {
   // Outturn Sub-Tab state
   const [outturnSubTab, setOutturnSubTab] = useState<'production' | 'remix'>('production');
 
-  // Remix / Re-cleaning Form State
+  // Remix / Re-cleaning Form State (Multi-Source support)
   const [remixDate, setRemixDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [remixProductType, setRemixProductType] = useState<string>('Rice');
-  const [remixSourceLocation, setRemixSourceLocation] = useState<string>('');
-  const [remixSourcePackagingId, setRemixSourcePackagingId] = useState<string>('');
-  const [remixSourceBags, setRemixSourceBags] = useState<string>('');
-  const [remixTargetLocation, setRemixTargetLocation] = useState<string>('');
-  const [remixTargetPackagingId, setRemixTargetPackagingId] = useState<string>('');
-  const [remixCleanBags, setRemixCleanBags] = useState<string>('');
+  const [remixSources, setRemixSources] = useState<RemixSourceItem[]>([
+    { id: '1', locationCode: '', packagingId: '', bags: '', availableStock: null, checkingStock: false }
+  ]);
   const [remixRemarks, setRemixRemarks] = useState<string>('');
   const [remixSubmitting, setRemixSubmitting] = useState<boolean>(false);
 
-  // Available stock for selected source location & brand
+  // Available Remix Bags in current outturn
+  const [outturnAvailableRemixBags, setOutturnAvailableRemixBags] = useState<number>(0);
+  const [outturnTotalRemixBags, setOutturnTotalRemixBags] = useState<number>(0);
+  const [outturnUsedRemixBags, setOutturnUsedRemixBags] = useState<number>(0);
+
+  // Production Form Remix Field (absorbed into fresh packing run)
+  const [prodRemixBags, setProdRemixBags] = useState<string>('');
+
+  // Available stock for single source fallback
   const [remixAvailableStock, setRemixAvailableStock] = useState<number | null>(null);
   const [checkingRemixStock, setCheckingRemixStock] = useState<boolean>(false);
 
@@ -2251,21 +2263,88 @@ const Records: React.FC = () => {
     }
   }, [selectedOutturnId]);
 
-  useEffect(() => {
-    if (remixSourceLocation && remixSourcePackagingId && selectedOutturnId) {
-      const selectedOutturn = outturns.find((o: any) => o.id === parseInt(selectedOutturnId));
-      if (selectedOutturn) {
-        checkRemixAvailableStock(
-          remixSourceLocation,
-          remixSourcePackagingId,
-          remixProductType,
-          selectedOutturn.allottedVariety
-        );
-      }
-    } else {
-      setRemixAvailableStock(null);
+  const checkSourceRowStock = async (rowId: string, loc: string, packId: string, pType: string, varietyStr: string) => {
+    if (!loc || !packId) {
+      setRemixSources(prev => prev.map(r => r.id === rowId ? { ...r, availableStock: null, checkingStock: false } : r));
+      return;
     }
-  }, [remixSourceLocation, remixSourcePackagingId, remixProductType, selectedOutturnId, outturns]);
+    try {
+      setRemixSources(prev => prev.map(r => r.id === rowId ? { ...r, checkingStock: true } : r));
+      const token = localStorage.getItem('token');
+      const res = await axios.get('/rice-stock-management/available-stock', {
+        params: {
+          locationCode: loc,
+          packagingId: packId,
+          productType: pType,
+          variety: varietyStr
+        },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const avail = res.data && res.data.success ? (res.data.stock?.bags ?? res.data.availableStock?.bags ?? 0) : 0;
+      setRemixSources(prev => prev.map(r => r.id === rowId ? { ...r, availableStock: avail, checkingStock: false } : r));
+    } catch (err) {
+      console.error('Error checking stock for row:', err);
+      setRemixSources(prev => prev.map(r => r.id === rowId ? { ...r, availableStock: 0, checkingStock: false } : r));
+    }
+  };
+
+  const handleUpdateRemixSource = (id: string, field: 'locationCode' | 'packagingId' | 'bags', value: string) => {
+    setRemixSources(prev => {
+      const updated = prev.map(row => {
+        if (row.id !== id) return row;
+        const newRow = { ...row, [field]: value };
+        if (field === 'locationCode' || field === 'packagingId') {
+          newRow.availableStock = null;
+        }
+        return newRow;
+      });
+      return updated;
+    });
+
+    const currentOutturn = outturns.find((o: any) => o.id === parseInt(selectedOutturnId));
+    const varietyStr = currentOutturn?.allottedVariety || '';
+
+    if (field === 'locationCode' || field === 'packagingId') {
+      const row = remixSources.find(r => r.id === id);
+      const loc = field === 'locationCode' ? value : (row?.locationCode || '');
+      const pack = field === 'packagingId' ? value : (row?.packagingId || '');
+      if (loc && pack && varietyStr) {
+        checkSourceRowStock(id, loc, pack, remixProductType, varietyStr);
+      }
+    }
+  };
+
+  const handleAddRemixSource = () => {
+    setRemixSources(prev => [
+      ...prev,
+      { id: Date.now().toString(), locationCode: '', packagingId: '', bags: '', availableStock: null, checkingStock: false }
+    ]);
+  };
+
+  const handleRemoveRemixSource = (id: string) => {
+    if (remixSources.length <= 1) return;
+    setRemixSources(prev => prev.filter(r => r.id !== id));
+  };
+
+  // Keep remix summary for selected outturn in sync
+  useEffect(() => {
+    if (!selectedOutturnId) {
+      setOutturnTotalRemixBags(0);
+      setOutturnUsedRemixBags(0);
+      setOutturnAvailableRemixBags(0);
+      return;
+    }
+    const outtId = parseInt(selectedOutturnId);
+    const totalRemix = remixRecords.reduce((sum: number, r: any) => sum + (Number(r.sourceBags) || 0), 0);
+    const usedRemix = allRiceProductions
+      .filter((rp: any) => (rp.outturnId === outtId || String(rp.outturnNumber) === String(selectedOutturnId)) && rp.status !== 'rejected')
+      .reduce((sum: number, rp: any) => sum + (Number(rp.remixBags) || 0), 0);
+    const availRemix = Math.max(0, totalRemix - usedRemix);
+
+    setOutturnTotalRemixBags(totalRemix);
+    setOutturnUsedRemixBags(usedRemix);
+    setOutturnAvailableRemixBags(availRemix);
+  }, [remixRecords, allRiceProductions, selectedOutturnId]);
 
   const handleCreateRemix = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2281,31 +2360,29 @@ const Records: React.FC = () => {
       return;
     }
 
-    if (!remixSourceLocation || !remixTargetLocation) {
-      toast.error('Please select both From and To locations');
-      return;
+    // Validate each source godown row
+    for (let i = 0; i < remixSources.length; i++) {
+      const s = remixSources[i];
+      if (!s.locationCode) {
+        toast.error(`Source Godown #${i + 1}: Please select a source location`);
+        return;
+      }
+      if (!s.packagingId) {
+        toast.error(`Source Godown #${i + 1}: Please select Brand/Packaging`);
+        return;
+      }
+      const b = parseInt(s.bags);
+      if (!b || b <= 0) {
+        toast.error(`Source Godown #${i + 1}: Please enter valid Old Bags count`);
+        return;
+      }
+      if (s.availableStock !== null && b > s.availableStock) {
+        toast.error(`Source Godown #${i + 1}: Cannot take ${b} bags! Only ${s.availableStock} bags available in ${s.locationCode}.`);
+        return;
+      }
     }
 
-    if (!remixSourcePackagingId || !remixTargetPackagingId) {
-      toast.error('Please select Brand/Packaging for both source and destination');
-      return;
-    }
-
-    const sBags = parseInt(remixSourceBags);
-    const cBags = parseInt(remixCleanBags);
-    if (!sBags || sBags <= 0) {
-      toast.error('Please enter valid Old Bags Taken');
-      return;
-    }
-    if (!cBags || cBags <= 0) {
-      toast.error('Please enter valid Clean Bags Produced');
-      return;
-    }
-
-    if (remixAvailableStock !== null && sBags > remixAvailableStock) {
-      toast.error(`Cannot take ${sBags} bags! Only ${remixAvailableStock} bags available for this brand in ${remixSourceLocation}.`);
-      return;
-    }
+    const totalOldBags = remixSources.reduce((sum, r) => sum + (parseInt(r.bags) || 0), 0);
 
     try {
       setRemixSubmitting(true);
@@ -2315,25 +2392,23 @@ const Records: React.FC = () => {
         outturnId: parseInt(selectedOutturnId),
         productType: remixProductType,
         variety: currentOutturn.allottedVariety,
-        sourceLocation: remixSourceLocation,
-        sourcePackagingId: parseInt(remixSourcePackagingId),
-        sourceBags: sBags,
-        targetLocation: remixTargetLocation,
-        targetPackagingId: parseInt(remixTargetPackagingId),
-        cleanBags: cBags,
+        sources: remixSources.map(s => ({
+          sourceLocation: s.locationCode,
+          sourcePackagingId: parseInt(s.packagingId),
+          sourceBags: parseInt(s.bags)
+        })),
         remarks: remixRemarks
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       if (res.data.success) {
-        toast.success('Mix & Re-clean entry recorded successfully!');
-        setRemixSourceBags('');
-        setRemixCleanBags('');
+        toast.success(`Successfully added ${totalOldBags} old bags to Outturn! Ready to pack in Production.`);
+        setRemixSources([{ id: Date.now().toString(), locationCode: '', packagingId: '', bags: '', availableStock: null, checkingStock: false }]);
         setRemixRemarks('');
-        setRemixAvailableStock(null);
         fetchRemixRecords(selectedOutturnId);
         fetchRiceStock();
+        fetchAllRiceProductions();
       }
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to save remix entry');
@@ -2458,12 +2533,20 @@ const Records: React.FC = () => {
         try {
           const response = await axios.get<{
             availableBags: number;
+            availableRemixBags?: number;
+            totalRemixBags?: number;
+            usedRemixBags?: number;
             isCleared?: boolean;
             clearedAt?: string;
             remainingBags?: number;
           }>(`/rice-productions/outturn/${selectedOutturnId}/available-bags`);
           setAvailableBags(response.data.availableBags);
           setIsOutturnCleared(response.data.isCleared || false);
+          if (response.data.availableRemixBags !== undefined) {
+            setOutturnAvailableRemixBags(response.data.availableRemixBags);
+            setOutturnTotalRemixBags(response.data.totalRemixBags || 0);
+            setOutturnUsedRemixBags(response.data.usedRemixBags || 0);
+          }
         } catch (error) {
           console.error('Error fetching available bags:', error);
           setAvailableBags(0);
@@ -2564,22 +2647,27 @@ const Records: React.FC = () => {
     return Math.round(result);
   };
 
-  // Calculate quintals and paddy bags when bags or packaging changes
+  // Calculate quintals and paddy bags when bags, packaging, productType, or prodRemixBags changes
   useEffect(() => {
     if (bags && packagingId) {
       const bagsNum = parseFloat(bags) || 0;
+      const rBagsNum = parseFloat(prodRemixBags) || 0;
       const packaging = packagings.find(p => p.id === parseInt(packagingId));
       console.log('Selected packaging:', packaging);
-      console.log('Bags:', bagsNum);
+      console.log('Bags:', bagsNum, 'Remix Bags:', rBagsNum);
       if (packaging && packaging.allottedKg && bagsNum > 0) {
         const kgPerBag = parseFloat(packaging.allottedKg);
-        // Calculate quintals: (bags × kg_per_bag) / 100
+        // Total quintals packed
         const quintals = (bagsNum * kgPerBag) / 100;
-        console.log('Calculated quintals:', quintals);
+        // Remixed old bags quintals
+        const remixQuintals = (rBagsNum * kgPerBag) / 100;
+        // Fresh paddy quintals (Zero paddy deduction for remixed old rice!)
+        const netPaddyQuintals = Math.max(0, quintals - remixQuintals);
+        console.log('Calculated quintals:', quintals, 'Net Paddy Quintals:', netPaddyQuintals);
         setQuantityQuintals(quintals);
 
-        // Calculate paddy deduction using new formula
-        const paddyDeduction = calculatePaddyBagsDeducted(quintals, productType);
+        // Calculate paddy deduction strictly on net paddy quintals
+        const paddyDeduction = calculatePaddyBagsDeducted(netPaddyQuintals, productType);
         console.log('Paddy bags deducted:', paddyDeduction);
         setPaddyBagsDeducted(paddyDeduction);
       } else {
@@ -2590,7 +2678,7 @@ const Records: React.FC = () => {
       setQuantityQuintals(0);
       setPaddyBagsDeducted(0);
     }
-  }, [bags, packagingId, packagings, productType]);
+  }, [bags, packagingId, packagings, productType, prodRemixBags]);
 
   // Pre-fill form when selecting a date that has existing data
   useEffect(() => {
@@ -3354,6 +3442,7 @@ const Records: React.FC = () => {
         productType: productType,
         bags: parseFloat(bags),
         packagingId: parseInt(packagingId),
+        remixBags: prodRemixBags ? parseInt(prodRemixBags) : 0,
         movementType: movementType,
         locationCode: movementType === 'kunchinittu' ? locationCode : null,
         lorryNumber: movementType === 'loading' ? lorryNumber : null,
@@ -3378,9 +3467,19 @@ const Records: React.FC = () => {
 
       toast.success('Rice production entry saved successfully!');
 
-      // Refresh available bags
-      const bagsResponse = await axios.get<{ availableBags: number }>(`/rice-productions/outturn/${selectedOutturnId}/available-bags`);
+      // Refresh available bags and remix counts
+      const bagsResponse = await axios.get<{
+        availableBags: number;
+        availableRemixBags?: number;
+        totalRemixBags?: number;
+        usedRemixBags?: number;
+      }>(`/rice-productions/outturn/${selectedOutturnId}/available-bags`);
       setAvailableBags(bagsResponse.data.availableBags);
+      if (bagsResponse.data.availableRemixBags !== undefined) {
+        setOutturnAvailableRemixBags(bagsResponse.data.availableRemixBags);
+        setOutturnTotalRemixBags(bagsResponse.data.totalRemixBags || 0);
+        setOutturnUsedRemixBags(bagsResponse.data.usedRemixBags || 0);
+      }
 
       // Reset form
       try {
@@ -3391,6 +3490,7 @@ const Records: React.FC = () => {
 
       setProductType('');
       setBags('');
+      setProdRemixBags('');
       setPackagingId('');
       setQuantityQuintals(0);
       setPaddyBagsDeducted(0);
@@ -3403,6 +3503,8 @@ const Records: React.FC = () => {
       fetchProductionRecords();
       fetchRiceStock();
       fetchByProducts();
+      fetchRemixRecords(selectedOutturnId);
+      fetchAllRiceProductions();
       fetchRecords();
       fetchAllRiceProductions();
       fetchOpeningBalance();
@@ -10145,14 +10247,45 @@ return (
                 marginBottom: '2rem',
                 border: '2px solid #FB923C'
               }}>
-                <h3 style={{ marginBottom: '1.5rem', textAlign: 'center', color: '#EA580C', fontWeight: 'bold' }}>
+                <h3 style={{ marginBottom: '1rem', textAlign: 'center', color: '#EA580C', fontWeight: 'bold' }}>
                   📝 Rice Production Data Entry
                 </h3>
+
+                {/* Remixed Old Bags Available Alert Badge */}
+                {outturnAvailableRemixBags > 0 && (
+                  <div style={{
+                    backgroundColor: '#fef3c7',
+                    border: '1px solid #f59e0b',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    marginBottom: '1.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '8px'
+                  }}>
+                    <div>
+                      <span style={{ fontWeight: 800, color: '#78350f', fontSize: '0.95rem' }}>
+                        🔄 Available Remixed Old Bags in Outturn:
+                      </span>{' '}
+                      <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#92400e' }}>
+                        {outturnAvailableRemixBags} Bags
+                      </span>
+                      <span style={{ fontSize: '0.8rem', color: '#b45309', marginLeft: '8px' }}>
+                        (Total Pulled: {outturnTotalRemixBags} | Absorbed in Packets: {outturnUsedRemixBags})
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 700, backgroundColor: '#ecfdf5', padding: '3px 8px', borderRadius: '4px', border: '1px solid #a7f3d0' }}>
+                      🛡️ Milled together • 0 Paddy Bags Deducted • 0% Yield Impact
+                    </div>
+                  </div>
+                )}
 
                 {/* Horizontal Form Grid - Row 1 */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                   gap: '1rem',
                   marginBottom: '1rem'
                 }}>
@@ -10218,7 +10351,7 @@ return (
                   </FormGroup>
 
                   <FormGroup>
-                    <Label>Number of Bags *</Label>
+                    <Label>Total Bags Packed *</Label>
                     <Input
                       type="number"
                       step="1"
@@ -10226,6 +10359,43 @@ return (
                       onChange={(e) => setBags(e.target.value)}
                       placeholder="0"
                     />
+                  </FormGroup>
+
+                  <FormGroup>
+                    <Label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Remix Bags Absorbed</span>
+                      {outturnAvailableRemixBags > 0 && (
+                        <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 800 }}>
+                          ({outturnAvailableRemixBags} avail)
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max={outturnAvailableRemixBags || undefined}
+                      step="1"
+                      value={prodRemixBags}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const num = parseInt(val) || 0;
+                        if (outturnAvailableRemixBags > 0 && num > outturnAvailableRemixBags) {
+                          toast.warning(`Cannot exceed available remixed bags (${outturnAvailableRemixBags})!`);
+                        }
+                        if (bags && num > parseInt(bags)) {
+                          toast.warning('Remixed bags cannot exceed total bags packed!');
+                        }
+                        setProdRemixBags(val);
+                      }}
+                      placeholder={outturnAvailableRemixBags > 0 ? `0 (max ${outturnAvailableRemixBags})` : "0"}
+                      style={{
+                        borderColor: outturnAvailableRemixBags > 0 ? '#b45309' : undefined,
+                        backgroundColor: outturnAvailableRemixBags > 0 ? '#fffbeb' : undefined
+                      }}
+                    />
+                    <InfoText style={{ color: '#92400e' }}>
+                      Old bags mixed (0 paddy bags deducted)
+                    </InfoText>
                   </FormGroup>
 
                   <FormGroup>
@@ -10268,7 +10438,7 @@ return (
                       marginBottom: '0.75rem'
                     }}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>BAGS</div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>TOTAL BAGS</div>
                         <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1f2937' }}>{bags}</div>
                       </div>
 
@@ -10291,6 +10461,28 @@ return (
                       </div>
                     </div>
 
+                    {parseInt(prodRemixBags) > 0 && (
+                      <div style={{
+                        backgroundColor: '#fef3c7',
+                        border: '1px solid #fde68a',
+                        borderRadius: '6px',
+                        padding: '8px 12px',
+                        marginBottom: '0.75rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: '0.88rem'
+                      }}>
+                        <div>
+                          <span style={{ fontWeight: 700, color: '#78350f' }}>🔄 Remixed Old Bags Absorbed:</span>{' '}
+                          <strong style={{ color: '#92400e' }}>{parseInt(prodRemixBags)} Bags</strong> ({(((parseInt(prodRemixBags) * (packagings.find((p: any) => p.id === parseInt(packagingId))?.allottedKg || 26)) / 100)).toFixed(2)} Q)
+                        </div>
+                        <span style={{ color: '#059669', fontWeight: 600, fontSize: '0.8rem' }}>
+                          🌾 Fresh from Paddy: <strong>{Math.max(0, parseInt(bags) - parseInt(prodRemixBags))} Bags</strong>
+                        </span>
+                      </div>
+                    )}
+
                     <div style={{
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -10301,7 +10493,9 @@ return (
                       fontSize: '0.9rem'
                     }}>
                       <span>🌾 PADDY BAGS DEDUCTED:</span>
-                      <span style={{ fontWeight: 'bold' }}>{paddyBagsDeducted} BAGS</span>
+                      <span style={{ fontWeight: 'bold' }}>
+                        {paddyBagsDeducted} BAGS {parseInt(prodRemixBags) > 0 ? '(Calculated ONLY on fresh paddy)' : ''}
+                      </span>
                     </div>
 
                     <div style={{
@@ -10802,15 +10996,15 @@ return (
                       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
                     }}>
                       <h3 style={{ marginBottom: '1.25rem', textAlign: 'center', color: '#78350f', fontWeight: 'bold' }}>
-                        ➕ Record New Mix & Re-cleaning Batch
+                        ➕ Add Old Rice to Outturn Hopper (Re-cleaning & Remix)
                       </h3>
 
-                      {/* Grid 1: Basic Info */}
+                      {/* Basic Info: Date, Product Type, Variety */}
                       <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
                         gap: '1rem',
-                        marginBottom: '1rem'
+                        marginBottom: '1.25rem'
                       }}>
                         <FormGroup>
                           <Label>Date *</Label>
@@ -10847,185 +11041,178 @@ return (
                         </FormGroup>
                       </div>
 
-                      {/* Grid 2: Source (Old Bags) */}
-                      <div style={{
-                        background: '#ffffff',
-                        padding: '1rem',
-                        borderRadius: '8px',
-                        border: '1px solid #fde68a',
-                        marginBottom: '1rem'
-                      }}>
-                        <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
-                          📦 1. Source Details (Old / Insect Bags Taken)
-                        </div>
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                          gap: '1rem'
-                        }}>
-                          <FormGroup>
-                            <Label>From Location (Source Godown) *</Label>
-                            <Select
-                              value={remixSourceLocation}
-                              onChange={(e) => setRemixSourceLocation(e.target.value)}
-                              required
-                            >
-                              <option value="">-- Select Source Location --</option>
-                              {riceStockLocations
-                                .filter((loc: any) => loc.is_active !== false && !loc.is_direct_load)
-                                .map((loc: any) => (
-                                  <option key={loc.id || loc.code} value={loc.code}>
-                                    {loc.name || loc.code}
-                                  </option>
-                                ))}
-                            </Select>
-                          </FormGroup>
-
-                          <FormGroup>
-                            <Label>Source Brand / Packaging *</Label>
-                            <Select
-                              value={remixSourcePackagingId}
-                              onChange={(e) => setRemixSourcePackagingId(e.target.value)}
-                              required
-                            >
-                              <option value="">-- Select Brand / Packaging --</option>
-                              {packagings.map((pkg: any) => (
-                                <option key={pkg.id} value={pkg.id}>
-                                  {pkg.brandName} ({pkg.allottedKg} kg)
-                                </option>
-                              ))}
-                            </Select>
-                            {checkingRemixStock ? (
-                              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Checking stock...</span>
-                            ) : remixAvailableStock !== null && (
-                              <div style={{
-                                fontSize: '0.8rem',
-                                fontWeight: 700,
-                                color: remixAvailableStock > 0 ? '#15803d' : '#dc2626',
-                                marginTop: '3px'
-                              }}>
-                                📊 Available Stock in {remixSourceLocation}: {remixAvailableStock} Bags
-                              </div>
-                            )}
-                          </FormGroup>
-
-                          <FormGroup>
-                            <Label>Old Bags Taken *</Label>
-                            <Input
-                              type="number"
-                              min="1"
-                              placeholder="e.g. 50"
-                              value={remixSourceBags}
-                              onChange={(e) => setRemixSourceBags(e.target.value)}
-                              required
-                              style={{
-                                borderColor: (remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock) ? '#ef4444' : undefined,
-                                backgroundColor: (remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock) ? '#fef2f2' : undefined
-                              }}
-                            />
-                            {remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock && (
-                              <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 700, marginTop: '2px' }}>
-                                ⚠️ Cannot exceed available stock in {remixSourceLocation} ({remixAvailableStock} bags)!
-                              </span>
-                            )}
-                          </FormGroup>
-                        </div>
-                      </div>
-
-                      {/* Grid 3: Destination (Cleaned Bags) */}
-                      <div style={{
-                        background: '#ffffff',
-                        padding: '1rem',
-                        borderRadius: '8px',
-                        border: '1px solid #fde68a',
-                        marginBottom: '1rem'
-                      }}>
-                        <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
-                          ✨ 2. Output Details (Cleaned Rice Added)
-                        </div>
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                          gap: '1rem'
-                        }}>
-                          <FormGroup>
-                            <Label>To Location (Destination Godown) *</Label>
-                            <Select
-                              value={remixTargetLocation}
-                              onChange={(e) => setRemixTargetLocation(e.target.value)}
-                              required
-                            >
-                              <option value="">-- Select Destination Location --</option>
-                              {riceStockLocations
-                                .filter((loc: any) => loc.is_active !== false)
-                                .map((loc: any) => (
-                                  <option key={loc.id || loc.code} value={loc.code}>
-                                    {loc.name || loc.code}
-                                  </option>
-                                ))}
-                            </Select>
-                          </FormGroup>
-
-                          <FormGroup>
-                            <Label>Destination Brand / Packaging *</Label>
-                            <Select
-                              value={remixTargetPackagingId}
-                              onChange={(e) => setRemixTargetPackagingId(e.target.value)}
-                              required
-                            >
-                              <option value="">-- Select Target Brand --</option>
-                              {packagings.map((pkg: any) => (
-                                <option key={pkg.id} value={pkg.id}>
-                                  {pkg.brandName} ({pkg.allottedKg} kg)
-                                </option>
-                              ))}
-                            </Select>
-                          </FormGroup>
-
-                          <FormGroup>
-                            <Label>Clean Bags Produced *</Label>
-                            <Input
-                              type="number"
-                              min="1"
-                              placeholder="e.g. 48"
-                              value={remixCleanBags}
-                              onChange={(e) => setRemixCleanBags(e.target.value)}
-                              required
-                            />
-                          </FormGroup>
-                        </div>
-                      </div>
-
-                      {/* Wastage / Difference Calculation Card */}
-                      {parseInt(remixSourceBags) > 0 && parseInt(remixCleanBags) > 0 && (
-                        <div style={{
-                          backgroundColor: parseInt(remixSourceBags) >= parseInt(remixCleanBags) ? '#fef2f2' : '#ecfdf5',
-                          border: `1px solid ${parseInt(remixSourceBags) >= parseInt(remixCleanBags) ? '#fecaca' : '#a7f3d0'}`,
-                          padding: '10px 14px',
-                          borderRadius: '8px',
-                          marginBottom: '1rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          flexWrap: 'wrap',
-                          gap: '8px'
-                        }}>
-                          <div style={{
-                            fontWeight: 700,
-                            color: parseInt(remixSourceBags) >= parseInt(remixCleanBags) ? '#991b1b' : '#065f46',
-                            fontSize: '0.9rem'
-                          }}>
-                            {parseInt(remixSourceBags) >= parseInt(remixCleanBags) ? (
-                              <span>⚠️ Cleaning Loss / Waste: <strong>{parseInt(remixSourceBags) - parseInt(remixCleanBags)} Bags</strong> ({((parseInt(remixSourceBags) - parseInt(remixCleanBags)) * 0.26).toFixed(2)} Qtl approx)</span>
-                            ) : (
-                              <span>📈 Net Gain: <strong>{parseInt(remixCleanBags) - parseInt(remixSourceBags)} Bags</strong></span>
-                            )}
-                          </div>
-                          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                            Formula: Source Bags ({remixSourceBags}) - Clean Bags ({remixCleanBags})
+                      {/* Multi-Source Godowns Section */}
+                      <div style={{ marginBottom: '1.25rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                          <span style={{ fontWeight: 800, color: '#92400e', fontSize: '0.95rem' }}>
+                            📦 Source Godown(s) — Pull Old / Insect Bags
+                          </span>
+                          <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                            Select 1 or more source godowns
                           </span>
                         </div>
-                      )}
+
+                        {remixSources.map((sourceRow, idx) => {
+                          const isOverStock = sourceRow.availableStock !== null && parseInt(sourceRow.bags) > sourceRow.availableStock;
+                          return (
+                            <div key={sourceRow.id} style={{
+                              background: '#ffffff',
+                              padding: '1rem',
+                              borderRadius: '8px',
+                              border: isOverStock ? '2px solid #ef4444' : '1px solid #fde68a',
+                              marginBottom: '0.75rem'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                <span style={{ fontWeight: 700, color: '#78350f', fontSize: '0.85rem' }}>
+                                  Godown Source #{idx + 1}
+                                </span>
+                                {remixSources.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveRemixSource(sourceRow.id)}
+                                    style={{
+                                      background: '#fee2e2',
+                                      color: '#dc2626',
+                                      border: '1px solid #fca5a5',
+                                      borderRadius: '4px',
+                                      padding: '2px 8px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    🗑️ Remove Godown
+                                  </button>
+                                )}
+                              </div>
+
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                gap: '1rem'
+                              }}>
+                                <FormGroup>
+                                  <Label>From Location (Source Godown) *</Label>
+                                  <Select
+                                    value={sourceRow.locationCode}
+                                    onChange={(e) => handleUpdateRemixSource(sourceRow.id, 'locationCode', e.target.value)}
+                                    required
+                                  >
+                                    <option value="">-- Select Source Godown --</option>
+                                    {riceStockLocations
+                                      .filter((loc: any) => loc.is_active !== false && !loc.is_direct_load)
+                                      .map((loc: any) => (
+                                        <option key={loc.id || loc.code} value={loc.code}>
+                                          {loc.name || loc.code}
+                                        </option>
+                                      ))}
+                                  </Select>
+                                </FormGroup>
+
+                                <FormGroup>
+                                  <Label>Source Brand / Packaging *</Label>
+                                  <Select
+                                    value={sourceRow.packagingId}
+                                    onChange={(e) => handleUpdateRemixSource(sourceRow.id, 'packagingId', e.target.value)}
+                                    required
+                                  >
+                                    <option value="">-- Select Brand / Packaging --</option>
+                                    {packagings.map((pkg: any) => (
+                                      <option key={pkg.id} value={pkg.id}>
+                                        {pkg.brandName} ({pkg.allottedKg} kg)
+                                      </option>
+                                    ))}
+                                  </Select>
+                                  {sourceRow.checkingStock ? (
+                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Checking stock...</span>
+                                  ) : sourceRow.availableStock !== null && (
+                                    <div style={{
+                                      fontSize: '0.8rem',
+                                      fontWeight: 700,
+                                      color: sourceRow.availableStock > 0 ? '#15803d' : '#dc2626',
+                                      marginTop: '3px'
+                                    }}>
+                                      📊 Available Stock in {sourceRow.locationCode}: {sourceRow.availableStock} Bags
+                                    </div>
+                                  )}
+                                </FormGroup>
+
+                                <FormGroup>
+                                  <Label>Old Bags Taken *</Label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    placeholder="e.g. 30"
+                                    value={sourceRow.bags}
+                                    onChange={(e) => handleUpdateRemixSource(sourceRow.id, 'bags', e.target.value)}
+                                    required
+                                    style={{
+                                      borderColor: isOverStock ? '#ef4444' : undefined,
+                                      backgroundColor: isOverStock ? '#fef2f2' : undefined
+                                    }}
+                                  />
+                                  {isOverStock && (
+                                    <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 700, marginTop: '2px' }}>
+                                      ⚠️ Cannot exceed available stock in {sourceRow.locationCode} ({sourceRow.availableStock} bags)!
+                                    </span>
+                                  )}
+                                </FormGroup>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        <button
+                          type="button"
+                          onClick={handleAddRemixSource}
+                          style={{
+                            background: '#fef3c7',
+                            border: '1px dashed #d97706',
+                            color: '#92400e',
+                            padding: '8px 16px',
+                            borderRadius: '6px',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            cursor: 'pointer',
+                            width: '100%',
+                            marginTop: '4px'
+                          }}
+                        >
+                          ➕ Add Another Source Godown
+                        </button>
+                      </div>
+
+                      {/* Summary of Old Bags Being Added */}
+                      {(() => {
+                        const totalBags = remixSources.reduce((sum, r) => sum + (parseInt(r.bags) || 0), 0);
+                        return (
+                          <div style={{
+                            backgroundColor: '#ecfdf5',
+                            border: '1px solid #a7f3d0',
+                            borderRadius: '8px',
+                            padding: '10px 14px',
+                            marginBottom: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '8px'
+                          }}>
+                            <div>
+                              <span style={{ fontWeight: 700, color: '#065f46', fontSize: '0.9rem' }}>
+                                🌾 Total Old Bags Added to Outturn:
+                              </span>{' '}
+                              <strong style={{ fontSize: '1.05rem', color: '#047857' }}>{totalBags} Bags</strong>
+                              <div style={{ color: '#065f46', fontSize: '0.78rem', marginTop: '2px' }}>
+                                ℹ️ Finish bags & pack into fresh packets on the <strong>🌾 Paddy Rice Production</strong> form.
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 600 }}>
+                              🛡️ 0 Paddy Bags Deducted
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       <FormGroup style={{ marginBottom: '1.25rem' }}>
                         <Label>Remarks / Cleaning Notes</Label>
@@ -11039,7 +11226,7 @@ return (
 
                       <Button
                         type="submit"
-                        disabled={remixSubmitting || (remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock)}
+                        disabled={remixSubmitting || remixSources.some(r => r.availableStock !== null && parseInt(r.bags) > r.availableStock)}
                         style={{
                           width: '100%',
                           backgroundColor: '#78350f',
@@ -11053,7 +11240,7 @@ return (
                           boxShadow: '0 2px 4px rgba(120, 53, 15, 0.4)'
                         }}
                       >
-                        {remixSubmitting ? 'Recording Remix Entry...' : '💾 Save Mix & Re-clean Entry'}
+                        {remixSubmitting ? 'Adding Old Bags...' : '💾 Add Old Bags to Outturn'}
                       </Button>
                     </form>
                   )}
@@ -11116,12 +11303,24 @@ return (
                                       {rec.sourceBags}
                                     </span>
                                   </td>
-                                  <td style={{ padding: '4px 6px', fontWeight: 600 }}>{rec.toLocation || '-'}</td>
+                                  <td style={{ padding: '4px 6px', fontWeight: 600 }}>
+                                    {rec.toLocation ? (
+                                      rec.toLocation
+                                    ) : (
+                                      <span style={{ color: '#92400e', fontStyle: 'italic', fontWeight: 700 }}>🏭 In Outturn Hopper</span>
+                                    )}
+                                  </td>
                                   <td style={{ padding: '4px 6px' }}>{rec.targetPackagingBrand || '-'}</td>
                                   <td style={{ padding: '4px 6px', fontWeight: 800, color: '#15803d' }}>
-                                    <span style={{ background: '#dcfce7', padding: '1px 6px', borderRadius: '4px' }}>
-                                      +{rec.cleanBags || rec.bags}
-                                    </span>
+                                    {rec.toLocation ? (
+                                      <span style={{ background: '#dcfce7', padding: '1px 6px', borderRadius: '4px' }}>
+                                        +{rec.cleanBags || rec.bags}
+                                      </span>
+                                    ) : (
+                                      <span style={{ background: '#ecfdf5', color: '#047857', padding: '2px 6px', borderRadius: '4px', fontSize: '7.5pt', fontWeight: 700 }}>
+                                        Pack in Production
+                                      </span>
+                                    )}
                                   </td>
                                   <td style={{ padding: '4px 6px' }}>
                                     {lossBags > 0 ? (
@@ -11129,7 +11328,7 @@ return (
                                         ⚠️ {lossBags} Bags
                                       </span>
                                     ) : (
-                                      <span style={{ color: '#16a34a', fontWeight: 600 }}>0</span>
+                                      <span style={{ color: '#64748b' }}>-</span>
                                     )}
                                   </td>
                                   <td style={{ padding: '4px 6px', textAlign: 'left', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

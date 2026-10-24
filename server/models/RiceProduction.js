@@ -50,6 +50,18 @@ const RiceProduction = sequelize.define('RiceProduction', {
     defaultValue: 0,
     comment: 'Number of paddy bags deducted (quintals × 3, rounded)'
   },
+  remixBags: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Number of remixed old bags absorbed in this production'
+  },
+  remixQuintals: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Quintals of remixed old bags absorbed in this production'
+  },
   movementType: {
     type: DataTypes.ENUM('kunchinittu', 'loading'),
     allowNull: false

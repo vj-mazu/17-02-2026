@@ -3589,6 +3589,7 @@ router.post('/remix', auth, async (req, res) => {
             outturnId,
             productType = 'Rice',
             variety,
+            sources, // Array of { sourceLocation, sourcePackagingId, sourceBags }
             sourceLocation,
             sourcePackagingId,
             sourceBags,
@@ -3601,19 +3602,37 @@ router.post('/remix', auth, async (req, res) => {
         if (!outturnId) {
             return res.status(400).json({ success: false, error: 'Outturn ID is required' });
         }
-        if (!sourceLocation || !targetLocation) {
-            return res.status(400).json({ success: false, error: 'Source and Destination locations are required' });
+
+        // Build list of source entries (supports multi-source and single-source)
+        let sourceList = [];
+        if (sources && Array.isArray(sources) && sources.length > 0) {
+            sourceList = sources.map(s => ({
+                sourceLocation: s.sourceLocation || s.locationCode,
+                sourcePackagingId: parseInt(s.sourcePackagingId || s.packagingId),
+                sourceBags: parseInt(s.sourceBags || s.bags)
+            }));
+        } else if (sourceLocation && sourcePackagingId && sourceBags) {
+            sourceList = [{
+                sourceLocation,
+                sourcePackagingId: parseInt(sourcePackagingId),
+                sourceBags: parseInt(sourceBags)
+            }];
+        } else {
+            return res.status(400).json({ success: false, error: 'At least one source location with brand and bag count is required' });
         }
-        if (!sourcePackagingId || !targetPackagingId) {
-            return res.status(400).json({ success: false, error: 'Source and Target Brand/Packaging are required' });
-        }
-        const sBags = parseInt(sourceBags);
-        const cBags = parseInt(cleanBags);
-        if (!sBags || sBags <= 0) {
-            return res.status(400).json({ success: false, error: 'Source bags must be greater than 0' });
-        }
-        if (!cBags || cBags <= 0) {
-            return res.status(400).json({ success: false, error: 'Clean bags must be greater than 0' });
+
+        // Validate each source entry
+        for (let i = 0; i < sourceList.length; i++) {
+            const s = sourceList[i];
+            if (!s.sourceLocation) {
+                return res.status(400).json({ success: false, error: `Source #${i + 1}: Please select a source godown` });
+            }
+            if (!s.sourcePackagingId) {
+                return res.status(400).json({ success: false, error: `Source #${i + 1}: Please select brand/packaging` });
+            }
+            if (!s.sourceBags || s.sourceBags <= 0) {
+                return res.status(400).json({ success: false, error: `Source #${i + 1}: Old bags taken must be greater than 0` });
+            }
         }
 
         // 1. Verify Outturn is active and not cleared
@@ -3629,41 +3648,41 @@ router.post('/remix', auth, async (req, res) => {
         // Variety lock: strictly match outturn variety
         const resolvedVariety = variety || outturn.allottedVariety;
 
-        // 2. Validate available stock for source brand at source location
+        // 2. Validate available stock for each source brand at its source location
         const RiceStockCalculationService = require('../services/riceStockCalculationService');
-        const stockCheck = await RiceStockCalculationService.calculateStockBalance({
-            locationCode: sourceLocation,
-            variety: resolvedVariety,
-            outturnId: null,
-            productType,
-            packagingId: parseInt(sourcePackagingId),
-            date,
-            debugMode: false
-        });
+        const Packaging = require('../models/Packaging');
 
-        const availableSourceBags = stockCheck ? (stockCheck.bags || 0) : 0;
-        if (sBags > availableSourceBags) {
-            return res.status(400).json({
-                success: false,
-                error: `Insufficient stock! Only ${availableSourceBags} bags available in ${sourceLocation} for selected brand.`,
-                availableBags: availableSourceBags
+        for (const s of sourceList) {
+            const stockCheck = await RiceStockCalculationService.calculateStockBalance({
+                locationCode: s.sourceLocation,
+                variety: resolvedVariety,
+                outturnId: null,
+                productType,
+                packagingId: s.sourcePackagingId,
+                date,
+                debugMode: false
             });
+
+            const availableSourceBags = stockCheck ? (stockCheck.bags || 0) : 0;
+            if (s.sourceBags > availableSourceBags) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Insufficient stock in ${s.sourceLocation}! Only ${availableSourceBags} bags available for selected brand.`,
+                    availableBags: availableSourceBags
+                });
+            }
         }
 
-        // 3. Resolve packagings to get weights
-        const Packaging = require('../models/Packaging');
-        const sp = await Packaging.findByPk(sourcePackagingId);
-        const tp = await Packaging.findByPk(targetPackagingId);
-        const spKg = sp ? parseFloat(sp.allottedKg || 26) : 26;
-        const tpKg = tp ? parseFloat(tp.allottedKg || 26) : 26;
+        // 3. Insert remix movement for each source location
+        const createdRecords = [];
+        const hasExplicitTarget = targetLocation && targetPackagingId && parseInt(cleanBags) > 0;
+        let tp = null;
+        let tpKg = 26;
+        if (hasExplicitTarget) {
+            tp = await Packaging.findByPk(targetPackagingId);
+            tpKg = tp ? parseFloat(tp.allottedKg || 26) : 26;
+        }
 
-        const sourceTotalKg = sBags * spKg;
-        const targetTotalKg = cBags * tpKg;
-        const targetQtls = targetTotalKg / 100;
-        const shortageKg = Math.max(0, sourceTotalKg - targetTotalKg);
-        const shortageBags = Math.max(0, sBags - cBags);
-
-        // 4. Insert into rice_stock_movements
         const insertQuery = `
             INSERT INTO rice_stock_movements (
                 date,
@@ -3712,31 +3731,54 @@ router.post('/remix', auth, async (req, res) => {
             ) RETURNING *
         `;
 
-        const [newRecord] = await sequelize.query(insertQuery, {
-            replacements: {
-                date,
-                variety: resolvedVariety,
-                outturnId: parseInt(outturnId),
-                productType,
-                sourceLocation,
-                targetLocation,
-                targetPackagingId: parseInt(targetPackagingId),
-                sourcePackagingId: parseInt(sourcePackagingId),
-                cleanBags: cBags,
-                sourceBags: sBags,
-                bagSizeKg: tpKg,
-                quantityQuintals: targetQtls,
-                shortageKg,
-                shortageBags,
-                remarks: remarks || 'Mix & Re-clean entry'
-            },
-            type: sequelize.QueryTypes.INSERT
-        });
+        for (const s of sourceList) {
+            const sp = await Packaging.findByPk(s.sourcePackagingId);
+            const spKg = sp ? parseFloat(sp.allottedKg || 26) : 26;
+            const sourceTotalKg = s.sourceBags * spKg;
+            const sourceQtls = sourceTotalKg / 100;
+
+            let cBags = 0;
+            let targetQtls = 0;
+            let shortageKg = 0;
+            let shortageBags = 0;
+
+            if (hasExplicitTarget) {
+                cBags = Math.round(parseInt(cleanBags) / sourceList.length);
+                const targetTotalKg = cBags * tpKg;
+                targetQtls = targetTotalKg / 100;
+                shortageKg = Math.max(0, sourceTotalKg - targetTotalKg);
+                shortageBags = Math.max(0, s.sourceBags - cBags);
+            }
+
+            const [newRecord] = await sequelize.query(insertQuery, {
+                replacements: {
+                    date,
+                    variety: resolvedVariety,
+                    outturnId: parseInt(outturnId),
+                    productType,
+                    sourceLocation: s.sourceLocation,
+                    targetLocation: hasExplicitTarget ? targetLocation : null,
+                    targetPackagingId: hasExplicitTarget ? parseInt(targetPackagingId) : null,
+                    sourcePackagingId: s.sourcePackagingId,
+                    cleanBags: cBags,
+                    sourceBags: s.sourceBags,
+                    bagSizeKg: hasExplicitTarget ? tpKg : spKg,
+                    quantityQuintals: hasExplicitTarget ? targetQtls : sourceQtls,
+                    shortageKg,
+                    shortageBags,
+                    remarks: remarks || 'Mix & Re-clean old rice pulled into outturn'
+                },
+                type: sequelize.QueryTypes.INSERT
+            });
+
+            createdRecords.push(newRecord[0] || newRecord);
+        }
 
         res.status(201).json({
             success: true,
             message: 'Remix operation recorded successfully',
-            record: newRecord[0] || newRecord
+            records: createdRecords,
+            record: createdRecords[0]
         });
     } catch (error) {
         console.error('Error creating remix entry:', error);

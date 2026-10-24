@@ -546,6 +546,8 @@ const RiceLedger: React.FC = () => {
                     qtls = (bags * bagsSize) / 100;
                 }
 
+                const isRemixSource = (m.fromLocation || m.from_location || m.locationCode || m.location_code) === selectedLocation;
+
                 if (mvtType === 'production' || mvtType === 'purchase') {
                     totals[mvtType as keyof typeof totals].bags += bags;
                     totals[mvtType as keyof typeof totals].quintals += qtls;
@@ -581,11 +583,10 @@ const RiceLedger: React.FC = () => {
                     totals.palti.quintals += qtls;
                 } else if (mvtType === 'remix') {
                     const isTarget = (m.toLocation || m.to_location) === selectedLocation;
-                    const isSource = (m.fromLocation || m.from_location || m.locationCode || m.location_code) === selectedLocation;
-                    if (isTarget && !isSource) {
+                    if (isTarget && !isRemixSource) {
                         runningBalance += bags;
                         runningQtls += qtls;
-                    } else if (isSource) {
+                    } else if (isRemixSource) {
                         const sBags = m.sourceBags || m.source_bags || bags;
                         runningBalance -= sBags;
                         runningQtls -= qtls;
@@ -600,7 +601,9 @@ const RiceLedger: React.FC = () => {
                     variety: m.variety || m.VARIETY || m.Variety || '-',
                     bags: bags,
                     quantityQuintals: qtls,
-                    packagingBrand: m.packagingBrand || m.packaging_brand || m.packagingbrand || m.targetPackagingBrand || m.target_packaging_brand || '-',
+                    packagingBrand: (mvtType === 'remix' && isRemixSource)
+                        ? (m.sourcePackagingBrand || m.source_packaging_brand || m.packagingBrand || m.packaging_brand || '-')
+                        : (m.packagingBrand || m.packaging_brand || m.packagingbrand || m.targetPackagingBrand || m.target_packaging_brand || '-'),
                     locationCode: m.locationCode || m.location_code || m.locationcode,
                     billNumber: m.billNumber || m.bill_number || m.billnumber || '-',
                     lorryNumber: m.lorryNumber || m.lorry_number || m.lorrynumber || '-',

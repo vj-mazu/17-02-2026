@@ -46,8 +46,10 @@ class ByProductSyncService {
 
                 const field = this.getFieldFromProductType(prod.productType);
                 const qty = parseFloat(prod.quantityQuintals) || 0;
+                const remixQty = parseFloat(prod.remixQuintals) || 0;
+                const netPaddyQty = Math.max(0, qty - remixQty);
 
-                aggregatesByDate[dateStr][field] += qty;
+                aggregatesByDate[dateStr][field] += netPaddyQty;
             });
 
             // 3. Delete ALL existing by-products for this outturn
