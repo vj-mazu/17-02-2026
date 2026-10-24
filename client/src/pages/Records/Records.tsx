@@ -2431,9 +2431,15 @@ const Records: React.FC = () => {
   const handleUpdateRemix = async () => {
     if (!editingRemixRecord) return;
     const sBags = parseInt(editRemixSourceBags);
-    const cBags = parseInt(editRemixCleanBags);
-    if (!sBags || sBags <= 0 || !cBags || cBags <= 0) {
-      toast.error('Please enter valid bag counts');
+    if (!sBags || sBags <= 0) {
+      toast.error('Please enter valid Old Bags count');
+      return;
+    }
+
+    const hasTarget = Boolean(editingRemixRecord.toLocation || editRemixTargetLocation);
+    const cBags = parseInt(editRemixCleanBags) || 0;
+    if (hasTarget && cBags <= 0) {
+      toast.error('Please enter valid Clean Bags count');
       return;
     }
 
@@ -2444,9 +2450,9 @@ const Records: React.FC = () => {
         date: editRemixDate,
         sourcePackagingId: parseInt(editRemixSourcePackagingId),
         sourceBags: sBags,
-        targetLocation: editRemixTargetLocation,
-        targetPackagingId: parseInt(editRemixTargetPackagingId),
-        cleanBags: cBags,
+        targetLocation: hasTarget ? editRemixTargetLocation : null,
+        targetPackagingId: (hasTarget && editRemixTargetPackagingId) ? parseInt(editRemixTargetPackagingId) : null,
+        cleanBags: hasTarget ? cBags : 0,
         remarks: editRemixRemarks
       }, {
         headers: { Authorization: `Bearer ${token}` }
@@ -2457,6 +2463,7 @@ const Records: React.FC = () => {
         setEditingRemixRecord(null);
         fetchRemixRecords(selectedOutturnId);
         fetchRiceStock();
+        fetchAllRiceProductions();
       }
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to update remix entry');
@@ -3172,7 +3179,8 @@ const Records: React.FC = () => {
           packagingId: updatedData.packagingId || updatedData.packaging_id,
           packagingBrand: updatedData.packagingBrand || updatedData.packaging_brand,
           locationCode: updatedData.locationCode || updatedData.location_code,
-          bagSizeKg: updatedData.bagSizeKg || updatedData.bag_size_kg
+          bagSizeKg: updatedData.bagSizeKg || updatedData.bag_size_kg,
+          remixBags: updatedData.remixBags !== undefined ? updatedData.remixBags : (editingRiceMovement.remixBags || 0)
         });
       }
 
@@ -5361,10 +5369,12 @@ const Records: React.FC = () => {
                                       textTransform: 'uppercase',
                                       background: editingRiceMovement.movementType === 'sale' ? '#fee2e2' :
                                         editingRiceMovement.movementType === 'purchase' ? '#dcfce7' :
-                                          editingRiceMovement.movementType === 'palti' ? '#ede9fe' : '#f3f4f6',
+                                          editingRiceMovement.movementType === 'palti' ? '#ede9fe' :
+                                            editingRiceMovement.movementType === 'remix' ? '#fef3c7' : '#f3f4f6',
                                       color: editingRiceMovement.movementType === 'sale' ? '#dc2626' :
                                         editingRiceMovement.movementType === 'purchase' ? '#16a34a' :
-                                          editingRiceMovement.movementType === 'palti' ? '#7c3aed' : '#374151'
+                                          editingRiceMovement.movementType === 'palti' ? '#7c3aed' :
+                                            editingRiceMovement.movementType === 'remix' ? '#78350f' : '#374151'
                                     }}>
                                       {editingRiceMovement.movementType || 'production'}
                                     </span>
@@ -11427,44 +11437,10 @@ return (
                           </FormGroup>
 
                           <FormGroup>
-                            <Label>Old Bags Taken (Source)</Label>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={editRemixSourceBags}
-                              onChange={(e) => setEditRemixSourceBags(e.target.value)}
-                            />
-                          </FormGroup>
-
-                          <FormGroup>
-                            <Label>Clean Bags Produced</Label>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={editRemixCleanBags}
-                              onChange={(e) => setEditRemixCleanBags(e.target.value)}
-                            />
-                          </FormGroup>
-
-                          <FormGroup>
-                            <Label>Destination Location</Label>
+                            <Label>Source Brand / Packaging</Label>
                             <Select
-                              value={editRemixTargetLocation}
-                              onChange={(e) => setEditRemixTargetLocation(e.target.value)}
-                            >
-                              {riceStockLocations.map((loc: any) => (
-                                <option key={loc.id || loc.code} value={loc.code}>
-                                  {loc.name || loc.code}
-                                </option>
-                              ))}
-                            </Select>
-                          </FormGroup>
-
-                          <FormGroup>
-                            <Label>Destination Brand</Label>
-                            <Select
-                              value={editRemixTargetPackagingId}
-                              onChange={(e) => setEditRemixTargetPackagingId(e.target.value)}
+                              value={editRemixSourcePackagingId}
+                              onChange={(e) => setEditRemixSourcePackagingId(e.target.value)}
                             >
                               {packagings.map((pkg: any) => (
                                 <option key={pkg.id} value={pkg.id}>
@@ -11473,6 +11449,69 @@ return (
                               ))}
                             </Select>
                           </FormGroup>
+
+                          <FormGroup>
+                            <Label>Old Bags Taken (Source Godown: {editingRemixRecord.fromLocation || 'Godown'})</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={editRemixSourceBags}
+                              onChange={(e) => setEditRemixSourceBags(e.target.value)}
+                            />
+                          </FormGroup>
+
+                          {editingRemixRecord.toLocation ? (
+                            <>
+                              <FormGroup>
+                                <Label>Clean Bags Produced</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={editRemixCleanBags}
+                                  onChange={(e) => setEditRemixCleanBags(e.target.value)}
+                                />
+                              </FormGroup>
+
+                              <FormGroup>
+                                <Label>Destination Location</Label>
+                                <Select
+                                  value={editRemixTargetLocation}
+                                  onChange={(e) => setEditRemixTargetLocation(e.target.value)}
+                                >
+                                  {riceStockLocations.map((loc: any) => (
+                                    <option key={loc.id || loc.code} value={loc.code}>
+                                      {loc.name || loc.code}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </FormGroup>
+
+                              <FormGroup>
+                                <Label>Destination Brand</Label>
+                                <Select
+                                  value={editRemixTargetPackagingId}
+                                  onChange={(e) => setEditRemixTargetPackagingId(e.target.value)}
+                                >
+                                  {packagings.map((pkg: any) => (
+                                    <option key={pkg.id} value={pkg.id}>
+                                      {pkg.brandName} ({pkg.allottedKg} kg)
+                                    </option>
+                                  ))}
+                                </Select>
+                              </FormGroup>
+                            </>
+                          ) : (
+                            <div style={{
+                              backgroundColor: '#ecfdf5',
+                              border: '1px solid #a7f3d0',
+                              borderRadius: '6px',
+                              padding: '8px 12px',
+                              fontSize: '0.82rem',
+                              color: '#065f46'
+                            }}>
+                              ℹ️ These old bags are in the Outturn hopper. Finished packets are recorded on the <strong>🌾 Paddy Rice Production</strong> form.
+                            </div>
+                          )}
 
                           <FormGroup>
                             <Label>Remarks</Label>

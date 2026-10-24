@@ -3851,15 +3851,24 @@ router.put('/remix/:id', auth, async (req, res) => {
         // Calculate weights
         const Packaging = require('../models/Packaging');
         const sp = await Packaging.findByPk(sPackId);
-        const tp = await Packaging.findByPk(tPackId);
         const spKg = sp ? parseFloat(sp.allottedKg || 26) : 26;
-        const tpKg = tp ? parseFloat(tp.allottedKg || 26) : 26;
-
         const sourceTotalKg = sBags * spKg;
-        const targetTotalKg = cBags * tpKg;
-        const targetQtls = targetTotalKg / 100;
-        const shortageKg = Math.max(0, sourceTotalKg - targetTotalKg);
-        const shortageBags = Math.max(0, sBags - cBags);
+
+        const hasExplicitTarget = Boolean(tLoc && tPackId && cBags > 0);
+        let tp = null;
+        let tpKg = 26;
+        let targetQtls = 0;
+        let shortageKg = 0;
+        let shortageBags = 0;
+
+        if (hasExplicitTarget) {
+            tp = await Packaging.findByPk(tPackId);
+            tpKg = tp ? parseFloat(tp.allottedKg || 26) : 26;
+            const targetTotalKg = cBags * tpKg;
+            targetQtls = targetTotalKg / 100;
+            shortageKg = Math.max(0, sourceTotalKg - targetTotalKg);
+            shortageBags = Math.max(0, sBags - cBags);
+        }
 
         const updateQuery = `
             UPDATE rice_stock_movements SET
@@ -3869,7 +3878,7 @@ router.put('/remix/:id', auth, async (req, res) => {
                 location_code = :sourceLocation,
                 from_location = :sourceLocation,
                 to_location = :targetLocation,
-                packaging_id = :targetPackagingId,
+                packaging_id = :packagingId,
                 source_packaging_id = :sourcePackagingId,
                 target_packaging_id = :targetPackagingId,
                 bags = :cleanBags,
@@ -3891,13 +3900,14 @@ router.put('/remix/:id', auth, async (req, res) => {
                 variety: vVar,
                 productType: pType,
                 sourceLocation: sLoc,
-                targetLocation: tLoc,
-                targetPackagingId: tPackId,
+                targetLocation: hasExplicitTarget ? tLoc : null,
+                targetPackagingId: hasExplicitTarget ? tPackId : null,
                 sourcePackagingId: sPackId,
-                cleanBags: cBags,
+                packagingId: hasExplicitTarget ? tPackId : sPackId,
+                cleanBags: hasExplicitTarget ? cBags : 0,
                 sourceBags: sBags,
-                bagSizeKg: tpKg,
-                quantityQuintals: targetQtls,
+                bagSizeKg: hasExplicitTarget ? tpKg : spKg,
+                quantityQuintals: hasExplicitTarget ? targetQtls : (sourceTotalKg / 100),
                 shortageKg,
                 shortageBags,
                 remarks: rem
