@@ -70,16 +70,16 @@ class RiceStockCalculationService {
             rsm.product_type,
             COALESCE(
               CASE 
-                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."brandName"
-                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."brandName"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
                 ELSE p."brandName"
               END,
               p."brandName"
             ) as packaging_name,
             COALESCE(
               CASE 
-                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."allottedKg"
-                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."allottedKg"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
                 ELSE p."allottedKg"
               END,
               p."allottedKg"
@@ -91,10 +91,10 @@ class RiceStockCalculationService {
               WHEN rsm.movement_type = 'sale' 
                    AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN -rsm.bags
-              WHEN rsm.movement_type = 'palti' 
+              WHEN rsm.movement_type IN ('palti', 'remix') 
                    AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN -COALESCE(rsm.source_bags, rsm.bags)
-              WHEN rsm.movement_type = 'palti' 
+              WHEN rsm.movement_type IN ('palti', 'remix') 
                    AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN rsm.bags
               ELSE 0
@@ -106,10 +106,10 @@ class RiceStockCalculationService {
               WHEN rsm.movement_type = 'sale' 
                    AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN -rsm.quantity_quintals
-              WHEN rsm.movement_type = 'palti' 
+              WHEN rsm.movement_type IN ('palti', 'remix') 
                    AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN -rsm.quantity_quintals
-              WHEN rsm.movement_type = 'palti' 
+              WHEN rsm.movement_type IN ('palti', 'remix') 
                    AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
                    THEN rsm.quantity_quintals
               ELSE 0
@@ -134,10 +134,10 @@ class RiceStockCalculationService {
               (LOWER(TRIM(p."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(p."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))
               OR
               -- Match source packaging in palti
-              (rsm.movement_type = 'palti' AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))
+              (rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(sp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(sp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))
               OR
               -- Match target packaging in palti
-              (rsm.movement_type = 'palti' AND LOWER(TRIM(tp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(tp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))
+              (rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(tp."brandName")) = LOWER(TRIM(:packagingBrand)) AND CAST(tp."allottedKg" AS NUMERIC) = CAST(:bagSizeKg AS NUMERIC))
             )` : ''}
             ${varietyConditions.condition !== '1=1' ? `AND ${varietyConditions.condition}` : ''}
           GROUP BY 
@@ -145,16 +145,16 @@ class RiceStockCalculationService {
             rsm.product_type,
             COALESCE(
               CASE 
-                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."brandName"
-                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."brandName"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."brandName"
                 ELSE p."brandName"
               END,
               p."brandName"
             ),
             COALESCE(
               CASE 
-                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."allottedKg"
-                WHEN rsm.movement_type = 'palti' AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN sp."allottedKg"
+                WHEN rsm.movement_type IN ('palti', 'remix') AND LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g'))) THEN tp."allottedKg"
                 ELSE p."allottedKg"
               END,
               p."allottedKg"
@@ -359,15 +359,15 @@ class RiceStockCalculationService {
             CASE 
               WHEN rsm.movement_type IN ('purchase', 'production') THEN rsm.bags
               WHEN rsm.movement_type = 'sale' THEN -rsm.bags
-              WHEN rsm.movement_type = 'palti' AND rsm.from_location = rsm.location_code THEN -COALESCE(rsm.source_bags, rsm.bags)
-              WHEN rsm.movement_type = 'palti' AND rsm.to_location = rsm.location_code THEN rsm.bags
+              WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.from_location = rsm.location_code THEN -COALESCE(rsm.source_bags, rsm.bags)
+              WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.to_location = rsm.location_code THEN rsm.bags
               ELSE 0
             END as movement_bags,
             CASE 
               WHEN rsm.movement_type IN ('purchase', 'production') THEN rsm.quantity_quintals
               WHEN rsm.movement_type = 'sale' THEN -rsm.quantity_quintals
-              WHEN rsm.movement_type = 'palti' AND rsm.from_location = rsm.location_code THEN -rsm.quantity_quintals
-              WHEN rsm.movement_type = 'palti' AND rsm.to_location = rsm.location_code THEN rsm.quantity_quintals
+              WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.from_location = rsm.location_code THEN -rsm.quantity_quintals
+              WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.to_location = rsm.location_code THEN rsm.quantity_quintals
               ELSE 0
             END as movement_qtls
           FROM rice_stock_movements rsm
@@ -407,7 +407,7 @@ class RiceStockCalculationService {
           bag_size_kg,
           SUM(movement_bags) as total_bags,
           SUM(movement_qtls) as total_qtls,
-          COUNT(DISTINCT CASE WHEN movement_type = 'palti' THEN date END) as palti_operations,
+          COUNT(DISTINCT CASE WHEN movement_type IN ('palti', 'remix') THEN date END) as palti_operations,
           MAX(date) as last_movement_date,
           STRING_AGG(DISTINCT movement_type, ', ' ORDER BY movement_type) as movement_types
         FROM variety_movements
@@ -830,15 +830,15 @@ class RiceStockCalculationService {
           SUM(CASE 
             WHEN ms.movement_type IN ('purchase', 'production') THEN ms.bags
             WHEN ms.movement_type = 'sale' THEN -ms.bags
-            WHEN ms.movement_type = 'palti' AND ms.from_location = ms.location_code THEN -COALESCE(ms.source_bags, ms.bags)
-            WHEN ms.movement_type = 'palti' AND ms.to_location = ms.location_code THEN ms.bags
+            WHEN ms.movement_type IN ('palti', 'remix') AND ms.from_location = ms.location_code THEN -COALESCE(ms.source_bags, ms.bags)
+            WHEN ms.movement_type IN ('palti', 'remix') AND ms.to_location = ms.location_code THEN ms.bags
             ELSE 0
           END) as bags,
           SUM(CASE 
             WHEN ms.movement_type IN ('purchase', 'production') THEN ms.quantity_quintals
             WHEN ms.movement_type = 'sale' THEN -ms.quantity_quintals
-            WHEN ms.movement_type = 'palti' AND ms.from_location = ms.location_code THEN -ms.quantity_quintals
-            WHEN ms.movement_type = 'palti' AND ms.to_location = ms.location_code THEN ms.quantity_quintals
+            WHEN ms.movement_type IN ('palti', 'remix') AND ms.from_location = ms.location_code THEN -ms.quantity_quintals
+            WHEN ms.movement_type IN ('palti', 'remix') AND ms.to_location = ms.location_code THEN ms.quantity_quintals
             ELSE 0
           END) as quintals
         FROM rice_stock_movements ms
@@ -851,14 +851,14 @@ class RiceStockCalculationService {
         HAVING SUM(CASE 
           WHEN ms.movement_type IN ('purchase', 'production') THEN ms.bags
           WHEN ms.movement_type = 'sale' THEN -ms.bags
-          WHEN ms.movement_type = 'palti' AND ms.from_location = ms.location_code THEN -COALESCE(ms.source_bags, ms.bags)
-          WHEN ms.movement_type = 'palti' AND ms.to_location = ms.location_code THEN ms.bags
+          WHEN ms.movement_type IN ('palti', 'remix') AND ms.from_location = ms.location_code THEN -COALESCE(ms.source_bags, ms.bags)
+          WHEN ms.movement_type IN ('palti', 'remix') AND ms.to_location = ms.location_code THEN ms.bags
           ELSE 0
         END) != 0 OR SUM(CASE 
           WHEN ms.movement_type IN ('purchase', 'production') THEN ms.quantity_quintals
           WHEN ms.movement_type = 'sale' THEN -ms.quantity_quintals
-          WHEN ms.movement_type = 'palti' AND ms.from_location = ms.location_code THEN -ms.quantity_quintals
-          WHEN ms.movement_type = 'palti' AND ms.to_location = ms.location_code THEN ms.quantity_quintals
+          WHEN ms.movement_type IN ('palti', 'remix') AND ms.from_location = ms.location_code THEN -ms.quantity_quintals
+          WHEN ms.movement_type IN ('palti', 'remix') AND ms.to_location = ms.location_code THEN ms.quantity_quintals
           ELSE 0
         END) != 0
         ORDER BY ms.location_code, ms.variety, p."brandName", p."allottedKg"

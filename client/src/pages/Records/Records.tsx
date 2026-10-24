@@ -272,6 +272,40 @@ const Records: React.FC = () => {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
 
+  // Outturn Sub-Tab state
+  const [outturnSubTab, setOutturnSubTab] = useState<'production' | 'remix'>('production');
+
+  // Remix / Re-cleaning Form State
+  const [remixDate, setRemixDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [remixProductType, setRemixProductType] = useState<string>('Rice');
+  const [remixSourceLocation, setRemixSourceLocation] = useState<string>('');
+  const [remixSourcePackagingId, setRemixSourcePackagingId] = useState<string>('');
+  const [remixSourceBags, setRemixSourceBags] = useState<string>('');
+  const [remixTargetLocation, setRemixTargetLocation] = useState<string>('');
+  const [remixTargetPackagingId, setRemixTargetPackagingId] = useState<string>('');
+  const [remixCleanBags, setRemixCleanBags] = useState<string>('');
+  const [remixRemarks, setRemixRemarks] = useState<string>('');
+  const [remixSubmitting, setRemixSubmitting] = useState<boolean>(false);
+
+  // Available stock for selected source location & brand
+  const [remixAvailableStock, setRemixAvailableStock] = useState<number | null>(null);
+  const [checkingRemixStock, setCheckingRemixStock] = useState<boolean>(false);
+
+  // Remix records for current selected outturn
+  const [remixRecords, setRemixRecords] = useState<any[]>([]);
+  const [loadingRemixRecords, setLoadingRemixRecords] = useState<boolean>(false);
+
+  // Edit Remix Modal State
+  const [editingRemixRecord, setEditingRemixRecord] = useState<any | null>(null);
+  const [editRemixDate, setEditRemixDate] = useState<string>('');
+  const [editRemixSourceBags, setEditRemixSourceBags] = useState<string>('');
+  const [editRemixCleanBags, setEditRemixCleanBags] = useState<string>('');
+  const [editRemixSourcePackagingId, setEditRemixSourcePackagingId] = useState<string>('');
+  const [editRemixTargetPackagingId, setEditRemixTargetPackagingId] = useState<string>('');
+  const [editRemixTargetLocation, setEditRemixTargetLocation] = useState<string>('');
+  const [editRemixRemarks, setEditRemixRemarks] = useState<string>('');
+  const [editRemixSubmitting, setEditRemixSubmitting] = useState<boolean>(false);
+
   // Palti and Approval states
   const [showPaltiModal, setShowPaltiModal] = useState(false);
   const [paltiDate, setPaltiDate] = useState(new Date().toISOString().split('T')[0]); // Shared date for palti operations and hierarchical view
@@ -864,6 +898,36 @@ const Records: React.FC = () => {
           inQtls = qtls;
           typeLabel = 'PALTI IN';
           typeColor = '#7c3aed';
+        }
+      } else if (mvtType === 'remix') {
+        const cleanL = (l: string) => (l || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const targetClean = cleanL(toLoc);
+        const sourceClean = cleanL(fromLoc);
+        const currentLotClean = cleanL(lotLocation);
+
+        const isTarget = targetClean === currentLotClean || toLoc === lotLocation || (currentLotClean && targetClean.includes(currentLotClean));
+        const isSource = sourceClean === currentLotClean || fromLoc === lotLocation || (currentLotClean && sourceClean.includes(currentLotClean));
+
+        const remixShortage = Number(m.shortageKg || m.conversionShortageKg || m.conversion_shortage_kg || m.shortage_kg || 0) || 0;
+        totalShortage += remixShortage;
+
+        if (isTarget && !isSource) {
+          isInward = true;
+          inBags = bags;
+          inQtls = qtls;
+          typeLabel = 'REMIX IN';
+          typeColor = '#854d0e'; // Warm Brown
+        } else if (isSource) {
+          outBags = m.sourceBags ? Number(m.sourceBags) : bags;
+          outQtls = (m.sourceBags && m.sourcePackagingKg) ? (Number(m.sourceBags) * Number(m.sourcePackagingKg)) / 100 : qtls;
+          typeLabel = 'REMIX OUT';
+          typeColor = '#78350f'; // Dark Brown
+        } else {
+          isInward = true;
+          inBags = bags;
+          inQtls = qtls;
+          typeLabel = 'REMIX IN';
+          typeColor = '#854d0e';
         }
       } else {
         isInward = true;
@@ -1517,7 +1581,55 @@ const Records: React.FC = () => {
                                       </div>
                                     );
                                   }
-                                  return entry.partyName || 'Internal Movement';
+                                  if (mType === 'remix' || (entry.typeLabel || '').includes('REMIX')) {
+                                      let outturnCode = entry.outturn?.code || entry.outturnCode || entry.outturn_code || entry.outturnNumber;
+                                      if (!outturnCode && entry.outturnId && outturns) {
+                                        const found = outturns.find((o: any) => String(o.id) === String(entry.outturnId));
+                                        if (found) outturnCode = found.code || found.outturnNumber;
+                                      }
+                                      const isOut = (entry.typeLabel || '').includes('OUT');
+                                      const shortageKg = Number(entry.shortageKg || entry.conversionShortageKg || entry.conversion_shortage_kg || 0);
+
+                                      return (
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                          <span style={{ color: '#78350f', fontWeight: 700 }}>
+                                            {isOut ? '🔄 Mix Issue' : '✨ Re-clean In'}
+                                          </span>
+                                          {outturnCode && (
+                                            <span
+                                              title={`Outturn: ${outturnCode} (Click to open Outturn Remix)`}
+                                              style={{
+                                                cursor: 'pointer',
+                                                padding: '1px 6px',
+                                                borderRadius: '3px',
+                                                background: '#fef3c7',
+                                                color: '#78350f',
+                                                border: '1px solid #fde68a',
+                                                fontWeight: 800,
+                                                fontSize: '7.5pt'
+                                              }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const found = outturns.find((o: any) => String(o.code).toLowerCase() === String(outturnCode).toLowerCase() || String(o.outturnNumber).toLowerCase() === String(outturnCode).toLowerCase() || String(o.id) === String(entry.outturnId));
+                                                if (found) {
+                                                  setSelectedOutturnId(String(found.id));
+                                                  setActiveTab('outturn-report');
+                                                  setOutturnSubTab('remix');
+                                                }
+                                              }}
+                                            >
+                                              🏭 {outturnCode}
+                                            </span>
+                                          )}
+                                          {shortageKg > 0 && (
+                                            <span style={{ color: '#dc2626', fontSize: '6.5pt', fontWeight: 700, background: '#fee2e2', padding: '1px 3px', borderRadius: '3px' }}>
+                                              ⚠️ {shortageKg.toFixed(1)}k loss
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+                                    return entry.partyName || 'Internal Movement';
                                 })()}
                                 {entry.billNumber &&
                                   !((entry.movementType || entry.typeLabel || '').toLowerCase().includes('palti')) &&
@@ -1543,7 +1655,7 @@ const Records: React.FC = () => {
                             <td style={{ padding: '2px 4px', textAlign: 'center', border: '1px solid #ddd', fontSize: '7.5pt', whiteSpace: 'nowrap' }}>
                               {(() => {
                                 const mType = (entry.movementType || entry.typeLabel || '').toLowerCase();
-                                if (mType === 'palti' || mType.includes('palti')) {
+                                if (mType === 'palti' || mType.includes('palti') || mType === 'remix' || mType.includes('remix')) {
                                   const sPkg = (packagings || []).find((p: any) => String(p.id) === String(entry.sourcePackagingId || entry.source_packaging_id));
                                   const tPkg = (packagings || []).find((p: any) => String(p.id) === String(entry.targetPackagingId || entry.target_packaging_id));
 
@@ -2082,6 +2194,218 @@ const Records: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [activeTab, showAllRecords]);
+
+  const fetchRemixRecords = async (outtId: string | number) => {
+    if (!outtId) return;
+    try {
+      setLoadingRemixRecords(true);
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`/rice-stock-management/remix/outturn/${outtId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data && res.data.success) {
+        setRemixRecords(res.data.records || []);
+      }
+    } catch (err) {
+      console.error('Error fetching remix records:', err);
+    } finally {
+      setLoadingRemixRecords(false);
+    }
+  };
+
+  const checkRemixAvailableStock = async (loc: string, packId: string, pType: string, varietyStr: string) => {
+    if (!loc || !packId) {
+      setRemixAvailableStock(null);
+      return;
+    }
+    try {
+      setCheckingRemixStock(true);
+      const token = localStorage.getItem('token');
+      const res = await axios.get('/rice-stock-management/available-stock', {
+        params: {
+          locationCode: loc,
+          packagingId: packId,
+          productType: pType,
+          variety: varietyStr
+        },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data && res.data.success) {
+        setRemixAvailableStock(res.data.stock?.bags ?? res.data.availableStock?.bags ?? 0);
+      } else {
+        setRemixAvailableStock(0);
+      }
+    } catch (err) {
+      console.error('Error checking stock for remix:', err);
+      setRemixAvailableStock(0);
+    } finally {
+      setCheckingRemixStock(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedOutturnId) {
+      fetchRemixRecords(selectedOutturnId);
+    } else {
+      setRemixRecords([]);
+    }
+  }, [selectedOutturnId]);
+
+  useEffect(() => {
+    if (remixSourceLocation && remixSourcePackagingId && selectedOutturnId) {
+      const selectedOutturn = outturns.find((o: any) => o.id === parseInt(selectedOutturnId));
+      if (selectedOutturn) {
+        checkRemixAvailableStock(
+          remixSourceLocation,
+          remixSourcePackagingId,
+          remixProductType,
+          selectedOutturn.allottedVariety
+        );
+      }
+    } else {
+      setRemixAvailableStock(null);
+    }
+  }, [remixSourceLocation, remixSourcePackagingId, remixProductType, selectedOutturnId, outturns]);
+
+  const handleCreateRemix = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOutturnId) {
+      toast.error('No Outturn selected');
+      return;
+    }
+    const currentOutturn = outturns.find((o: any) => o.id === parseInt(selectedOutturnId));
+    if (!currentOutturn) return;
+
+    if (currentOutturn.is_cleared) {
+      toast.error('This outturn is closed/cleared. Cannot mix into a closed outturn.');
+      return;
+    }
+
+    if (!remixSourceLocation || !remixTargetLocation) {
+      toast.error('Please select both From and To locations');
+      return;
+    }
+
+    if (!remixSourcePackagingId || !remixTargetPackagingId) {
+      toast.error('Please select Brand/Packaging for both source and destination');
+      return;
+    }
+
+    const sBags = parseInt(remixSourceBags);
+    const cBags = parseInt(remixCleanBags);
+    if (!sBags || sBags <= 0) {
+      toast.error('Please enter valid Old Bags Taken');
+      return;
+    }
+    if (!cBags || cBags <= 0) {
+      toast.error('Please enter valid Clean Bags Produced');
+      return;
+    }
+
+    if (remixAvailableStock !== null && sBags > remixAvailableStock) {
+      toast.error(`Cannot take ${sBags} bags! Only ${remixAvailableStock} bags available for this brand in ${remixSourceLocation}.`);
+      return;
+    }
+
+    try {
+      setRemixSubmitting(true);
+      const token = localStorage.getItem('token');
+      const res = await axios.post('/rice-stock-management/remix', {
+        date: remixDate,
+        outturnId: parseInt(selectedOutturnId),
+        productType: remixProductType,
+        variety: currentOutturn.allottedVariety,
+        sourceLocation: remixSourceLocation,
+        sourcePackagingId: parseInt(remixSourcePackagingId),
+        sourceBags: sBags,
+        targetLocation: remixTargetLocation,
+        targetPackagingId: parseInt(remixTargetPackagingId),
+        cleanBags: cBags,
+        remarks: remixRemarks
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.data.success) {
+        toast.success('Mix & Re-clean entry recorded successfully!');
+        setRemixSourceBags('');
+        setRemixCleanBags('');
+        setRemixRemarks('');
+        setRemixAvailableStock(null);
+        fetchRemixRecords(selectedOutturnId);
+        fetchRiceStock();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to save remix entry');
+    } finally {
+      setRemixSubmitting(false);
+    }
+  };
+
+  const startEditRemix = (rec: any) => {
+    setEditingRemixRecord(rec);
+    setEditRemixDate(rec.date ? new Date(rec.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+    setEditRemixSourceBags(String(rec.sourceBags || ''));
+    setEditRemixCleanBags(String(rec.cleanBags || rec.bags || ''));
+    setEditRemixSourcePackagingId(String(rec.sourcePackagingId || ''));
+    setEditRemixTargetPackagingId(String(rec.targetPackagingId || ''));
+    setEditRemixTargetLocation(rec.toLocation || '');
+    setEditRemixRemarks(rec.remarks || '');
+  };
+
+  const handleUpdateRemix = async () => {
+    if (!editingRemixRecord) return;
+    const sBags = parseInt(editRemixSourceBags);
+    const cBags = parseInt(editRemixCleanBags);
+    if (!sBags || sBags <= 0 || !cBags || cBags <= 0) {
+      toast.error('Please enter valid bag counts');
+      return;
+    }
+
+    try {
+      setEditRemixSubmitting(true);
+      const token = localStorage.getItem('token');
+      const res = await axios.put(`/rice-stock-management/remix/${editingRemixRecord.id}`, {
+        date: editRemixDate,
+        sourcePackagingId: parseInt(editRemixSourcePackagingId),
+        sourceBags: sBags,
+        targetLocation: editRemixTargetLocation,
+        targetPackagingId: parseInt(editRemixTargetPackagingId),
+        cleanBags: cBags,
+        remarks: editRemixRemarks
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.data.success) {
+        toast.success('Remix entry updated successfully!');
+        setEditingRemixRecord(null);
+        fetchRemixRecords(selectedOutturnId);
+        fetchRiceStock();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to update remix entry');
+    } finally {
+      setEditRemixSubmitting(false);
+    }
+  };
+
+  const handleDeleteRemix = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this remix record? Stock balances will be restored.')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.delete(`/rice-stock-management/remix/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data.success) {
+        toast.success('Remix record deleted and stock restored');
+        fetchRemixRecords(selectedOutturnId);
+        fetchRiceStock();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to delete remix record');
+    }
+  };
 
   useEffect(() => {
     fetchOutturns(); // Always ensure outturns are loaded for hyperlinks
@@ -9597,6 +9921,7 @@ return (
               <option value="">-- Select Outturn --</option>
               {outturns
                 .filter((outturn: any) => {
+                  if (outturnSubTab === 'remix' && outturn.is_cleared) return false;
                   if (!outturnSearch) return true;
                   const searchLower = outturnSearch.toLowerCase();
                   const outturnCode = outturn.outturnNumber || outturn.code || '';
@@ -9682,7 +10007,53 @@ return (
                 </div>
               </div>
 
-              {/* Available Bags Display */}
+              {/* Outturn Sub-Tabs Switcher */}
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                marginBottom: '1.5rem',
+                borderBottom: '2px solid #e2e8f0',
+                paddingBottom: '8px'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setOutturnSubTab('production')}
+                  style={{
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '0.95rem',
+                    cursor: 'pointer',
+                    backgroundColor: outturnSubTab === 'production' ? '#ea580c' : '#f1f5f9',
+                    color: outturnSubTab === 'production' ? '#ffffff' : '#475569',
+                    boxShadow: outturnSubTab === 'production' ? '0 2px 4px rgba(234, 88, 12, 0.3)' : 'none'
+                  }}
+                >
+                  🌾 Paddy Rice Production (Milling)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutturnSubTab('remix')}
+                  style={{
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '0.95rem',
+                    cursor: 'pointer',
+                    backgroundColor: outturnSubTab === 'remix' ? '#78350f' : '#f1f5f9',
+                    color: outturnSubTab === 'remix' ? '#ffffff' : '#475569',
+                    boxShadow: outturnSubTab === 'remix' ? '0 2px 4px rgba(120, 53, 15, 0.3)' : 'none'
+                  }}
+                >
+                  🔄 Mix & Re-clean Old Rice {remixRecords.length > 0 ? `(${remixRecords.length})` : ''}
+                </button>
+              </div>
+
+              {outturnSubTab === 'production' ? (
+                <div>
+                  {/* Available Bags Display */}
               <div style={{
                 backgroundColor: availableBags > 0 ? '#dcfce7' : '#fee2e2',
                 padding: '12px',
@@ -10368,6 +10739,574 @@ return (
                   )}
                 </div>
               </div>
+            </div>
+          ) : (
+                /* Remix / Re-clean View */
+                <div>
+                  {/* Info Alert Box */}
+                  <div style={{
+                    backgroundColor: '#fef3c7',
+                    border: '1px solid #fde68a',
+                    borderRadius: '8px',
+                    padding: '12px 16px',
+                    marginBottom: '1.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '10px'
+                  }}>
+                    <div>
+                      <span style={{ fontWeight: 800, color: '#78350f', fontSize: '1rem' }}>
+                        🔄 Re-cleaning & Old Rice Mix Mode
+                      </span>
+                      <div style={{ color: '#92400e', fontSize: '0.85rem', marginTop: '2px' }}>
+                        Mix old/uncleaned bags of <b>{outturns.find((o: any) => o.id === parseInt(selectedOutturnId))?.allottedVariety}</b> into this outturn.
+                        Stock is deducted from source brand and added to destination brand upon cleaning.
+                      </div>
+                    </div>
+                    <div style={{
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      color: '#065f46',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontWeight: 700,
+                      fontSize: '0.82rem'
+                    }}>
+                      🛡️ 0 Paddy Bags Deducted • 0% Distortion to Outturn Yield (YY)
+                    </div>
+                  </div>
+
+                  {/* Form Card (if not closed) */}
+                  {isOutturnCleared ? (
+                    <div style={{
+                      padding: '1.5rem',
+                      backgroundColor: '#fee2e2',
+                      border: '2px solid #ef4444',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                      fontWeight: 'bold',
+                      color: '#991b1b',
+                      marginBottom: '1.5rem'
+                    }}>
+                      🔒 This outturn is closed/cleared. Re-cleaning entries cannot be added to closed outturns.
+                    </div>
+                  ) : (
+                    <form onSubmit={handleCreateRemix} style={{
+                      backgroundColor: '#fffbeb',
+                      padding: '1.5rem',
+                      borderRadius: '12px',
+                      marginBottom: '2rem',
+                      border: '2px solid #b45309',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+                    }}>
+                      <h3 style={{ marginBottom: '1.25rem', textAlign: 'center', color: '#78350f', fontWeight: 'bold' }}>
+                        ➕ Record New Mix & Re-cleaning Batch
+                      </h3>
+
+                      {/* Grid 1: Basic Info */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '1rem',
+                        marginBottom: '1rem'
+                      }}>
+                        <FormGroup>
+                          <Label>Date *</Label>
+                          <Input
+                            type="date"
+                            value={remixDate}
+                            onChange={(e) => setRemixDate(e.target.value)}
+                            required
+                          />
+                        </FormGroup>
+
+                        <FormGroup>
+                          <Label>Product Type * (4 Types Only)</Label>
+                          <Select
+                            value={remixProductType}
+                            onChange={(e) => setRemixProductType(e.target.value)}
+                            required
+                          >
+                            <option value="Rice">Rice</option>
+                            <option value="RJ Rice 1">Rejection Rice 1</option>
+                            <option value="RJ Rice 2">Rejection Rice 2</option>
+                            <option value="Broken">Broken</option>
+                          </Select>
+                        </FormGroup>
+
+                        <FormGroup>
+                          <Label>Variety (Locked to Outturn)</Label>
+                          <Input
+                            type="text"
+                            value={outturns.find((o: any) => o.id === parseInt(selectedOutturnId))?.allottedVariety || ''}
+                            disabled
+                            style={{ backgroundColor: '#f1f5f9', cursor: 'not-allowed', fontWeight: 600 }}
+                          />
+                        </FormGroup>
+                      </div>
+
+                      {/* Grid 2: Source (Old Bags) */}
+                      <div style={{
+                        background: '#ffffff',
+                        padding: '1rem',
+                        borderRadius: '8px',
+                        border: '1px solid #fde68a',
+                        marginBottom: '1rem'
+                      }}>
+                        <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+                          📦 1. Source Details (Old / Insect Bags Taken)
+                        </div>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gap: '1rem'
+                        }}>
+                          <FormGroup>
+                            <Label>From Location (Source Godown) *</Label>
+                            <Select
+                              value={remixSourceLocation}
+                              onChange={(e) => setRemixSourceLocation(e.target.value)}
+                              required
+                            >
+                              <option value="">-- Select Source Location --</option>
+                              {riceStockLocations
+                                .filter((loc: any) => loc.is_active !== false && !loc.is_direct_load)
+                                .map((loc: any) => (
+                                  <option key={loc.id || loc.code} value={loc.code}>
+                                    {loc.name || loc.code}
+                                  </option>
+                                ))}
+                            </Select>
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Source Brand / Packaging *</Label>
+                            <Select
+                              value={remixSourcePackagingId}
+                              onChange={(e) => setRemixSourcePackagingId(e.target.value)}
+                              required
+                            >
+                              <option value="">-- Select Brand / Packaging --</option>
+                              {packagings.map((pkg: any) => (
+                                <option key={pkg.id} value={pkg.id}>
+                                  {pkg.brandName} ({pkg.allottedKg} kg)
+                                </option>
+                              ))}
+                            </Select>
+                            {checkingRemixStock ? (
+                              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Checking stock...</span>
+                            ) : remixAvailableStock !== null && (
+                              <div style={{
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                color: remixAvailableStock > 0 ? '#15803d' : '#dc2626',
+                                marginTop: '3px'
+                              }}>
+                                📊 Available Stock: {remixAvailableStock} Bags
+                              </div>
+                            )}
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Old Bags Taken *</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              placeholder="e.g. 50"
+                              value={remixSourceBags}
+                              onChange={(e) => setRemixSourceBags(e.target.value)}
+                              required
+                              style={{
+                                borderColor: (remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock) ? '#ef4444' : undefined,
+                                backgroundColor: (remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock) ? '#fef2f2' : undefined
+                              }}
+                            />
+                            {remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock && (
+                              <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 700, marginTop: '2px' }}>
+                                ⚠️ Cannot exceed available stock ({remixAvailableStock} bags)!
+                              </span>
+                            )}
+                          </FormGroup>
+                        </div>
+                      </div>
+
+                      {/* Grid 3: Destination (Cleaned Bags) */}
+                      <div style={{
+                        background: '#ffffff',
+                        padding: '1rem',
+                        borderRadius: '8px',
+                        border: '1px solid #fde68a',
+                        marginBottom: '1rem'
+                      }}>
+                        <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+                          ✨ 2. Output Details (Cleaned Rice Added)
+                        </div>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gap: '1rem'
+                        }}>
+                          <FormGroup>
+                            <Label>To Location (Destination Godown) *</Label>
+                            <Select
+                              value={remixTargetLocation}
+                              onChange={(e) => setRemixTargetLocation(e.target.value)}
+                              required
+                            >
+                              <option value="">-- Select Destination Location --</option>
+                              {riceStockLocations
+                                .filter((loc: any) => loc.is_active !== false)
+                                .map((loc: any) => (
+                                  <option key={loc.id || loc.code} value={loc.code}>
+                                    {loc.name || loc.code}
+                                  </option>
+                                ))}
+                            </Select>
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Destination Brand / Packaging *</Label>
+                            <Select
+                              value={remixTargetPackagingId}
+                              onChange={(e) => setRemixTargetPackagingId(e.target.value)}
+                              required
+                            >
+                              <option value="">-- Select Target Brand --</option>
+                              {packagings.map((pkg: any) => (
+                                <option key={pkg.id} value={pkg.id}>
+                                  {pkg.brandName} ({pkg.allottedKg} kg)
+                                </option>
+                              ))}
+                            </Select>
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Clean Bags Produced *</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              placeholder="e.g. 48"
+                              value={remixCleanBags}
+                              onChange={(e) => setRemixCleanBags(e.target.value)}
+                              required
+                            />
+                          </FormGroup>
+                        </div>
+                      </div>
+
+                      {/* Wastage / Difference Calculation Card */}
+                      {parseInt(remixSourceBags) > 0 && parseInt(remixCleanBags) > 0 && (
+                        <div style={{
+                          backgroundColor: parseInt(remixSourceBags) >= parseInt(remixCleanBags) ? '#fef2f2' : '#ecfdf5',
+                          border: `1px solid ${parseInt(remixSourceBags) >= parseInt(remixCleanBags) ? '#fecaca' : '#a7f3d0'}`,
+                          padding: '10px 14px',
+                          borderRadius: '8px',
+                          marginBottom: '1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '8px'
+                        }}>
+                          <div style={{
+                            fontWeight: 700,
+                            color: parseInt(remixSourceBags) >= parseInt(remixCleanBags) ? '#991b1b' : '#065f46',
+                            fontSize: '0.9rem'
+                          }}>
+                            {parseInt(remixSourceBags) >= parseInt(remixCleanBags) ? (
+                              <span>⚠️ Cleaning Loss / Waste: <strong>{parseInt(remixSourceBags) - parseInt(remixCleanBags)} Bags</strong> ({((parseInt(remixSourceBags) - parseInt(remixCleanBags)) * 0.26).toFixed(2)} Qtl approx)</span>
+                            ) : (
+                              <span>📈 Net Gain: <strong>{parseInt(remixCleanBags) - parseInt(remixSourceBags)} Bags</strong></span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                            Formula: Source Bags ({remixSourceBags}) - Clean Bags ({remixCleanBags})
+                          </span>
+                        </div>
+                      )}
+
+                      <FormGroup style={{ marginBottom: '1.25rem' }}>
+                        <Label>Remarks / Cleaning Notes</Label>
+                        <Input
+                          type="text"
+                          placeholder="e.g. Insect damaged old bags re-cleaned and repacked"
+                          value={remixRemarks}
+                          onChange={(e) => setRemixRemarks(e.target.value)}
+                        />
+                      </FormGroup>
+
+                      <Button
+                        type="submit"
+                        disabled={remixSubmitting || (remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock)}
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#78350f',
+                          color: 'white',
+                          padding: '0.85rem',
+                          fontSize: '1rem',
+                          fontWeight: 800,
+                          borderRadius: '8px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 4px rgba(120, 53, 15, 0.4)'
+                        }}
+                      >
+                        {remixSubmitting ? 'Recording Remix Entry...' : '💾 Save Mix & Re-clean Entry'}
+                      </Button>
+                    </form>
+                  )}
+
+                  {/* Remix History Table */}
+                  <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <h4 style={{ margin: 0, color: '#78350f', fontWeight: 800 }}>
+                        📋 Mix & Re-cleaning History for this Outturn
+                      </h4>
+                      <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                        Total Batches: <strong>{remixRecords.length}</strong>
+                      </span>
+                    </div>
+
+                    {loadingRemixRecords ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading remix history...</div>
+                    ) : remixRecords.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                        No old rice mixed into this outturn yet.
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+                          <thead>
+                            <tr style={{ backgroundColor: '#78350f', color: '#ffffff', textAlign: 'center', height: '28px' }}>
+                              <th style={{ padding: '4px 6px' }}>#</th>
+                              <th style={{ padding: '4px 6px' }}>Date</th>
+                              <th style={{ padding: '4px 6px' }}>Type</th>
+                              <th style={{ padding: '4px 6px' }}>From Location</th>
+                              <th style={{ padding: '4px 6px' }}>Source Brand</th>
+                              <th style={{ padding: '4px 6px', backgroundColor: '#92400e' }}>Old Bags Taken</th>
+                              <th style={{ padding: '4px 6px' }}>To Location</th>
+                              <th style={{ padding: '4px 6px' }}>Dest Brand</th>
+                              <th style={{ padding: '4px 6px', backgroundColor: '#065f46' }}>Clean Bags</th>
+                              <th style={{ padding: '4px 6px', backgroundColor: '#991b1b' }}>Loss / Waste</th>
+                              <th style={{ padding: '4px 6px' }}>Remarks</th>
+                              <th style={{ padding: '4px 6px' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {remixRecords.map((rec: any, idx: number) => {
+                              const lossBags = Number(rec.shortageBags || rec.conversionShortageBags || 0);
+                              const isEven = idx % 2 === 0;
+                              return (
+                                <tr key={rec.id} style={{ backgroundColor: isEven ? '#ffffff' : '#f8f9fa', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
+                                  <td style={{ padding: '4px 6px', color: '#64748b' }}>{idx + 1}</td>
+                                  <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                                    {rec.date ? new Date(rec.date).toLocaleDateString('en-GB') : '-'}
+                                  </td>
+                                  <td style={{ padding: '4px 6px' }}>
+                                    <span style={{ background: '#fef3c7', color: '#78350f', padding: '1px 6px', borderRadius: '3px', fontWeight: 700, fontSize: '7.5pt' }}>
+                                      {rec.productType || 'Rice'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '4px 6px', fontWeight: 600 }}>{rec.fromLocation || '-'}</td>
+                                  <td style={{ padding: '4px 6px' }}>{rec.sourcePackagingBrand || '-'}</td>
+                                  <td style={{ padding: '4px 6px', fontWeight: 800, color: '#92400e' }}>
+                                    <span style={{ background: '#fef3c7', padding: '1px 6px', borderRadius: '4px' }}>
+                                      {rec.sourceBags}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '4px 6px', fontWeight: 600 }}>{rec.toLocation || '-'}</td>
+                                  <td style={{ padding: '4px 6px' }}>{rec.targetPackagingBrand || '-'}</td>
+                                  <td style={{ padding: '4px 6px', fontWeight: 800, color: '#15803d' }}>
+                                    <span style={{ background: '#dcfce7', padding: '1px 6px', borderRadius: '4px' }}>
+                                      +{rec.cleanBags || rec.bags}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '4px 6px' }}>
+                                    {lossBags > 0 ? (
+                                      <span style={{ background: '#fee2e2', color: '#dc2626', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                        ⚠️ {lossBags} Bags
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: '#16a34a', fontWeight: 600 }}>0</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '4px 6px', textAlign: 'left', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {rec.remarks || '-'}
+                                  </td>
+                                  <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditRemix(rec)}
+                                      title="Edit Remix Entry"
+                                      style={{
+                                        background: '#fef3c7',
+                                        border: '1px solid #fde68a',
+                                        color: '#92400e',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        cursor: 'pointer',
+                                        marginRight: '4px',
+                                        fontWeight: 700
+                                      }}
+                                    >
+                                      ✏️ Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteRemix(rec.id)}
+                                      title="Delete Remix Entry"
+                                      style={{
+                                        background: '#fee2e2',
+                                        border: '1px solid #fecaca',
+                                        color: '#dc2626',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        cursor: 'pointer',
+                                        fontWeight: 700
+                                      }}
+                                    >
+                                      🗑️ Delete
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ backgroundColor: '#1e293b', color: '#ffffff', fontWeight: 800, textAlign: 'center' }}>
+                              <td colSpan={5} style={{ padding: '6px', textAlign: 'right' }}>Total Remixed:</td>
+                              <td style={{ padding: '6px', color: '#fde68a' }}>
+                                {remixRecords.reduce((sum: number, r: any) => sum + Number(r.sourceBags || 0), 0)} Bags
+                              </td>
+                              <td colSpan={2}></td>
+                              <td style={{ padding: '6px', color: '#86efac' }}>
+                                +{remixRecords.reduce((sum: number, r: any) => sum + Number(r.cleanBags || r.bags || 0), 0)} Bags
+                              </td>
+                              <td style={{ padding: '6px', color: '#fca5a5' }}>
+                                {remixRecords.reduce((sum: number, r: any) => sum + Number(r.shortageBags || r.conversionShortageBags || 0), 0)} Bags
+                              </td>
+                              <td colSpan={2}></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Edit Remix Modal */}
+                  {editingRemixRecord && (
+                    <div style={{
+                      position: 'fixed',
+                      inset: 0,
+                      backgroundColor: 'rgba(0,0,0,0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 9999
+                    }}>
+                      <div style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: '12px',
+                        width: '90%',
+                        maxWidth: '520px',
+                        padding: '1.5rem',
+                        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
+                      }}>
+                        <h3 style={{ margin: '0 0 1rem 0', color: '#78350f', fontWeight: 800 }}>
+                          ✏️ Edit Mix & Re-clean Entry
+                        </h3>
+                        <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                          <FormGroup>
+                            <Label>Date</Label>
+                            <Input
+                              type="date"
+                              value={editRemixDate}
+                              onChange={(e) => setEditRemixDate(e.target.value)}
+                            />
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Old Bags Taken (Source)</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={editRemixSourceBags}
+                              onChange={(e) => setEditRemixSourceBags(e.target.value)}
+                            />
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Clean Bags Produced</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={editRemixCleanBags}
+                              onChange={(e) => setEditRemixCleanBags(e.target.value)}
+                            />
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Destination Location</Label>
+                            <Select
+                              value={editRemixTargetLocation}
+                              onChange={(e) => setEditRemixTargetLocation(e.target.value)}
+                            >
+                              {riceStockLocations.map((loc: any) => (
+                                <option key={loc.id || loc.code} value={loc.code}>
+                                  {loc.name || loc.code}
+                                </option>
+                              ))}
+                            </Select>
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Destination Brand</Label>
+                            <Select
+                              value={editRemixTargetPackagingId}
+                              onChange={(e) => setEditRemixTargetPackagingId(e.target.value)}
+                            >
+                              {packagings.map((pkg: any) => (
+                                <option key={pkg.id} value={pkg.id}>
+                                  {pkg.brandName} ({pkg.allottedKg} kg)
+                                </option>
+                              ))}
+                            </Select>
+                          </FormGroup>
+
+                          <FormGroup>
+                            <Label>Remarks</Label>
+                            <Input
+                              type="text"
+                              value={editRemixRemarks}
+                              onChange={(e) => setEditRemixRemarks(e.target.value)}
+                            />
+                          </FormGroup>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                          <Button
+                            type="button"
+                            onClick={() => setEditingRemixRecord(null)}
+                            style={{ backgroundColor: '#64748b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px' }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={editRemixSubmitting}
+                            onClick={handleUpdateRemix}
+                            style={{ backgroundColor: '#78350f', color: 'white', border: 'none', padding: '0.5rem 1.25rem', borderRadius: '6px', fontWeight: 700 }}
+                          >
+                            {editRemixSubmitting ? 'Saving...' : 'Update Entry'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

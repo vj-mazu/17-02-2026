@@ -160,6 +160,7 @@ const Table = styled.table`
   .purchase { background: #dbeafe; }
   .sale { background: #fee2e2; }
   .palti { background: #fef3c7; }
+  .remix { background: #fef3c7; }
 `;
 
 const SummarySection = styled.div`
@@ -578,6 +579,17 @@ const RiceLedger: React.FC = () => {
                     // Track Palti totals separately for reporting
                     totals.palti.bags += bags;
                     totals.palti.quintals += qtls;
+                } else if (mvtType === 'remix') {
+                    const isTarget = (m.toLocation || m.to_location) === selectedLocation;
+                    const isSource = (m.fromLocation || m.from_location || m.locationCode || m.location_code) === selectedLocation;
+                    if (isTarget && !isSource) {
+                        runningBalance += bags;
+                        runningQtls += qtls;
+                    } else if (isSource) {
+                        const sBags = m.sourceBags || m.source_bags || bags;
+                        runningBalance -= sBags;
+                        runningQtls -= qtls;
+                    }
                 }
 
                 return {
@@ -627,6 +639,7 @@ const RiceLedger: React.FC = () => {
             case 'purchase': label = '📦 Purchase'; break;
             case 'sale': label = '💰 Sale'; break;
             case 'palti': label = '🔄 Palti'; break;
+            case 'remix': label = '🔄 Remix'; break;
             default: label = type ? `❓ ${type}` : '❓ Unknown';
         }
         if (product && product !== 'Rice' && product !== 'null' && product !== 'undefined' && product !== '-') {

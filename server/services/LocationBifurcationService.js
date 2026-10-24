@@ -47,7 +47,7 @@ class LocationBifurcationService {
         FROM rice_stock_movements rsm
         LEFT JOIN packagings p ON rsm.source_packaging_id = p.id
         WHERE rsm.status = 'approved'
-          AND rsm.movement_type = 'palti'
+          AND rsm.movement_type IN ('palti', 'remix')
           AND rsm.date <= :date
           AND rsm.product_type IN (:productTypeList)
           AND rsm.source_packaging_id IS NOT NULL
@@ -128,7 +128,7 @@ class LocationBifurcationService {
             LEFT JOIN packagings sp ON rsm.source_packaging_id = sp.id
             WHERE rsm.status = 'approved'
               AND rsm.date < :date
-              AND rsm.movement_type = 'palti'
+              AND rsm.movement_type IN ('palti', 'remix')
               AND rsm.source_packaging_id IS NOT NULL
               AND LOWER(TRIM(REGEXP_REPLACE(rsm.variety, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
               AND rsm.product_type IN (:productTypeList)
@@ -149,7 +149,7 @@ class LocationBifurcationService {
             LEFT JOIN packagings tp ON rsm.target_packaging_id = tp.id
             WHERE rsm.status = 'approved'
               AND rsm.date < :date
-              AND rsm.movement_type = 'palti'
+              AND rsm.movement_type IN ('palti', 'remix')
               AND rsm.target_packaging_id IS NOT NULL
               AND LOWER(TRIM(REGEXP_REPLACE(rsm.variety, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
               AND rsm.product_type IN (:productTypeList)
@@ -216,7 +216,7 @@ class LocationBifurcationService {
           LEFT JOIN packagings sp ON rsm.source_packaging_id = sp.id
           LEFT JOIN packagings tp ON rsm.target_packaging_id = tp.id
           WHERE rsm.status = 'approved'
-            AND rsm.movement_type = 'palti'
+            AND rsm.movement_type IN ('palti', 'remix')
             AND rsm.date <= :date
             AND LOWER(TRIM(REGEXP_REPLACE(rsm.variety, '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:sourceVariety, '[_\\s-]+', ' ', 'g')))
             AND rsm.product_type IN (:productTypeList)
@@ -449,7 +449,7 @@ class LocationBifurcationService {
           WHERE rsm.status = 'approved'
             AND rsm.date < :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
-            AND rsm.movement_type = 'palti'
+            AND rsm.movement_type IN ('palti', 'remix')
             AND (
               LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.from_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
               OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (COALESCE(rsm.from_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.from_location, rsm.location_code)) = ''))
@@ -468,7 +468,7 @@ class LocationBifurcationService {
           WHERE rsm.status = 'approved'
             AND rsm.date <= :saleDate
             ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
-            AND rsm.movement_type = 'palti'
+            AND rsm.movement_type IN ('palti', 'remix')
             AND (
               LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.to_location, rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
               OR (LOWER(TRIM(:locationCode)) IN ('bran room', 'bran_room') AND (COALESCE(rsm.to_location, rsm.location_code) IS NULL OR TRIM(COALESCE(rsm.to_location, rsm.location_code)) = ''))
@@ -512,7 +512,7 @@ class LocationBifurcationService {
         LEFT JOIN packagings sp ON rsm.source_packaging_id = sp.id
         WHERE rsm.status = 'approved'
           AND rsm.date = :saleDate
-          AND rsm.movement_type = 'palti'
+          AND rsm.movement_type IN ('palti', 'remix')
           ${excludeMovementId ? 'AND rsm.id != :excludeMovementId' : ''}
           AND (
             LOWER(TRIM(REGEXP_REPLACE(COALESCE(rsm.location_code, ''), '[_\\s-]+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE(:locationCode, '[_\\s-]+', ' ', 'g')))
@@ -650,18 +650,18 @@ class LocationBifurcationService {
             SUM(CASE 
               WHEN rsm.movement_type IN ('purchase', 'production') THEN rsm.bags
               WHEN rsm.movement_type = 'sale' THEN -rsm.bags
-              WHEN rsm.movement_type = 'palti' AND rsm.source_packaging_id = rsm.packaging_id THEN -rsm.bags
-              WHEN rsm.movement_type = 'palti' AND rsm.target_packaging_id = rsm.packaging_id THEN rsm.bags
+              WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.source_packaging_id = rsm.packaging_id THEN -rsm.bags
+              WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.target_packaging_id = rsm.packaging_id THEN rsm.bags
               ELSE 0
             END) as movement_bags,
             SUM(CASE 
               WHEN rsm.movement_type IN ('purchase', 'production') THEN rsm.quantity_quintals
               WHEN rsm.movement_type = 'sale' THEN -rsm.quantity_quintals
-              WHEN rsm.movement_type = 'palti' AND rsm.source_packaging_id = rsm.packaging_id THEN -rsm.quantity_quintals
-              WHEN rsm.movement_type = 'palti' AND rsm.target_packaging_id = rsm.packaging_id THEN rsm.quantity_quintals
+              WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.source_packaging_id = rsm.packaging_id THEN -rsm.quantity_quintals
+              WHEN rsm.movement_type IN ('palti', 'remix') AND rsm.target_packaging_id = rsm.packaging_id THEN rsm.quantity_quintals
               ELSE 0
             END) as movement_qtls,
-            COUNT(DISTINCT CASE WHEN rsm.movement_type = 'palti' THEN rsm.date END) as palti_count,
+            COUNT(DISTINCT CASE WHEN rsm.movement_type IN ('palti', 'remix') THEN rsm.date END) as palti_count,
             MAX(rsm.date) as last_movement_date
           FROM rice_stock_movements rsm
           LEFT JOIN packagings p ON rsm.packaging_id = p.id

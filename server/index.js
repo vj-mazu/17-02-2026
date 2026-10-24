@@ -1445,6 +1445,15 @@ const startServer = async () => {
         console.log('⚠️ Migration 84 warning:', error.message);
       }
 
+      // Migration 85: Add remix movement type to rice_stock_movements
+      try {
+        const migration85 = require('./migrations/85_add_remix_movement_type');
+        await migration85.up();
+        console.log('✅ Migration 85: remix movement type added to rice_stock_movements');
+      } catch (error) {
+        console.log('⚠️ Migration 85 warning:', error.message);
+      }
+
       console.log('✅ Migrations completed.');
 
       // DIAGNOSTIC CHECK FOR ARRIVALS COLUMNS

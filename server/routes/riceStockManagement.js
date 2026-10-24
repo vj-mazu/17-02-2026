@@ -451,8 +451,8 @@ router.get('/varieties-with-stock', auth, async (req, res) => {
                     SUM(CASE 
                         WHEN movement_type IN ('production', 'purchase') THEN quantity_quintals
                         WHEN movement_type = 'sale' THEN -quantity_quintals
-                        WHEN movement_type = 'palti' AND source_packaging_id IS NOT NULL THEN -quantity_quintals
-                        WHEN movement_type = 'palti' AND target_packaging_id IS NOT NULL THEN quantity_quintals
+                        WHEN movement_type IN ('palti', 'remix') AND source_packaging_id IS NOT NULL THEN -quantity_quintals
+                        WHEN movement_type IN ('palti', 'remix') AND target_packaging_id IS NOT NULL THEN quantity_quintals
                         ELSE 0
                     END) as stock_qtls
                 FROM rice_stock_movements
@@ -804,7 +804,7 @@ router.get('/ledger', auth, async (req, res) => {
                     SUM(CASE 
                         WHEN movement_type = 'purchase' THEN bags 
                         WHEN movement_type = 'sale' THEN -bags
-                        WHEN movement_type = 'palti' THEN (
+                        WHEN movement_type IN ('palti', 'remix') THEN (
                             CASE 
                                 WHEN to_location = :locationCode AND (from_location = :locationCode OR location_code = :locationCode) THEN -COALESCE(conversion_shortage_bags, 0)
                                 WHEN to_location = :locationCode THEN bags
@@ -817,7 +817,7 @@ router.get('/ledger', auth, async (req, res) => {
                     SUM(CASE 
                         WHEN movement_type = 'purchase' THEN quantity_quintals 
                         WHEN movement_type = 'sale' THEN -quantity_quintals
-                        WHEN movement_type = 'palti' THEN (
+                        WHEN movement_type IN ('palti', 'remix') THEN (
                             CASE 
                                 WHEN to_location = :locationCode AND (from_location = :locationCode OR location_code = :locationCode) THEN -(COALESCE(conversion_shortage_kg, 0)/100)
                                 WHEN to_location = :locationCode THEN quantity_quintals
@@ -3525,6 +3525,380 @@ router.post('/palti-with-location', auth, async (req, res) => {
                 cached: false
             }
         });
+    }
+});
+
+
+// ==========================================
+// REMIX / RE-CLEANING OLD RICE CRUD ENDPOINTS
+// ==========================================
+
+// GET /rice-stock-management/remix/outturn/:outturnId
+// Fetch all remix operations for a specific outturn
+router.get('/remix/outturn/:outturnId', auth, async (req, res) => {
+    try {
+        const { outturnId } = req.params;
+        const query = `
+            SELECT 
+                rsm.id,
+                rsm.date,
+                rsm.movement_type as "movementType",
+                rsm.variety,
+                rsm.outturn_id as "outturnId",
+                rsm.product_type as "productType",
+                rsm.from_location as "fromLocation",
+                rsm.to_location as "toLocation",
+                rsm.source_packaging_id as "sourcePackagingId",
+                sp."brandName" as "sourcePackagingBrand",
+                sp."allottedKg" as "sourcePackagingKg",
+                rsm.target_packaging_id as "targetPackagingId",
+                tp."brandName" as "targetPackagingBrand",
+                tp."allottedKg" as "targetPackagingKg",
+                rsm.source_bags as "sourceBags",
+                rsm.bags as "cleanBags",
+                rsm.quantity_quintals as "quantityQuintals",
+                rsm.conversion_shortage_kg as "shortageKg",
+                rsm.conversion_shortage_bags as "shortageBags",
+                rsm.remarks,
+                rsm.status,
+                rsm.created_at as "createdAt"
+            FROM rice_stock_movements rsm
+            LEFT JOIN packagings sp ON rsm.source_packaging_id = sp.id
+            LEFT JOIN packagings tp ON rsm.target_packaging_id = tp.id
+            WHERE rsm.movement_type = 'remix' 
+              AND rsm.outturn_id = :outturnId
+            ORDER BY rsm.date DESC, rsm.id DESC
+        `;
+        const records = await sequelize.query(query, {
+            replacements: { outturnId: parseInt(outturnId) },
+            type: sequelize.QueryTypes.SELECT
+        });
+        res.json({ success: true, records });
+    } catch (error) {
+        console.error('Error fetching remix records:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /rice-stock-management/remix
+// Create a new remix / re-cleaning operation
+router.post('/remix', auth, async (req, res) => {
+    try {
+        const {
+            date = new Date().toISOString().split('T')[0],
+            outturnId,
+            productType = 'Rice',
+            variety,
+            sourceLocation,
+            sourcePackagingId,
+            sourceBags,
+            targetLocation,
+            targetPackagingId,
+            cleanBags,
+            remarks = ''
+        } = req.body;
+
+        if (!outturnId) {
+            return res.status(400).json({ success: false, error: 'Outturn ID is required' });
+        }
+        if (!sourceLocation || !targetLocation) {
+            return res.status(400).json({ success: false, error: 'Source and Destination locations are required' });
+        }
+        if (!sourcePackagingId || !targetPackagingId) {
+            return res.status(400).json({ success: false, error: 'Source and Target Brand/Packaging are required' });
+        }
+        const sBags = parseInt(sourceBags);
+        const cBags = parseInt(cleanBags);
+        if (!sBags || sBags <= 0) {
+            return res.status(400).json({ success: false, error: 'Source bags must be greater than 0' });
+        }
+        if (!cBags || cBags <= 0) {
+            return res.status(400).json({ success: false, error: 'Clean bags must be greater than 0' });
+        }
+
+        // 1. Verify Outturn is active and not cleared
+        const Outturn = require('../models/Outturn');
+        const outturn = await Outturn.findByPk(outturnId);
+        if (!outturn) {
+            return res.status(404).json({ success: false, error: 'Outturn not found' });
+        }
+        if (outturn.is_cleared) {
+            return res.status(400).json({ success: false, error: 'This outturn is closed/cleared. Cannot add remix entries.' });
+        }
+
+        // Variety lock: strictly match outturn variety
+        const resolvedVariety = variety || outturn.allottedVariety;
+
+        // 2. Validate available stock for source brand at source location
+        const RiceStockCalculationService = require('../services/riceStockCalculationService');
+        const stockCheck = await RiceStockCalculationService.calculateStockBalance({
+            locationCode: sourceLocation,
+            variety: resolvedVariety,
+            outturnId: null,
+            productType,
+            packagingId: parseInt(sourcePackagingId),
+            date,
+            debugMode: false
+        });
+
+        const availableSourceBags = stockCheck ? (stockCheck.bags || 0) : 0;
+        if (sBags > availableSourceBags) {
+            return res.status(400).json({
+                success: false,
+                error: `Insufficient stock! Only ${availableSourceBags} bags available in ${sourceLocation} for selected brand.`,
+                availableBags: availableSourceBags
+            });
+        }
+
+        // 3. Resolve packagings to get weights
+        const Packaging = require('../models/Packaging');
+        const sp = await Packaging.findByPk(sourcePackagingId);
+        const tp = await Packaging.findByPk(targetPackagingId);
+        const spKg = sp ? parseFloat(sp.allottedKg || 26) : 26;
+        const tpKg = tp ? parseFloat(tp.allottedKg || 26) : 26;
+
+        const sourceTotalKg = sBags * spKg;
+        const targetTotalKg = cBags * tpKg;
+        const targetQtls = targetTotalKg / 100;
+        const shortageKg = Math.max(0, sourceTotalKg - targetTotalKg);
+        const shortageBags = Math.max(0, sBags - cBags);
+
+        // 4. Insert into rice_stock_movements
+        const insertQuery = `
+            INSERT INTO rice_stock_movements (
+                date,
+                movement_type,
+                variety,
+                outturn_id,
+                product_type,
+                location_code,
+                from_location,
+                to_location,
+                packaging_id,
+                source_packaging_id,
+                target_packaging_id,
+                bags,
+                source_bags,
+                bag_size_kg,
+                quantity_quintals,
+                conversion_shortage_kg,
+                conversion_shortage_bags,
+                remarks,
+                status,
+                created_at,
+                updated_at
+            ) VALUES (
+                :date,
+                'remix',
+                :variety,
+                :outturnId,
+                :productType,
+                :sourceLocation,
+                :sourceLocation,
+                :targetLocation,
+                :targetPackagingId,
+                :sourcePackagingId,
+                :targetPackagingId,
+                :cleanBags,
+                :sourceBags,
+                :bagSizeKg,
+                :quantityQuintals,
+                :shortageKg,
+                :shortageBags,
+                :remarks,
+                'approved',
+                NOW(),
+                NOW()
+            ) RETURNING *
+        `;
+
+        const [newRecord] = await sequelize.query(insertQuery, {
+            replacements: {
+                date,
+                variety: resolvedVariety,
+                outturnId: parseInt(outturnId),
+                productType,
+                sourceLocation,
+                targetLocation,
+                targetPackagingId: parseInt(targetPackagingId),
+                sourcePackagingId: parseInt(sourcePackagingId),
+                cleanBags: cBags,
+                sourceBags: sBags,
+                bagSizeKg: tpKg,
+                quantityQuintals: targetQtls,
+                shortageKg,
+                shortageBags,
+                remarks: remarks || 'Mix & Re-clean entry'
+            },
+            type: sequelize.QueryTypes.INSERT
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'Remix operation recorded successfully',
+            record: newRecord[0] || newRecord
+        });
+    } catch (error) {
+        console.error('Error creating remix entry:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// PUT /rice-stock-management/remix/:id
+// Update an existing remix record
+router.put('/remix/:id', auth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            date,
+            productType,
+            variety,
+            sourceLocation,
+            sourcePackagingId,
+            sourceBags,
+            targetLocation,
+            targetPackagingId,
+            cleanBags,
+            remarks
+        } = req.body;
+
+        // Fetch existing
+        const [existing] = await sequelize.query(
+            "SELECT * FROM rice_stock_movements WHERE id = :id AND movement_type = 'remix'",
+            { replacements: { id: parseInt(id) }, type: sequelize.QueryTypes.SELECT }
+        );
+        if (!existing) {
+            return res.status(404).json({ success: false, error: 'Remix record not found' });
+        }
+
+        const sBags = parseInt(sourceBags ?? existing.source_bags);
+        const cBags = parseInt(cleanBags ?? existing.bags);
+        const sPackId = parseInt(sourcePackagingId ?? existing.source_packaging_id);
+        const tPackId = parseInt(targetPackagingId ?? existing.target_packaging_id);
+        const sLoc = sourceLocation ?? existing.from_location ?? existing.location_code;
+        const tLoc = targetLocation ?? existing.to_location;
+        const mDate = date ?? existing.date;
+        const pType = productType ?? existing.product_type;
+        const vVar = variety ?? existing.variety;
+        const rem = remarks !== undefined ? remarks : existing.remarks;
+
+        // Check stock availability (add back existing source bags to current balance)
+        const RiceStockCalculationService = require('../services/riceStockCalculationService');
+        const stockCheck = await RiceStockCalculationService.calculateStockBalance({
+            locationCode: sLoc,
+            variety: vVar,
+            outturnId: null,
+            productType: pType,
+            packagingId: sPackId,
+            date: mDate,
+            debugMode: false
+        });
+
+        // Add back old reserved bags if same location and brand
+        const isSameSource = (sLoc === (existing.from_location || existing.location_code)) && (sPackId === existing.source_packaging_id);
+        const currentAvail = (stockCheck ? stockCheck.bags : 0) + (isSameSource ? parseInt(existing.source_bags || 0) : 0);
+
+        if (sBags > currentAvail) {
+            return res.status(400).json({
+                success: false,
+                error: `Insufficient stock! Only ${currentAvail} bags available in ${sLoc} for selected brand.`,
+                availableBags: currentAvail
+            });
+        }
+
+        // Calculate weights
+        const Packaging = require('../models/Packaging');
+        const sp = await Packaging.findByPk(sPackId);
+        const tp = await Packaging.findByPk(tPackId);
+        const spKg = sp ? parseFloat(sp.allottedKg || 26) : 26;
+        const tpKg = tp ? parseFloat(tp.allottedKg || 26) : 26;
+
+        const sourceTotalKg = sBags * spKg;
+        const targetTotalKg = cBags * tpKg;
+        const targetQtls = targetTotalKg / 100;
+        const shortageKg = Math.max(0, sourceTotalKg - targetTotalKg);
+        const shortageBags = Math.max(0, sBags - cBags);
+
+        const updateQuery = `
+            UPDATE rice_stock_movements SET
+                date = :date,
+                variety = :variety,
+                product_type = :productType,
+                location_code = :sourceLocation,
+                from_location = :sourceLocation,
+                to_location = :targetLocation,
+                packaging_id = :targetPackagingId,
+                source_packaging_id = :sourcePackagingId,
+                target_packaging_id = :targetPackagingId,
+                bags = :cleanBags,
+                source_bags = :sourceBags,
+                bag_size_kg = :bagSizeKg,
+                quantity_quintals = :quantityQuintals,
+                conversion_shortage_kg = :shortageKg,
+                conversion_shortage_bags = :shortageBags,
+                remarks = :remarks,
+                updated_at = NOW()
+            WHERE id = :id AND movement_type = 'remix'
+            RETURNING *
+        `;
+
+        const [updated] = await sequelize.query(updateQuery, {
+            replacements: {
+                id: parseInt(id),
+                date: mDate,
+                variety: vVar,
+                productType: pType,
+                sourceLocation: sLoc,
+                targetLocation: tLoc,
+                targetPackagingId: tPackId,
+                sourcePackagingId: sPackId,
+                cleanBags: cBags,
+                sourceBags: sBags,
+                bagSizeKg: tpKg,
+                quantityQuintals: targetQtls,
+                shortageKg,
+                shortageBags,
+                remarks: rem
+            },
+            type: sequelize.QueryTypes.UPDATE
+        });
+
+        res.json({
+            success: true,
+            message: 'Remix operation updated successfully',
+            record: updated[0] || updated
+        });
+    } catch (error) {
+        console.error('Error updating remix entry:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// DELETE /rice-stock-management/remix/:id
+// Delete a remix operation (reverts stock automatically)
+router.delete('/remix/:id', auth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [existing] = await sequelize.query(
+            "SELECT * FROM rice_stock_movements WHERE id = :id AND movement_type = 'remix'",
+            { replacements: { id: parseInt(id) }, type: sequelize.QueryTypes.SELECT }
+        );
+        if (!existing) {
+            return res.status(404).json({ success: false, error: 'Remix record not found' });
+        }
+
+        await sequelize.query(
+            "DELETE FROM rice_stock_movements WHERE id = :id AND movement_type = 'remix'",
+            { replacements: { id: parseInt(id) }, type: sequelize.QueryTypes.DELETE }
+        );
+
+        res.json({
+            success: true,
+            message: 'Remix operation deleted and stock balances reverted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting remix entry:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
