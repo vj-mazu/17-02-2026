@@ -10904,7 +10904,7 @@ return (
                                 color: remixAvailableStock > 0 ? '#15803d' : '#dc2626',
                                 marginTop: '3px'
                               }}>
-                                📊 Available Stock: {remixAvailableStock} Bags
+                                📊 Available Stock in {remixSourceLocation}: {remixAvailableStock} Bags
                               </div>
                             )}
                           </FormGroup>
@@ -10925,7 +10925,7 @@ return (
                             />
                             {remixAvailableStock !== null && parseInt(remixSourceBags) > remixAvailableStock && (
                               <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 700, marginTop: '2px' }}>
-                                ⚠️ Cannot exceed available stock ({remixAvailableStock} bags)!
+                                ⚠️ Cannot exceed available stock in {remixSourceLocation} ({remixAvailableStock} bags)!
                               </span>
                             )}
                           </FormGroup>
