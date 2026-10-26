@@ -692,6 +692,25 @@ const Records: React.FC = () => {
     }
   };
 
+  // Canonical product type mapper covering ALL 11 categories and their database/UI aliases
+  const canonicalProductType = (val: string): string => {
+    if (!val) return '';
+    const clean = val.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+    if (!clean) return '';
+
+    if (clean === 'faram' || clean.includes('faram')) return 'Faram';
+    if (clean.includes('unpolish')) return 'Unpolish';
+    if (clean.includes('sizer')) return 'Sizer Broken';
+    if (clean.includes('rjbroken') || clean.includes('rejectionbroken')) return 'RJ Broken';
+    if (clean.includes('0broken') || clean.includes('zerobroken')) return '0 Broken';
+    if (clean.includes('broken')) return 'Broken';
+    if (clean.includes('rjrice1') || clean.includes('rejectionrice1') || clean.includes('rj1')) return 'RJ Rice 1';
+    if (clean.includes('rjrice2') || clean.includes('rejectionrice2') || clean.includes('rj2') || clean.includes('rejectionrice') || clean.includes('rjrice')) return 'RJ Rice (2)';
+    if (clean.includes('bran')) return 'Bran';
+    if (clean.includes('rice')) return 'Rice';
+    return 'Other';
+  };
+
   // Computes the comprehensive chronological Lot History Ledger for the selected lot
   const lotHistoryData = useMemo(() => {
     if (!expandedLotLedgerItem) {
@@ -713,11 +732,11 @@ const Records: React.FC = () => {
     const lotCategory = (lot.category || lot.productType || lot.product || '').toLowerCase().trim();
     const lotLocation = (lot.location || lot.locationCode || '').toLowerCase().trim();
 
-    // Helper to extract base variety name (removes 'raw', 'steam', 'boiler' and non-alphanumeric noise)
+    // Helper to extract base variety name (removes 'raw', 'steam', 'boiler' and category/rejection/grade noise)
     const getBaseVariety = (v: string) => {
       if (!v) return '';
       let clean = v.toLowerCase().trim();
-      clean = clean.replace(/\b(steam|raw|boiler|boiled)\b/gi, '').trim();
+      clean = clean.replace(/\b(steam|raw|boiler|boiled|rej\s*\d*|rj\s*\d*|rejection|broken|sizer|faram|bran|unpolish|unpolished|zero)\b/gi, '').trim();
       clean = clean.replace(/[^a-z0-9]/gi, ' ').replace(/\s+/g, ' ').trim();
       return clean;
     };
@@ -726,26 +745,31 @@ const Records: React.FC = () => {
 
     const baseLotVar = getBaseVariety(lotVarietyNorm);
     const lotLocClean = cleanAlphanumeric(lotLocation);
+    const lotOutturnCode = cleanAlphanumeric(lot.outturn?.code || lot.outturnCode || (typeof lot.outturn === 'string' ? lot.outturn : ''));
+    const canonicalLotCat = canonicalProductType(lotCategory);
 
     // Match movements from riceStockData
     const matching = (riceStockData || []).filter((m: any) => {
-      // 1. Variety matching: exact, substring, or base variety (so 'SUM25 RNR' matches 'SUM25 RNR RAW/STEAM')
+      // 1. Product Category matching across all 11 types
+      const mCat = (m.productType || m.product || '').toLowerCase().trim();
+      const canonicalMCat = canonicalProductType(mCat);
+      if (canonicalLotCat && canonicalMCat && canonicalLotCat !== canonicalMCat) {
+        return false;
+      }
+
+      // 2. Variety & Outturn matching: outturn code match, exact, substring, or base variety
       const mVar = (m.variety || '').toLowerCase().trim();
       const baseMVar = getBaseVariety(mVar);
+      const mOutturnCode = cleanAlphanumeric(m.outturn?.code || m.outturnCode || (typeof m.outturn === 'string' ? m.outturn : ''));
+      const outturnMatches = Boolean(lotOutturnCode && mOutturnCode && lotOutturnCode === mOutturnCode);
+
       const varOk = !lotVarietyNorm ||
+        outturnMatches ||
         mVar === lotVarietyNorm ||
         mVar.includes(lotVarietyNorm) ||
         lotVarietyNorm.includes(mVar) ||
         (baseLotVar && baseMVar && (baseLotVar === baseMVar || baseLotVar.includes(baseMVar) || baseMVar.includes(baseLotVar)));
       if (!varOk) return false;
-
-      // 2. Product Category matching
-      const mCat = (m.productType || m.product || '').toLowerCase().trim();
-      if (lotCategory && mCat) {
-        const normLotCat = lotCategory.includes('rice') && !lotCategory.includes('rj') ? 'rice' : lotCategory;
-        const normMCat = mCat.includes('rice') && !mCat.includes('rj') ? 'rice' : mCat;
-        if (normLotCat !== normMCat) return false;
-      }
 
       // 3. Location matching: check fromLocation, toLocation, and locationCode
       const fromLoc = (m.fromLocation || m.from || '').toLowerCase().trim();
@@ -776,6 +800,7 @@ const Records: React.FC = () => {
     });
 
     // Priority order for movements occurring on the same date:
+    // 0. Opening Stock
     // 1. Production (inward milled stock)
     // 2. Purchase (inward vendor stock, or 1 if from production)
     // 3. Palti In (inward converted stock)
@@ -783,6 +808,7 @@ const Records: React.FC = () => {
     // 5. Sale (outward dispatch to customer)
     const getMovementPriority = (m: any) => {
       const type = (m.movementType || '').toLowerCase();
+      if (type === 'opening_stock' || m.isOpeningBalance) return 0;
       const fromLoc = (m.fromLocation || m.from || '').toLowerCase().trim();
       const cleanL = (l: string) => (l || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const isSource = cleanL(fromLoc) === lotLocClean || fromLoc === lotLocation || (lotLocClean && cleanL(fromLoc).includes(lotLocClean));
@@ -799,6 +825,9 @@ const Records: React.FC = () => {
       }
       if (type === 'palti in') return 3;
       if (type === 'palti out') return 4;
+      if (type === 'remix') {
+        return isSource ? 4 : 3;
+      }
       if (type === 'sale') return 5;
       return 6;
     };
@@ -818,7 +847,7 @@ const Records: React.FC = () => {
     };
 
     // Chronological order (oldest date first) with strict business sequence on that particular date:
-    // On that day: 1. Production -> 2. Purchase -> 3. Palti In -> 4. Palti Out -> 5. Sale
+    // On that day: 0. Opening -> 1. Production -> 2. Purchase -> 3. Palti In -> 4. Palti Out -> 5. Sale
     const sorted = [...matching].sort((a, b) => {
       const dayA = getCalendarDate(a.date);
       const dayB = getCalendarDate(b.date);
@@ -838,6 +867,94 @@ const Records: React.FC = () => {
       return 0;
     });
 
+    const lotBags = Number(lot.bags || 0);
+    const lotQtls = Number(lot.qtls || lot.quantityQuintals || 0) || (lotBags > 0 && lot.bagSizeKg ? (lotBags * Number(lot.bagSizeKg)) / 100 : 0);
+    const lotDate = lot.createdDate ? (lot.createdDate.includes('T') ? lot.createdDate.split('T')[0] : lot.createdDate) : (lot.date || getCalendarDate(new Date()));
+
+    let movementsToProcess = [...sorted];
+
+    // CASE 1: No movements found in ledger, but lot exists with stock (> 0)
+    // Inject OPENING STOCK entry so user sees the initial lot balance
+    if (movementsToProcess.length === 0 && (lotBags > 0 || lotQtls > 0)) {
+      movementsToProcess.push({
+        id: `opening-${lot.id || lot.variety || Date.now()}`,
+        date: lotDate,
+        movementType: 'opening_stock',
+        variety: lot.variety,
+        productType: lot.category || lot.productType || lot.product,
+        locationCode: lot.location,
+        fromLocation: 'Initial Balance',
+        toLocation: lot.location,
+        bags: lotBags,
+        quantityQuintals: lotQtls,
+        partyName: 'Opening Stock',
+        remarks: `Carried forward from ${lotDate}`,
+        isOpeningBalance: true
+      });
+    } else if (movementsToProcess.length > 0) {
+      // CASE 2: Movements exist, but the first movement is an OUTWARD movement (e.g. Sale / Palti Out)
+      // That means the lot had opening stock prior to this outward movement.
+      const firstMvt = movementsToProcess[0];
+      const firstType = (firstMvt.movementType || '').toLowerCase();
+      const firstFromLoc = (firstMvt.fromLocation || firstMvt.from || '').toLowerCase().trim();
+      const isFirstOutward = firstType === 'sale' ||
+        (firstType === 'palti' && cleanAlphanumeric(firstFromLoc) === lotLocClean) ||
+        (firstType === 'remix' && cleanAlphanumeric(firstFromLoc) === lotLocClean);
+
+      // Check if there is ANY inward movement in the entire list
+      const hasInward = movementsToProcess.some(m => {
+        const t = (m.movementType || '').toLowerCase();
+        if (t === 'production' || t === 'purchase') return true;
+        const toL = (m.toLocation || m.to || '').toLowerCase().trim();
+        if ((t === 'palti' || t === 'remix') && cleanAlphanumeric(toL) === lotLocClean) return true;
+        return false;
+      });
+
+      if (isFirstOutward || !hasInward) {
+        // Calculate total outward bags in the movements
+        const outwardBagsSum = movementsToProcess.reduce((sum, m) => {
+          const t = (m.movementType || '').toLowerCase();
+          if (t === 'sale') return sum + Number(m.bags || 0);
+          const fL = cleanAlphanumeric(m.fromLocation || m.from || '');
+          if ((t === 'palti' || t === 'remix') && fL === lotLocClean) {
+            return sum + Number(m.sourceBags || m.bags || 0);
+          }
+          return sum;
+        }, 0);
+
+        const inwardBagsSum = movementsToProcess.reduce((sum, m) => {
+          const t = (m.movementType || '').toLowerCase();
+          if (t === 'production' || t === 'purchase') return sum + Number(m.bags || 0);
+          const tL = cleanAlphanumeric(m.toLocation || m.to || '');
+          if ((t === 'palti' || t === 'remix') && tL === lotLocClean) {
+            return sum + Number(m.bags || 0);
+          }
+          return sum;
+        }, 0);
+
+        const impliedOpeningBags = Math.max(lotBags, (outwardBagsSum - inwardBagsSum) + lotBags);
+        const impliedOpeningQtls = lot.bagSizeKg ? (impliedOpeningBags * Number(lot.bagSizeKg)) / 100 : (lotQtls > 0 ? (lotQtls / Math.max(1, lotBags)) * impliedOpeningBags : impliedOpeningBags * 0.26);
+
+        if (impliedOpeningBags > 0) {
+          movementsToProcess.unshift({
+            id: `opening-${lot.id || lot.variety || Date.now()}`,
+            date: lotDate,
+            movementType: 'opening_stock',
+            variety: lot.variety,
+            productType: lot.category || lot.productType || lot.product,
+            locationCode: lot.location,
+            fromLocation: 'Initial Balance',
+            toLocation: lot.location,
+            bags: impliedOpeningBags,
+            quantityQuintals: impliedOpeningQtls,
+            partyName: 'Opening Stock',
+            remarks: `Carried forward from ${lotDate}`,
+            isOpeningBalance: true
+          });
+        }
+      }
+    }
+
     let runningBags = 0;
     let runningQtls = 0;
     let totalInBags = 0;
@@ -846,7 +963,7 @@ const Records: React.FC = () => {
     let totalOutQtls = 0;
     let totalShortage = 0;
 
-    const entries = sorted.map((m: any, index: number) => {
+    const entries = movementsToProcess.map((m: any, index: number) => {
       const mvtType = (m.movementType || '').toLowerCase();
       const bags = Number(m.bags || 0);
       const qtls = Number(m.quantityQuintals || 0);
@@ -862,7 +979,13 @@ const Records: React.FC = () => {
       const fromLoc = (m.fromLocation || m.from || '').toLowerCase().trim();
       const toLoc = (m.toLocation || m.to || '').toLowerCase().trim();
 
-      if (mvtType === 'production') {
+      if (mvtType === 'opening_stock' || m.isOpeningBalance) {
+        isInward = true;
+        inBags = bags;
+        inQtls = qtls;
+        typeLabel = 'OPENING STOCK';
+        typeColor = '#0284c7'; // Sky Blue
+      } else if (mvtType === 'production') {
         isInward = true;
         inBags = bags;
         inQtls = qtls;
@@ -2072,10 +2195,14 @@ const Records: React.FC = () => {
         if (selectedMonth === currentYearMonth && itemDate > bDate) return false;
       }
 
-      // Product Type filter
+      // Product Type filter across all 11 canonical types
       if (riceStockProductType) {
-        const pType = (item.productType || item.product || '').toLowerCase();
-        if (pType !== riceStockProductType.toLowerCase()) return false;
+        if (canonicalProductType(item.productType || item.product) !== canonicalProductType(riceStockProductType)) return false;
+      }
+
+      // Location Code filter
+      if (riceStockLocationCode) {
+        if ((item.locationCode || item.location || '').toLowerCase() !== riceStockLocationCode.toLowerCase()) return false;
       }
 
       // Search matching
@@ -3605,18 +3732,12 @@ const Records: React.FC = () => {
           return;
         }
 
-        // Fetch rice productions with month filter only (no date range)
-        // CRITICAL FIX: Fetch ALL productions for correct opening stock calculation
+        // CRITICAL FIX: Fetch ALL productions across history for accurate stock calculation and complete lot ledger
         console.log('📊 Fetching rice productions...');
         const productionsParams: any = {
           limit: 10000,  // Fetch all records so entire stock calculation has complete historical data
           page: 1
         };
-
-        // OPTIMIZED: Support combined month and date range filters
-        if (dateFrom) productionsParams.dateFrom = convertDateFormat(dateFrom);
-        if (dateTo) productionsParams.dateTo = convertDateFormat(dateTo);
-        if (selectedMonth) productionsParams.month = selectedMonth;
 
         const productionsResponse = await axios.get<{ productions: any[]; pagination?: any }>('/rice-productions', {
           headers: {
@@ -3637,23 +3758,12 @@ const Records: React.FC = () => {
         console.log('📦 Fetching rice stock movements...');
         let stockMovements: any[] = [];
         try {
+          // CRITICAL FIX: Fetch ALL movements across history so entire stock calculation has complete historical data
           const movementsParams: any = {
             limit: 10000,  // Fetch all movements so entire stock calculation has complete historical data
             page: 1,
             _t: Date.now() // Cache buster
           };
-
-          // OPTIMIZED: Support combined month and date range filters
-          if (dateFrom) movementsParams.dateFrom = convertDateFormat(dateFrom);
-          if (dateTo) movementsParams.dateTo = convertDateFormat(dateTo);
-          if (selectedMonth) {
-            const [year, month] = selectedMonth.split('-');
-            movementsParams.year = year;
-            movementsParams.month = parseInt(month);
-          }
-
-          // Add product type filter if available
-          if (riceStockProductType) movementsParams.productType = riceStockProductType;
 
           const movementsResponse = await axios.get('/rice-stock-management/movements', {
             headers: {
@@ -3879,18 +3989,18 @@ const Records: React.FC = () => {
           combined: allMovements.length
         });
 
-        // Apply filters if they are set (only product type and location - no date range)
+        // Apply filters if on rice-stock movements table (for rice-outturn-report Daily Stock View, keep all movements for full stock calculation and lot ledger history)
         const originalLength = allMovements.length;
-        if (riceStockProductType || riceStockLocationCode) {
-          console.log('🔍 Applying filters...');
+        if (activeTab === 'rice-stock' && (riceStockProductType || riceStockLocationCode)) {
+          console.log('🔍 Applying filters for rice-stock table...');
           allMovements = allMovements.filter((movement: any) => {
-            // Product type filtering
-            if (riceStockProductType && movement.productType !== riceStockProductType) {
+            // Product type filtering using canonical categories across all 11 types
+            if (riceStockProductType && canonicalProductType(movement.productType || movement.product) !== canonicalProductType(riceStockProductType)) {
               return false;
             }
 
             // Location filtering
-            if (riceStockLocationCode && movement.locationCode !== riceStockLocationCode) {
+            if (riceStockLocationCode && (movement.locationCode || movement.location || '').toLowerCase() !== riceStockLocationCode.toLowerCase()) {
               return false;
             }
 
@@ -3898,7 +4008,7 @@ const Records: React.FC = () => {
           });
           console.log(`📊 Filtered from ${originalLength} to ${allMovements.length} records`);
         } else {
-          console.log('📊 No filters applied, showing all records');
+          console.log('📊 Keeping full movements for comprehensive stock tracking and lot ledger history');
         }
 
         // Sort by date (newest first)
@@ -6103,51 +6213,7 @@ const Records: React.FC = () => {
             };
 
             const normalizeProductType = (productType: string): string => {
-              if (!productType) return 'Rice';
-
-              const exactProductTypes: { [key: string]: string } = {
-                'Rice': 'Rice',
-                'Bran': 'Bran',
-                'Broken': 'Broken',
-                'Faram': 'Faram',
-                'Unpolish': 'Unpolish',
-                '0 Broken': '0 Broken',
-                'Zero Broken': '0 Broken',
-                'Sizer Broken': 'Sizer Broken',
-                'RJ Broken': 'RJ Broken',
-                'Rejection Broken': 'RJ Broken',
-                'RJ Rice 1': 'RJ Rice 1',
-                'RJ Rice (2)': 'RJ Rice (2)',
-                'RJ Rice 2': 'RJ Rice (2)',
-              };
-
-              // Exact match first
-              if (exactProductTypes[productType]) {
-                return exactProductTypes[productType];
-              }
-
-              // Case-insensitive match
-              const productLower = productType.toLowerCase();
-              const exactMatch = Object.entries(exactProductTypes).find(
-                ([key]) => key.toLowerCase() === productLower
-              );
-              if (exactMatch) {
-                return exactMatch[1];
-              }
-
-              // Fallback to includes-based matching
-              if (productLower.includes('unpolish')) return 'Unpolish';
-              if (productLower.includes('faram')) return 'Faram';
-              if (productLower.includes('zero broken') || productLower.includes('0 broken')) return '0 Broken';
-              if (productLower.includes('sizer broken')) return 'Sizer Broken';
-              if (productLower.includes('rejection broken') || productLower.includes('rj broken')) return 'RJ Broken';
-              if (productLower.includes('rj rice 1')) return 'RJ Rice 1';
-              if (productLower.includes('rj rice 2') || productLower.includes('rj rice (2)')) return 'RJ Rice (2)';
-              if (productLower.includes('broken')) return 'Broken';
-              if (productLower.includes('rice')) return 'Rice';
-              if (productLower.includes('bran')) return 'Bran';
-
-              return 'Other';
+              return canonicalProductType(productType) || 'Rice';
             };
 
             const processRiceStockData = (rawData: any[]) => {
@@ -6965,43 +7031,8 @@ const Records: React.FC = () => {
                       cleanPackaging = displayPackaging.split('→').pop()?.trim() || displayPackaging;
                     }
 
-                    // CRITICAL FIX: Map normalized product back to proper case for filtering
-                    // The stock key has lowercase product (e.g., 'rice'), but productTypes uses proper case ('Rice')
-                    const normalizedProduct = product.toLowerCase().trim();
-                    let properCaseCategory = 'Other';
-
-                    // Map normalized names to proper case - exact matching first
-                    const productMappings: { [key: string]: string } = {
-                      'rice': 'Rice',
-                      'bran': 'Bran',
-                      'broken': 'Broken',
-                      '0 broken': '0 Broken',
-                      'zero broken': '0 Broken',
-                      'faram': 'Faram',
-                      'unpolish': 'Unpolish',
-                      'sizer broken': 'Sizer Broken',
-                      'rj broken': 'RJ Broken',
-                      'rejection broken': 'RJ Broken', // FIXED: Consistently map to RJ Broken
-                      'rj rice 1': 'RJ Rice 1',
-                      'rj rice (2)': 'RJ Rice (2)',
-                      'rj rice 2': 'RJ Rice (2)',
-                    };
-
-                    if (productMappings[normalizedProduct]) {
-                      properCaseCategory = productMappings[normalizedProduct];
-                    } else {
-                      // Fallback: includes-based matching
-                      if (normalizedProduct.includes('faram')) properCaseCategory = 'Faram';
-                      else if (normalizedProduct.includes('unpolish')) properCaseCategory = 'Unpolish';
-                      else if (normalizedProduct.includes('0 broken') || normalizedProduct.includes('zero broken')) properCaseCategory = '0 Broken';
-                      else if (normalizedProduct.includes('sizer broken')) properCaseCategory = 'Sizer Broken';
-                      else if (normalizedProduct.includes('rj broken') || normalizedProduct.includes('rejection broken')) properCaseCategory = 'RJ Broken';
-                      else if (normalizedProduct.includes('rj rice 1')) properCaseCategory = 'RJ Rice 1';
-                      else if (normalizedProduct.includes('rj rice 2') || normalizedProduct.includes('rj rice (2)')) properCaseCategory = 'RJ Rice (2)';
-                      else if (normalizedProduct.includes('broken')) properCaseCategory = 'Broken';
-                      else if (normalizedProduct.includes('rice')) properCaseCategory = 'Rice';
-                      else if (normalizedProduct.includes('bran')) properCaseCategory = 'Bran';
-                    }
+                    // CRITICAL FIX: Map normalized product back to canonical case for filtering
+                    const properCaseCategory = canonicalProductType(product) || 'Other';
 
                     // CRITICAL FIX: Use UPPERCASE values for grouping key to ensure case-insensitive matching
                     // This prevents "o1" and "O1" from being treated as different locations
@@ -7355,51 +7386,7 @@ const Records: React.FC = () => {
                     data.forEach(item => {
                       // NORMALIZE product type first to avoid duplicates
                       const normalizeProductType = (productType: string): string => {
-                        if (!productType) return 'Rice';
-
-                        const exactProductTypes: { [key: string]: string } = {
-                          'Rice': 'Rice',
-                          'Bran': 'Bran',
-                          'Broken': 'Broken',
-                          'Faram': 'Faram',
-                          'Unpolish': 'Unpolish',
-                          '0 Broken': '0 Broken',
-                          'Zero Broken': '0 Broken',
-                          'Sizer Broken': 'Sizer Broken',
-                          'RJ Broken': 'RJ Broken',
-                          'Rejection Broken': 'RJ Broken',
-                          'RJ Rice 1': 'RJ Rice 1',
-                          'RJ Rice (2)': 'RJ Rice (2)',
-                          'RJ Rice 2': 'RJ Rice (2)', // CRITICAL: Normalize to RJ Rice (2)
-                        };
-
-                        // Exact match first
-                        if (exactProductTypes[productType]) {
-                          return exactProductTypes[productType];
-                        }
-
-                        // Case-insensitive match
-                        const productLower = productType.toLowerCase();
-                        const exactMatch = Object.entries(exactProductTypes).find(
-                          ([key]) => key.toLowerCase() === productLower
-                        );
-                        if (exactMatch) {
-                          return exactMatch[1];
-                        }
-
-                        // Fallback to includes-based matching
-                        if (productLower.includes('unpolish')) return 'Unpolish';
-                        if (productLower.includes('faram')) return 'Faram';
-                        if (productLower.includes('zero broken') || productLower.includes('0 broken')) return '0 Broken';
-                        if (productLower.includes('sizer broken')) return 'Sizer Broken';
-                        if (productLower.includes('rejection broken') || productLower.includes('rj broken')) return 'RJ Broken';
-                        if (productLower.includes('rj rice 1')) return 'RJ Rice 1';
-                        if (productLower.includes('rj rice 2') || productLower.includes('rj rice (2)')) return 'RJ Rice (2)';
-                        if (productLower.includes('broken')) return 'Broken';
-                        if (productLower.includes('rice')) return 'Rice';
-                        if (productLower.includes('bran')) return 'Bran';
-
-                        return 'Other';
+                        return canonicalProductType(productType) || 'Rice';
                       };
 
                       // Get normalized product type from item

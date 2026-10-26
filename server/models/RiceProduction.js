@@ -54,12 +54,14 @@ const RiceProduction = sequelize.define('RiceProduction', {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 0,
+    field: 'remix_bags',
     comment: 'Number of remixed old bags absorbed in this production'
   },
   remixQuintals: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     defaultValue: 0,
+    field: 'remix_quintals',
     comment: 'Quintals of remixed old bags absorbed in this production'
   },
   movementType: {
