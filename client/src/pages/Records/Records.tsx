@@ -14570,46 +14570,64 @@ return (
                 </div>
 
                 {/* Hamali */}
-                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: Hamali @</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
-                      {pattiCalculations.hVal}
+                {pattiCalculations.hVal !== 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500', color: pattiCalculations.hAmount < 0 ? '#dc2626' : 'inherit' }}>
+                      {pattiCalculations.hAmount < 0 ? 'Less: Hamali @' : 'Add: Hamali @'}
                     </span>
-                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
-                      {pattiCalculations.hMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
+                      <span style={{ fontWeight: '700', fontSize: '13px', color: pattiCalculations.hAmount < 0 ? '#dc2626' : '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                        {Math.abs(pattiCalculations.hVal)}
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
+                        {pattiCalculations.hMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
+                      </span>
+                    </div>
+                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: pattiCalculations.hAmount < 0 ? '#dc2626' : 'inherit' }}>
+                      {pattiCalculations.hAmount < 0 ? '- ' : ''}Rs {Math.abs(pattiCalculations.hAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
-                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.hAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
+                )}
 
                 {/* Brokerage */}
-                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: Brokerage @</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
-                      {pattiCalculations.bVal}
+                {pattiCalculations.bVal !== 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500', color: pattiCalculations.bAmount < 0 ? '#dc2626' : 'inherit' }}>
+                      {pattiCalculations.bAmount < 0 ? 'Less: Brokerage @' : 'Add: Brokerage @'}
                     </span>
-                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
-                      {pattiCalculations.bMethod === 'percentage' ? '%' : (pattiCalculations.bMethod === 'per_quintal' ? '/ qtl' : '/ bag')}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
+                      <span style={{ fontWeight: '700', fontSize: '13px', color: pattiCalculations.bAmount < 0 ? '#dc2626' : '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                        {Math.abs(pattiCalculations.bVal)}
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
+                        {pattiCalculations.bMethod === 'percentage' ? '%' : (pattiCalculations.bMethod === 'per_quintal' ? '/ qtl' : '/ bag')}
+                      </span>
+                    </div>
+                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: pattiCalculations.bAmount < 0 ? '#dc2626' : 'inherit' }}>
+                      {pattiCalculations.bAmount < 0 ? '- ' : ''}Rs {Math.abs(pattiCalculations.bAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
-                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.bAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
+                )}
 
                 {/* LF */}
-                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
-                  <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500' }}>Add: LF @</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', minWidth: '35px', display: 'inline-block' }}>
-                      {pattiCalculations.lfVal}
+                {pattiCalculations.lfVal !== 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+                    <span style={{ width: '135px', whiteSpace: 'nowrap', fontWeight: '500', color: pattiCalculations.lfAmount < 0 ? '#dc2626' : 'inherit' }}>
+                      {pattiCalculations.lfAmount < 0 ? 'Less: LF @' : 'Add: LF @'}
                     </span>
-                    <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
-                      {pattiCalculations.lfMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '110px' }}>
+                      <span style={{ fontWeight: '700', fontSize: '13px', color: pattiCalculations.lfAmount < 0 ? '#dc2626' : '#1e293b', minWidth: '35px', display: 'inline-block' }}>
+                        {Math.abs(pattiCalculations.lfVal)}
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
+                        {pattiCalculations.lfMethod === 'per_quintal' ? '/ qtl' : '/ bag'}
+                      </span>
+                    </div>
+                    <span style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: pattiCalculations.lfAmount < 0 ? '#dc2626' : 'inherit' }}>
+                      {pattiCalculations.lfAmount < 0 ? '- ' : ''}Rs {Math.abs(pattiCalculations.lfAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
-                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>Rs {pattiCalculations.lfAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
+                )}
 
                 {/* EGB */}
                 {pattiCalculations.egbVal > 0 && (
@@ -14627,9 +14645,9 @@ return (
                   </div>
                 )}
 
-                {/* Total with Additions */}
+                {/* Total with Adjustments */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '2px solid #000', borderBottom: '2px solid #000', marginBottom: '8px', color: '#0f172a', fontWeight: '800', fontSize: '13.5px', backgroundColor: '#f8fafc' }}>
-                  <span>Total (with Additions):</span>
+                  <span>Total (with Adjustments):</span>
                   <span>Rs {(pattiCalculations.totalBaseAmount + pattiCalculations.totalAdditions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
 
