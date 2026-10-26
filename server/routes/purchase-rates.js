@@ -255,8 +255,8 @@ router.post('/', auth, authorize('manager', 'admin'), async (req, res) => {
       // Percentage on Base Rate Amount: baseRateAmount × (b / 100)
       bAmount = baseRateAmount * (bNum / 100);
     } else {
-      // Per quintal: (original net weight ÷ 100) × b
-      bAmount = (actualNetWeight / 100) * bNum;
+      // Per quintal: uses Sute Net Weight ((suteNetWeight ÷ 100) × b)
+      bAmount = (suteNetWeight / 100) * bNum;
     }
 
     // 5. LF Calculation with column-type specific rules

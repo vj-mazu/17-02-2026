@@ -395,6 +395,7 @@ const Arrivals: React.FC = () => {
   const [shiftingType, setShiftingType] = useState<'normal' | 'production'>('normal');
 
   // Purchase fields
+  const [farmerName, setFarmerName] = useState('');
   const [broker, setBroker] = useState('');
   const [variety, setVariety] = useState('');
   const [bags, setBags] = useState('');
@@ -698,6 +699,7 @@ const Arrivals: React.FC = () => {
     (parseFloat(grossWeight) - parseFloat(tareWeight)).toFixed(2) : '0.00';
 
   const handleReset = () => {
+    setFarmerName('');
     setBroker('');
     setVariety('');
     setBags('');
@@ -801,12 +803,14 @@ const Arrivals: React.FC = () => {
 
       if (movementType === 'purchase') {
         if (purchaseFromType === 'kunchinittu') {
+          data.farmerName = farmerName.trim() || null;
           data.broker = broker.trim();
           data.fromLocation = fromLocation || null;
           data.toKunchinintuId = parseInt(toKunchinintuId);
           data.toWarehouseId = parseInt(toWarehouseId);
         } else {
           // For production - direct to outturn (no kunchinittu/warehouse)
+          data.farmerName = farmerName.trim() || null;
           data.broker = broker.trim();
           data.fromLocation = fromLocation || null;
           data.outturnId = parseInt(toOutturnId);
@@ -938,6 +942,17 @@ const Arrivals: React.FC = () => {
                     <FormSection>
                       <SectionTitle>Purchase Details</SectionTitle>
                       <FormRow>
+                        <FormGroup>
+                          <Label>Farmer Name</Label>
+                          <Input
+                            type="text"
+                            value={farmerName}
+                            onChange={(e) => setFarmerName(e.target.value.toUpperCase())}
+                            placeholder="ENTER FARMER NAME"
+                            style={{ textTransform: 'uppercase' }}
+                          />
+                        </FormGroup>
+
                         <FormGroup>
                           <Label>Broker *</Label>
                           <Input

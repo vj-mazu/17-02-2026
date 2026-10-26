@@ -17,6 +17,7 @@ interface LedgerEntry {
     slNo: string;
     date: string;
     movementType: string;
+    farmerName?: string;
     broker?: string;
     fromLocation?: string;
     toLocation?: string;
@@ -167,7 +168,7 @@ export const generateKunchinintuLedgerPDF = (
         yPos += 8;
 
         // Inward table - matching frontend columns
-        const inwardColumns = ['S.No', 'Date', 'Type', 'Broker', 'From', 'To', 'Variety', 'Bags', 'M%', 'Cutting', 'WB No', 'Net Wt', 'Lorry', 'Amount', 'Rate/Q'];
+        const inwardColumns = ['S.No', 'Date', 'Type', 'Farmer', 'Broker', 'From', 'To', 'Variety', 'Bags', 'M%', 'Cutting', 'WB No', 'Net Wt', 'Lorry', 'Amount', 'Rate/Q'];
 
         autoTable(doc, {
             startY: yPos,
@@ -176,6 +177,7 @@ export const generateKunchinintuLedgerPDF = (
                 (idx + 1).toString(),
                 r.date ? new Date(r.date).toLocaleDateString('en-GB') : '-',
                 r.movementType || '-',
+                r.farmerName || '-',
                 r.broker || '-',
                 r.fromLocation || '-',
                 r.toLocation || '-',

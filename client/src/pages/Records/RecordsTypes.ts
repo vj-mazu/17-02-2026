@@ -35,6 +35,7 @@ export interface Arrival {
     slNo: string;
     date: string;
     movementType: string;
+    farmerName?: string;
     broker?: string;
     variety?: string;
     bags?: number;

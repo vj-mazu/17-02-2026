@@ -106,6 +106,7 @@ router.get('/arrivals', auth, async (req, res) => {
         { slNo: { [Op.iLike]: searchPattern } },
         { wbNo: { [Op.iLike]: searchPattern } },
         { lorryNumber: { [Op.iLike]: searchPattern } },
+        { farmerName: { [Op.iLike]: searchPattern } },
         { broker: { [Op.iLike]: searchPattern } },
         { variety: { [Op.iLike]: searchPattern } },
         { fromLocation: { [Op.iLike]: searchPattern } }
@@ -271,6 +272,7 @@ router.get('/purchase', auth, async (req, res) => {
         { slNo: { [Op.iLike]: searchPattern } },
         { wbNo: { [Op.iLike]: searchPattern } },
         { lorryNumber: { [Op.iLike]: searchPattern } },
+        { farmerName: { [Op.iLike]: searchPattern } },
         { broker: { [Op.iLike]: searchPattern } },
         { variety: { [Op.iLike]: searchPattern } }
       ];
@@ -575,6 +577,7 @@ router.get('/stock', auth, async (req, res) => {
         { slNo: { [Op.iLike]: searchPattern } },
         { wbNo: { [Op.iLike]: searchPattern } },
         { lorryNumber: { [Op.iLike]: searchPattern } },
+        { farmerName: { [Op.iLike]: searchPattern } },
         { broker: { [Op.iLike]: searchPattern } },
         { variety: { [Op.iLike]: searchPattern } }
       ];
@@ -618,7 +621,7 @@ router.get('/stock', auth, async (req, res) => {
       where,
       attributes: [
         'id', 'date', 'bags', 'netWeight', 'variety', 'movementType',
-        'wbNo', 'lorryNumber', 'broker', 'fromLocation', 'outturnId', 'createdAt'
+        'wbNo', 'lorryNumber', 'farmerName', 'broker', 'fromLocation', 'outturnId', 'createdAt'
       ],
       include: [
         { model: User, as: 'creator', attributes: ['username'] },

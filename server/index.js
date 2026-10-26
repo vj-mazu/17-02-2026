@@ -1463,6 +1463,15 @@ const startServer = async () => {
         console.log('⚠️ Migration 86 warning:', error.message);
       }
 
+      // Migration 87: Add farmerName column to arrivals
+      try {
+        const migration87 = require('./migrations/87_add_farmer_name_to_arrivals');
+        await migration87.up();
+        console.log('✅ Migration 87: farmerName added to arrivals');
+      } catch (error) {
+        console.log('⚠️ Migration 87 warning:', error.message);
+      }
+
       console.log('✅ Migrations completed.');
 
       // DIAGNOSTIC CHECK FOR ARRIVALS COLUMNS

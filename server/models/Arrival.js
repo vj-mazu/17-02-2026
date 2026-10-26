@@ -26,6 +26,10 @@ const Arrival = sequelize.define('Arrival', {
   },
 
   // Purchase fields
+  farmerName: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
   broker: {
     type: DataTypes.STRING(100),
     allowNull: true // Only for purchase

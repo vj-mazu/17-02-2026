@@ -88,6 +88,7 @@ router.post('/', auth, async (req, res) => {
       date,
       movementType,
       purchaseType, // Add purchaseType to distinguish normal vs for-production
+      farmerName,
       broker,
       variety,
       bags,
@@ -866,6 +867,7 @@ router.post('/', auth, async (req, res) => {
       slNo,
       date,
       movementType,
+      farmerName: movementType === 'purchase' ? (farmerName ? farmerName.trim() : null) : null,
       broker: (movementType === 'purchase' || movementType === 'sale') ? (broker || (fromOutturnId ? 'FROM PRODUCTION' : null)) : null,
       variety: normalizedVariety || null,
       bags,
@@ -1636,6 +1638,7 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
     const {
       date,
       movementType,
+      farmerName,
       broker,
       fromLocation,
       toKunchinintuId,
@@ -1676,6 +1679,7 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
     await arrival.update({
       date,
       movementType,
+      farmerName: farmerName !== undefined ? (farmerName ? farmerName.trim() : null) : arrival.farmerName,
       broker,
       fromLocation,
       toKunchinintuId,
@@ -1840,7 +1844,7 @@ router.get('/pending-list', auth, authorize('manager', 'admin'), async (req, res
       where,
       attributes: [
         'id', 'slNo', 'date', 'movementType', 'variety', 'bags', 'netWeight',
-        'wbNo', 'lorryNumber', 'broker', 'fromLocation', 'grossWeight', 'tareWeight',
+        'wbNo', 'lorryNumber', 'farmerName', 'broker', 'fromLocation', 'grossWeight', 'tareWeight',
         'moisture', 'cutting', 'status', 'createdAt', 'billNo'
       ],
       include: [

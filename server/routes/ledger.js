@@ -862,6 +862,7 @@ router.get('/paddy-stock/:id', auth, async (req, res) => {
             movementType: txn.movementType || 'purchase',
             bags: 0,
             netWeight: 0,
+            farmerName: txn.farmerName,
             broker: txn.broker,
             from: txn.movementType === 'purchase'
               ? txn.fromLocation
@@ -1251,6 +1252,7 @@ router.get('/paddy-stock/:id/pdf', auth, async (req, res) => {
             movementType,
             bags: 0,
             netWeight: 0,
+            farmerName: txn.farmerName,
             broker: txn.broker,
             from: txn.movementType === 'purchase'
               ? txn.fromLocation

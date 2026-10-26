@@ -14,6 +14,7 @@ const EditArrivalModal: React.FC<EditArrivalModalProps> = ({ arrival, onClose, o
   const [formData, setFormData] = useState({
     date: '',
     movementType: '',
+    farmerName: '',
     broker: '',
     fromLocation: '',
     toKunchinintuId: '',
@@ -42,6 +43,7 @@ const EditArrivalModal: React.FC<EditArrivalModalProps> = ({ arrival, onClose, o
       setFormData({
         date: arrival.date || '',
         movementType: arrival.movementType || '',
+        farmerName: arrival.farmerName || '',
         broker: arrival.broker || '',
         fromLocation: arrival.fromLocation || '',
         toKunchinintuId: arrival.toKunchinintuId || '',
@@ -118,6 +120,7 @@ const EditArrivalModal: React.FC<EditArrivalModalProps> = ({ arrival, onClose, o
       const payload = {
         date: formData.date,
         movementType: formData.movementType,
+        farmerName: formData.farmerName ? formData.farmerName.trim() : null,
         broker: formData.broker ? formData.broker.trim() : null,
         fromLocation: formData.fromLocation || null,
         toKunchinintuId: formData.toKunchinintuId ? parseInt(formData.toKunchinintuId as string) : null,
@@ -202,6 +205,17 @@ const EditArrivalModal: React.FC<EditArrivalModalProps> = ({ arrival, onClose, o
             <>
               <FormRow>
                 <FormGroup>
+                  <Label>Farmer Name</Label>
+                  <Input
+                    type="text"
+                    name="farmerName"
+                    value={formData.farmerName}
+                    onChange={handleChange}
+                    placeholder="Enter farmer name"
+                  />
+                </FormGroup>
+
+                <FormGroup>
                   <Label>Broker *</Label>
                   <Input
                     type="text"
@@ -212,7 +226,9 @@ const EditArrivalModal: React.FC<EditArrivalModalProps> = ({ arrival, onClose, o
                     required
                   />
                 </FormGroup>
+              </FormRow>
 
+              <FormRow>
                 <FormGroup>
                   <Label>From Location</Label>
                   <Input

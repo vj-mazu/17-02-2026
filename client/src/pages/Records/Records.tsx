@@ -605,7 +605,7 @@ const Records: React.FC = () => {
     if (bMethod === 'percentage') {
       bAmount = totalBaseAmount * (bVal / 100);
     } else if (bMethod === 'per_quintal') {
-      bAmount = (totalNetWb / 100) * bVal;
+      bAmount = (totalSNetWb / 100) * bVal;
     } else {
       bAmount = bVal * totalBags;
     }
@@ -10895,6 +10895,7 @@ return (
                           <th>Sl No</th>
                           <th>Date</th>
                           <th>Type of Movement</th>
+                          <th>Farmer</th>
                           <th>Broker</th>
                           <th>From</th>
                           <th>To</th>
@@ -10917,6 +10918,7 @@ return (
                               <td>{idx + 1}</td>
                               <td>{new Date(record.date).toLocaleDateString('en-GB')}</td>
                               <td>{isForProduction ? 'For Production' : 'Production Shifting'}</td>
+                              <td>{record.farmerName || '-'}</td>
                               <td>{record.broker || '-'}</td>
                               <td>{isForProduction ? (record.fromLocation || 'Direct') : `${record.fromKunchinittu?.name || record.fromKunchinittu?.code || ''} - ${record.fromWarehouse?.name || ''}`}</td>
                               <td>{isForProduction ? '-' : `${record.toKunchinittu?.name || record.toKunchinittu?.code || ''} - ${record.toWarehouseShift?.name || ''}`}</td>
@@ -12009,6 +12011,7 @@ return (
                     dateRecords = dateRecords.filter((r: Arrival) =>
                       (r.variety && r.variety.toLowerCase().includes(searchLower)) ||
                       (r.broker && r.broker.toLowerCase().includes(searchLower)) ||
+                      (r.farmerName && r.farmerName.toLowerCase().includes(searchLower)) ||
                       (r.lorryNumber && r.lorryNumber.toLowerCase().includes(searchLower)) ||
                       (r.wbNo && r.wbNo.toLowerCase().includes(searchLower)) ||
                       (r.fromLocation && r.fromLocation.toLowerCase().includes(searchLower))
@@ -13494,6 +13497,7 @@ return (
                           <th>SL No</th>
                           <th>Date</th>
                           <th>Type</th>
+                          <th>Farmer</th>
                           <th>Broker</th>
                           <th>From</th>
                           <th>To Kunchinittu</th>
@@ -13522,6 +13526,7 @@ return (
                                 <td>{record.slNo}</td>
                                 <td>{new Date(record.date).toLocaleDateString('en-GB')}</td>
                                 <td style={{ textTransform: 'capitalize' }}>{record.movementType}</td>
+                                <td>{isLoose ? '-' : (record.farmerName || '-')}</td>
                                 <td>{isLoose ? '-' : (record.broker || '-')}</td>
                                 <LocationCell
                                   hasLocation={record.movementType === 'shifting'}
@@ -13805,6 +13810,7 @@ return (
                         <tr>
                           <th>Date</th>
                           <th>Type of Movement</th>
+                          <th>Farmer</th>
                           <th>Broker</th>
                           <th>From</th>
                           <th>To</th>
@@ -13829,6 +13835,7 @@ return (
                             <PurchaseRow>
                               <td>{new Date(record.date).toLocaleDateString('en-GB')}</td>
                               <td>Purchase</td>
+                              <td>{record.farmerName || '-'}</td>
                               <td>{record.broker || '-'}</td>
                               <LocationCell hasLocation={!!record.fromLocation} isPurple={false}>
                                 {record.fromLocation || '-'}
@@ -13890,7 +13897,7 @@ return (
                             </PurchaseRow>
                             {expandedRateRecordId === record.id && (
                               <InlineRateForm>
-                                <RateFormCell colSpan={canEdit ? 17 : 16}>
+                                <RateFormCell colSpan={canEdit ? 18 : 17}>
                                   <RateFormContainer>
                                     <RateFormTitle>📊 {record.purchaseRate ? 'Edit' : 'Add'} Purchase Rate</RateFormTitle>
 
@@ -14220,7 +14227,7 @@ return (
                                               ? bValue * bags
                                               : rateFormData.bCalculationMethod === 'percentage'
                                                 ? baseRateAmount * (bValue / 100)
-                                                : bValue * (actualNetWeight / 100);
+                                                : bValue * (suteNetWeight / 100);
 
                                             let lfValue = 0;
                                             if (!['MDL', 'MDWB'].includes(rateFormData.rateType)) {
@@ -14270,7 +14277,7 @@ return (
                             {/* Inline Mother India Purchase Patti (Rendered directly under clicked row) */}
                             {pattiModalRecord && pattiModalRecord.id === record.id && pattiCalculations && (
                               <tr className="inline-patti-row" style={{ backgroundColor: '#f8fafc' }}>
-                                <td colSpan={canEdit ? 17 : 16} style={{ padding: '16px 20px', borderTop: '2px solid #059669', borderBottom: '2px solid #059669', background: '#f8fafc' }}>
+                                <td colSpan={canEdit ? 18 : 17} style={{ padding: '16px 20px', borderTop: '2px solid #059669', borderBottom: '2px solid #059669', background: '#f8fafc' }}>
                                   <div style={{ display: 'flex', justifyContent: 'center' }}>
           <div
             className="patti-print-area"
@@ -14382,6 +14389,9 @@ return (
                 </h2>
                 <div style={{ fontSize: '13px', color: '#4b5563', marginTop: '4px', fontWeight: '600' }}>
                   Party: <span style={{ color: '#111827' }}>{pattiModalRecord.fromLocation || pattiModalRecord.party || '-'}</span> | Location: <span style={{ color: '#111827' }}>{pattiModalRecord.toWarehouse?.name || pattiModalRecord.toLocation || 'Mother India Mill'}</span>
+                  {pattiModalRecord.farmerName && (
+                    <span> | Farmer: <span style={{ color: '#111827' }}>{pattiModalRecord.farmerName}</span></span>
+                  )}
                   {pattiModalRecord.broker && (
                     <span> | Broker: <span style={{ color: '#111827' }}>{pattiModalRecord.broker}</span></span>
                   )}
@@ -14403,19 +14413,19 @@ return (
             </div>
 
             {/* Table: Exact Clean Black Border Table */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', marginBottom: '20px', border: '1px solid #000' }}>
+            <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '13px', marginBottom: '20px', border: '1px solid #000' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f3f4f6', borderBottom: '1px solid #000' }}>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827' }}>Date</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827' }}>Bags</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Variety</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Net WB</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Shoot</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>S.Net WB</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Rate</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Amount</th>
-                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827' }}>Lorry No</th>
-                  <th className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827', width: '60px' }}>Action</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827', width: '10%' }}>Date</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827', width: '7%' }}>Bags</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827', width: '14%' }}>Variety</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827', width: '11%' }}>Net WB</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827', width: '8%' }}>Shoot</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827', width: '11%' }}>S.Net WB</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827', width: '10%' }}>Rate</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827', width: '13%' }}>Amount</th>
+                  <th style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '800', color: '#111827', width: '16%' }}>Lorry No</th>
+                  <th className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '6px', textAlign: 'center', fontWeight: '800', color: '#111827', width: '55px' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -14475,7 +14485,7 @@ return (
                       <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '600' }}>
                         {trip.amount ? Number(trip.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
                       </td>
-                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700' }}>
+                      <td style={{ border: '1px solid #000', padding: '6px', textAlign: 'left', fontWeight: '700', wordBreak: 'break-word' }}>
                         {trip.lorryNumber || '-'}
                       </td>
                       <td className="no-print patti-no-print" style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'center' }}>
@@ -15236,6 +15246,8 @@ return (
           }
           table {
             border-collapse: collapse !important;
+            table-layout: fixed !important;
+            width: 100% !important;
           }
         }
       `}} />

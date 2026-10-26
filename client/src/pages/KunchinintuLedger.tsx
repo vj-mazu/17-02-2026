@@ -335,6 +335,7 @@ interface Transaction {
   id: number;
   date: string;
   movementType: string;
+  farmerName?: string;
   broker?: string;
   variety?: string;
   bags?: number;
@@ -661,6 +662,7 @@ const KunchinintuLedger: React.FC = () => {
           slNo: (idx + 1).toString(),
           date: r.date,
           movementType: r.movementType || 'Purchase',
+          farmerName: r.farmerName || '-',
           broker: r.broker || '-',
           variety: r.variety || varietyData,
           bags: r.bags || 0,
@@ -841,6 +843,7 @@ const KunchinintuLedger: React.FC = () => {
           slNo: (idx + 1).toString(),
           date: r.date,
           movementType: r.movementType,
+          farmerName: r.farmerName || '-',
           broker: r.broker || '-',
           variety: r.variety || kunchi.variety?.name || '-',
           bags: r.bags || 0,
@@ -1362,6 +1365,7 @@ const KunchinintuLedger: React.FC = () => {
                                 <th>S.No</th>
                                 <th>Date</th>
                                 <th>Type of Movement</th>
+                                <th>Farmer</th>
                                 <th>Broker</th>
                                 <th>From</th>
                                 <th>Variety</th>
@@ -1381,6 +1385,7 @@ const KunchinintuLedger: React.FC = () => {
                                   <td>{idx + 1}</td>
                                   <td>{new Date(record.date).toLocaleDateString('en-GB')}</td>
                                   <td>{record.movementType === 'purchase' ? 'Purchase' : record.movementType === 'loose' ? 'Loose' : 'Shifting'}</td>
+                                  <td>{record.movementType === 'loose' ? '-' : (record.farmerName || '-')}</td>
                                   <td>{record.movementType === 'loose' ? '-' : (record.broker || '-')}</td>
                                   <td>{record.movementType === 'loose' ? '-' : (record.fromLocation || record.fromKunchinittu?.name || '-')}</td>
                                   <td>{record.movementType === 'loose' ? '-' : (record.variety || '-')}</td>
@@ -1395,7 +1400,7 @@ const KunchinintuLedger: React.FC = () => {
                                 </tr>
                               ))}
                               <tr style={{ background: '#059669', color: 'white', fontWeight: 'bold' }}>
-                                <td colSpan={6}>Warehouse Total</td>
+                                <td colSpan={7}>Warehouse Total</td>
                                 <td>{transactions.reduce((sum, r) => sum + (r.bags || 0), 0)}</td>
                                 <td></td>
                                 <td>{calculateCuttingTotal(transactions)}</td>
@@ -1418,6 +1423,7 @@ const KunchinintuLedger: React.FC = () => {
                           <th>S.No</th>
                           <th>Date</th>
                           {viewMode === 'detailed' && <th>Type of Movement</th>}
+                          {viewMode === 'detailed' && <th>Farmer</th>}
                           {viewMode === 'detailed' && <th>Broker</th>}
                           <th>From</th>
                           <th>To</th>
@@ -1449,6 +1455,7 @@ const KunchinintuLedger: React.FC = () => {
                             <td>{idx + 1}</td>
                             <td>{new Date(record.date).toLocaleDateString('en-GB')}</td>
                             <td>{record.movementType === 'purchase' ? 'Purchase' : record.movementType === 'loose' ? 'Loose' : 'Shifting'}</td>
+                            <td>{record.movementType === 'loose' ? '-' : (record.farmerName || '-')}</td>
                             <td>{record.movementType === 'loose' ? '-' : (record.broker || '-')}</td>
                             <td>
                               {record.movementType === 'loose'
@@ -1473,7 +1480,7 @@ const KunchinintuLedger: React.FC = () => {
                           </tr>
                         ))}
                         <tr className="total-row">
-                          <td colSpan={viewMode === 'bifurcated' ? 5 : 7}>Total</td>
+                          <td colSpan={viewMode === 'bifurcated' ? 5 : 8}>Total</td>
                           <td>{ledgerData.totals.inward.bags}</td>
                           {viewMode === 'detailed' && (
                             <>
