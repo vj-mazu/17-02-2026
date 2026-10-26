@@ -150,9 +150,9 @@ router.post('/', auth, authorize('manager', 'admin'), async (req, res) => {
       });
     }
 
-    // Validate numeric values (h can be negative, others must be positive)
-    const numericFields = { sute, baseRate, b, lf, egb };
-    for (const [field, value] of Object.entries(numericFields)) {
+    // Validate numeric values: sute, baseRate, egb must be non-negative (baseRate must be > 0)
+    const nonNegativeFields = { sute, egb };
+    for (const [field, value] of Object.entries(nonNegativeFields)) {
       if (isNaN(parseFloat(value))) {
         return res.status(400).json({ error: `Invalid numeric value for ${field}` });
       }
@@ -160,10 +160,16 @@ router.post('/', auth, authorize('manager', 'admin'), async (req, res) => {
         return res.status(400).json({ error: `${field} must be a positive number` });
       }
     }
+    if (isNaN(parseFloat(baseRate)) || parseFloat(baseRate) <= 0) {
+      return res.status(400).json({ error: 'Base rate must be greater than 0' });
+    }
 
-    // Validate h separately (can be negative)
-    if (isNaN(parseFloat(h))) {
-      return res.status(400).json({ error: 'Invalid numeric value for h (hamali)' });
+    // Validate h, b, lf (can be positive for additions or negative for deductions)
+    const adjustableFields = { h, b, lf };
+    for (const [field, value] of Object.entries(adjustableFields)) {
+      if (isNaN(parseFloat(value))) {
+        return res.status(400).json({ error: `Invalid numeric value for ${field}` });
+      }
     }
 
     // Validate rate type
@@ -276,11 +282,8 @@ router.post('/', auth, authorize('manager', 'admin'), async (req, res) => {
     const egbAmount = showEGB ? bags * egbNum : 0;
 
     // 7. Total Amount = Base Rate Amount (on Sute Net Weight) + Adjustments (on Original Weight)
-    // For MDL and MDWB: If H is negative (user signal to exclude), set to 0. If positive, add it.
-    // For CDL and CDWB: Use H value as-is
-    const hContribution = ['MDL', 'MDWB'].includes(rateType)
-      ? (hAmount < 0 ? 0 : hAmount)  // MDL/MDWB: negative = 0, positive = add
-      : hAmount;                      // CDL/CDWB: use as-is
+    // h, b, lf retain their sign (+ for addition, - for deduction)
+    const hContribution = hAmount;
     const totalAmount = baseRateAmount + hContribution + bAmount + lfAmount + egbAmount;
 
     // 8. Average Rate Calculation (per 75kg)

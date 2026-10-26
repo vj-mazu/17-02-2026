@@ -657,6 +657,47 @@ export const RateInput = styled.input`
   }
 `;
 
+export const RateInputWithOperator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+`;
+
+export const OperatorSegment = styled.div`
+  display: flex;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+`;
+
+export const OperatorBtn = styled.button<{ $active: boolean; $variant: 'add' | 'sub' }>`
+  width: 24px;
+  height: 28px;
+  border: none;
+  background: ${props =>
+    props.$active
+      ? (props.$variant === 'sub' ? '#ef4444' : '#10b981')
+      : '#f3f4f6'};
+  color: ${props => (props.$active ? '#ffffff' : '#6b7280')};
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s ease-in-out;
+
+  &:hover {
+    background: ${props =>
+      props.$active
+        ? (props.$variant === 'sub' ? '#dc2626' : '#059669')
+        : '#e5e7eb'};
+  }
+`;
+
 export const RateRadioGroup = styled.div`
   display: flex;
   flex-direction: row;

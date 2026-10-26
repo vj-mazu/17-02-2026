@@ -39,7 +39,8 @@ import {
   RiceStockTotal, RiceStockQuantity, RiceStockDetails, InlineRateFormStyled,
   RateFormCell, RateFormContainer, RateFormTitle, RateFormGrid, RateFormGroup,
   RateLabel, RateInput, RateRadioGroup, RateRadioLabel, RateCalculationBox,
-  RateCalcRow, RateCalcLabel, RateCalcValue, RateButtonGroup
+  RateCalcRow, RateCalcLabel, RateCalcValue, RateButtonGroup,
+  RateInputWithOperator, OperatorSegment, OperatorBtn
 } from './RecordsStyles';
 
 import {
@@ -167,9 +168,13 @@ const Records: React.FC = () => {
     baseRateCalculationMethod: 'per_bag', // Default to per_bag
     rateType: 'CDL',
     h: '0',
+    hOperator: '+',
+    hCalculationMethod: 'per_bag',
     b: '0',
+    bOperator: '+',
     bCalculationMethod: 'per_bag',
     lf: '0',
+    lfOperator: '+',
     lfCalculationMethod: 'per_bag',
     egb: '0'
   });
@@ -591,8 +596,8 @@ const Records: React.FC = () => {
     const hVal = parseFloat(pr.h || '0');
     const hMethod = pr.hCalculationMethod || 'per_bag';
     const hAmount = hMethod === 'per_quintal' ? (totalNetWb / 100) * hVal : hVal * totalBags;
-    // For MDL and MDWB: If H is negative (user signal to exclude), set to 0. If positive, add it.
-    const hContribution = isMd ? (hAmount < 0 ? 0 : hAmount) : hAmount;
+    // Hamali contribution retains sign (+ for addition, - for deduction)
+    const hContribution = hAmount;
 
     const bVal = parseFloat(pr.b || '0');
     const bMethod = pr.bCalculationMethod || 'per_bag';
@@ -3001,12 +3006,15 @@ const Records: React.FC = () => {
         baseRateCalculationMethod: 'per_bag',
         rateType: 'CDL',
         h: '0',
+        hOperator: '+',
+        hCalculationMethod: 'per_bag',
         b: '0',
+        bOperator: '+',
         bCalculationMethod: 'per_bag',
         lf: '0',
+        lfOperator: '+',
         lfCalculationMethod: 'per_bag',
-        egb: '0',
-        hCalculationMethod: 'per_bag'
+        egb: '0'
       });
     } else {
       // Open the form and fetch existing rate if any
@@ -3021,18 +3029,24 @@ const Records: React.FC = () => {
         baseRateCalculationMethod: 'per_bag',
         rateType: 'CDL',
         h: '0',
+        hOperator: '+',
+        hCalculationMethod: 'per_bag',
         b: '0',
+        bOperator: '+',
         bCalculationMethod: 'per_bag',
         lf: '0',
+        lfOperator: '+',
         lfCalculationMethod: 'per_bag',
-        egb: '0',
-        hCalculationMethod: 'per_bag'
+        egb: '0'
       });
 
       try {
         const response = await axios.get<{ purchaseRate: any }>(`/purchase-rates/${recordId}`);
         if (response.data.purchaseRate) {
           const rate = response.data.purchaseRate;
+          const rawH = parseFloat(rate.h?.toString() || '0');
+          const rawB = parseFloat(rate.b?.toString() || '0');
+          const rawLf = parseFloat(rate.lf?.toString() || '0');
           // Only update form if rate exists
           setRateFormData({
             sute: rate.sute?.toString() || '0',
@@ -3040,13 +3054,16 @@ const Records: React.FC = () => {
             baseRate: rate.baseRate.toString(),
             baseRateCalculationMethod: rate.baseRateCalculationMethod || 'per_bag',
             rateType: rate.rateType,
-            h: rate.h.toString(),
-            b: rate.b.toString(),
+            h: Math.abs(rawH).toString(),
+            hOperator: rawH < 0 ? '-' : '+',
+            hCalculationMethod: rate.hCalculationMethod || 'per_bag',
+            b: Math.abs(rawB).toString(),
+            bOperator: rawB < 0 ? '-' : '+',
             bCalculationMethod: rate.bCalculationMethod || 'per_bag',
-            lf: rate.lf.toString(),
+            lf: Math.abs(rawLf).toString(),
+            lfOperator: rawLf < 0 ? '-' : '+',
             lfCalculationMethod: rate.lfCalculationMethod || 'per_bag',
-            egb: rate.egb.toString(),
-            hCalculationMethod: rate.hCalculationMethod || 'per_bag'
+            egb: rate.egb?.toString() || '0'
           });
         }
       } catch (error) {
@@ -3059,6 +3076,18 @@ const Records: React.FC = () => {
   const handleRateInputChange = (field: string, value: string) => {
     setRateFormData((prev: any) => {
       const newData = { ...prev, [field]: value };
+
+      // Auto-detect negative input if typed in directly
+      if (field === 'h' && value.startsWith('-')) {
+        newData.h = value.replace('-', '');
+        newData.hOperator = '-';
+      } else if (field === 'b' && value.startsWith('-')) {
+        newData.b = value.replace('-', '');
+        newData.bOperator = '-';
+      } else if (field === 'lf' && value.startsWith('-')) {
+        newData.lf = value.replace('-', '');
+        newData.lfOperator = '-';
+      }
 
       // Apply column-type specific rules when rate type changes
       if (field === 'rateType') {
@@ -3097,20 +3126,24 @@ const Records: React.FC = () => {
         isUpdate = false;
       }
 
+      const hSign = rateFormData.hOperator === '-' ? -1 : 1;
+      const bSign = rateFormData.bOperator === '-' ? -1 : 1;
+      const lfSign = rateFormData.lfOperator === '-' ? -1 : 1;
+
       await axios.post('/purchase-rates', {
         arrivalId: recordId,
-        sute: parseFloat(rateFormData.sute),
+        sute: parseFloat(rateFormData.sute || '0'),
         suteCalculationMethod: rateFormData.suteCalculationMethod,
         baseRate: parseFloat(rateFormData.baseRate),
         baseRateCalculationMethod: rateFormData.baseRateCalculationMethod,
         rateType: rateFormData.rateType,
-        h: parseFloat(rateFormData.h),
-        b: parseFloat(rateFormData.b),
+        h: hSign * Math.abs(parseFloat(rateFormData.h || '0')),
+        hCalculationMethod: rateFormData.hCalculationMethod,
+        b: bSign * Math.abs(parseFloat(rateFormData.b || '0')),
         bCalculationMethod: rateFormData.bCalculationMethod,
-        lf: parseFloat(rateFormData.lf),
+        lf: lfSign * Math.abs(parseFloat(rateFormData.lf || '0')),
         lfCalculationMethod: rateFormData.lfCalculationMethod,
-        egb: parseFloat(rateFormData.egb),
-        hCalculationMethod: rateFormData.hCalculationMethod
+        egb: parseFloat(rateFormData.egb || '0')
       });
 
       toast.success(isUpdate ? NotificationMessages.purchaseRate.updated : NotificationMessages.purchaseRate.added);
@@ -13943,15 +13976,38 @@ return (
                                       </RateFormGroup>
 
                                       <RateFormGroup>
-                                        <RateLabel>H {['MDL', 'MDWB'].includes(rateFormData.rateType) && <span style={{ color: '#f59e0b', fontSize: '0.65rem' }}>(−=+)</span>}</RateLabel>
-                                        <RateInput
-                                          type="number"
-                                          step="0.01"
-                                          value={rateFormData.h}
-                                          onChange={(e) => handleRateInputChange('h', e.target.value)}
-                                          placeholder="0"
-                                          title={['MDL', 'MDWB'].includes(rateFormData.rateType) ? 'For MDL/MDWB, negative values are treated as positive' : 'Enter value (negative to subtract)'}
-                                        />
+                                        <RateLabel>Hamali (H)</RateLabel>
+                                        <RateInputWithOperator>
+                                          <OperatorSegment>
+                                            <OperatorBtn
+                                              type="button"
+                                              $active={rateFormData.hOperator === '+'}
+                                              $variant="add"
+                                              onClick={() => handleRateInputChange('hOperator', '+')}
+                                              title="Add Hamali (+)"
+                                            >
+                                              +
+                                            </OperatorBtn>
+                                            <OperatorBtn
+                                              type="button"
+                                              $active={rateFormData.hOperator === '-'}
+                                              $variant="sub"
+                                              onClick={() => handleRateInputChange('hOperator', '-')}
+                                              title="Deduct Hamali (−)"
+                                            >
+                                              −
+                                            </OperatorBtn>
+                                          </OperatorSegment>
+                                          <RateInput
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={rateFormData.h}
+                                            onChange={(e) => handleRateInputChange('h', e.target.value)}
+                                            placeholder="0"
+                                            style={{ flex: 1 }}
+                                          />
+                                        </RateInputWithOperator>
                                         <RateRadioGroup>
                                           <RateRadioLabel>
                                             <input
@@ -13977,14 +14033,38 @@ return (
                                       </RateFormGroup>
 
                                       <RateFormGroup>
-                                        <RateLabel>B</RateLabel>
-                                        <RateInput
-                                          type="number"
-                                          step="0.01"
-                                          value={rateFormData.b}
-                                          onChange={(e) => handleRateInputChange('b', e.target.value)}
-                                          placeholder="0"
-                                        />
+                                        <RateLabel>Brokerage (B)</RateLabel>
+                                        <RateInputWithOperator>
+                                          <OperatorSegment>
+                                            <OperatorBtn
+                                              type="button"
+                                              $active={rateFormData.bOperator === '+'}
+                                              $variant="add"
+                                              onClick={() => handleRateInputChange('bOperator', '+')}
+                                              title="Add Brokerage (+)"
+                                            >
+                                              +
+                                            </OperatorBtn>
+                                            <OperatorBtn
+                                              type="button"
+                                              $active={rateFormData.bOperator === '-'}
+                                              $variant="sub"
+                                              onClick={() => handleRateInputChange('bOperator', '-')}
+                                              title="Deduct Brokerage (−)"
+                                            >
+                                              −
+                                            </OperatorBtn>
+                                          </OperatorSegment>
+                                          <RateInput
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={rateFormData.b}
+                                            onChange={(e) => handleRateInputChange('b', e.target.value)}
+                                            placeholder="0"
+                                            style={{ flex: 1 }}
+                                          />
+                                        </RateInputWithOperator>
                                         <RateRadioGroup>
                                           <RateRadioLabel>
                                             <input
@@ -14022,15 +14102,43 @@ return (
                                       {/* LF - Disabled for MDL and MDWB */}
                                       <RateFormGroup>
                                         <RateLabel>LF {['MDL', 'MDWB'].includes(rateFormData.rateType) && <span style={{ color: '#dc2626', fontSize: '0.65rem' }}>(N/A)</span>}</RateLabel>
-                                        <RateInput
-                                          type="number"
-                                          step="0.01"
-                                          value={['MDL', 'MDWB'].includes(rateFormData.rateType) ? '0' : rateFormData.lf}
-                                          onChange={(e) => handleRateInputChange('lf', e.target.value)}
-                                          placeholder="0"
-                                          disabled={['MDL', 'MDWB'].includes(rateFormData.rateType)}
-                                          style={['MDL', 'MDWB'].includes(rateFormData.rateType) ? { background: '#fee2e2', cursor: 'not-allowed' } : {}}
-                                        />
+                                        <RateInputWithOperator>
+                                          {!['MDL', 'MDWB'].includes(rateFormData.rateType) && (
+                                            <OperatorSegment>
+                                              <OperatorBtn
+                                                type="button"
+                                                $active={rateFormData.lfOperator === '+'}
+                                                $variant="add"
+                                                onClick={() => handleRateInputChange('lfOperator', '+')}
+                                                title="Add Freight (+)"
+                                              >
+                                                +
+                                              </OperatorBtn>
+                                              <OperatorBtn
+                                                type="button"
+                                                $active={rateFormData.lfOperator === '-'}
+                                                $variant="sub"
+                                                onClick={() => handleRateInputChange('lfOperator', '-')}
+                                                title="Deduct Freight (−)"
+                                              >
+                                                −
+                                              </OperatorBtn>
+                                            </OperatorSegment>
+                                          )}
+                                          <RateInput
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={['MDL', 'MDWB'].includes(rateFormData.rateType) ? '0' : rateFormData.lf}
+                                            onChange={(e) => handleRateInputChange('lf', e.target.value)}
+                                            placeholder="0"
+                                            disabled={['MDL', 'MDWB'].includes(rateFormData.rateType)}
+                                            style={{
+                                              flex: 1,
+                                              ...(['MDL', 'MDWB'].includes(rateFormData.rateType) ? { background: '#fee2e2', cursor: 'not-allowed' } : {})
+                                            }}
+                                          />
+                                        </RateInputWithOperator>
                                         {!['MDL', 'MDWB'].includes(rateFormData.rateType) && (
                                           <RateRadioGroup>
                                             <RateRadioLabel>
@@ -14056,7 +14164,6 @@ return (
                                           </RateRadioGroup>
                                         )}
                                       </RateFormGroup>
-
                                       {/* EGB - Show for CDL and MDL */}
                                       {(rateFormData.rateType === 'CDL' || rateFormData.rateType === 'MDL') && (
                                         <RateFormGroup>
@@ -14101,21 +14208,24 @@ return (
                                             // 4. Other Charges (H, B, LF)
                                             // If Per Bag: Always use Physical Bags
                                             // If Per Quintal: Always use Original Net Weight
-                                            const hValue = parseFloat(rateFormData.h || '0');
+                                            const hSign = rateFormData.hOperator === '-' ? -1 : 1;
+                                            const hValue = hSign * Math.abs(parseFloat(rateFormData.h || '0'));
                                             const hAmount = rateFormData.hCalculationMethod === 'per_bag'
                                               ? hValue * bags
                                               : hValue * (actualNetWeight / 100);
 
-                                            const bValue = parseFloat(rateFormData.b || '0');
+                                            const bSign = rateFormData.bOperator === '-' ? -1 : 1;
+                                            const bValue = bSign * Math.abs(parseFloat(rateFormData.b || '0'));
                                             const bAmount = rateFormData.bCalculationMethod === 'per_bag'
                                               ? bValue * bags
                                               : rateFormData.bCalculationMethod === 'percentage'
                                                 ? baseRateAmount * (bValue / 100)
                                                 : bValue * (actualNetWeight / 100);
 
-                                            let lfValue = parseFloat(rateFormData.lf || '0');
-                                            if (['MDL', 'MDWB'].includes(rateFormData.rateType)) {
-                                              lfValue = 0;
+                                            let lfValue = 0;
+                                            if (!['MDL', 'MDWB'].includes(rateFormData.rateType)) {
+                                              const lfSign = rateFormData.lfOperator === '-' ? -1 : 1;
+                                              lfValue = lfSign * Math.abs(parseFloat(rateFormData.lf || '0'));
                                             }
                                             const lfAmount = rateFormData.lfCalculationMethod === 'per_bag'
                                               ? lfValue * bags
@@ -14125,12 +14235,8 @@ return (
                                             const showEGB = ['CDL', 'MDL'].includes(rateFormData.rateType);
                                             const egbAmount = showEGB ? bags * parseFloat(rateFormData.egb || '0') : 0;
 
-                                            // 6. H Contribution
-                                            // For MDL/MDWB: If H is negative (user signal to exclude), set to 0. If positive, add it.
-                                            // For CDL/CDWB: Use H value as-is
-                                            const hContribution = ['MDL', 'MDWB'].includes(rateFormData.rateType)
-                                              ? (hAmount < 0 ? 0 : hAmount)  // MDL/MDWB: negative = 0, positive = add
-                                              : hAmount;                      // CDL/CDWB: use as-is
+                                            // 6. H Contribution - respects operator across all rate types
+                                            const hContribution = hAmount;
 
                                             // 7. Total = Base Amount + All Adjustments
                                             const totalAmount = baseRateAmount + hContribution + bAmount + lfAmount + egbAmount;
