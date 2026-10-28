@@ -336,42 +336,14 @@ router.post('/', auth, async (req, res) => {
 
       console.log(`✅ Source validation passed: ${normalizedVariety} exists in source`);
 
-      // STEP 1.5: Check if source has sufficient stock quantity (PARALLEL QUERIES)
-      const [sourceStockTotal, sourceStockOut] = await Promise.all([
-        Arrival.sum('bags', {
-          where: {
-            [Op.or]: [
-              { toKunchinintuId: fromKunchinintuId, toWarehouseId: fromWarehouseId },
-              { toKunchinintuId: fromKunchinintuId, toWarehouseShiftId: fromWarehouseId }
-            ],
-            status: 'approved',
-            adminApprovedBy: { [Op.not]: null },
-            [Op.and]: [
-              sequelize.where(
-                sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
-                normalizedVariety
-              )
-            ]
-          }
-        }),
-        Arrival.sum('bags', {
-          where: {
-            fromKunchinintuId,
-            fromWarehouseId,
-            status: 'approved',
-            adminApprovedBy: { [Op.not]: null },
-            movementType: { [Op.in]: ['shifting', 'production-shifting'] },
-            [Op.and]: [
-              sequelize.where(
-                sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
-                normalizedVariety
-              )
-            ]
-          }
-        })
-      ]);
+      // STEP 1.5: Check if source has sufficient stock quantity using single source of truth
+      const stockLocations = await queryOptimizationService.getStockByVariety(normalizedVariety);
+      const sourceLocationStock = stockLocations.find(l => 
+        String(l.kunchinintuId) === String(fromKunchinintuId) && 
+        String(l.warehouseId) === String(fromWarehouseId)
+      );
 
-      const availableStock = (sourceStockTotal || 0) - (sourceStockOut || 0);
+      const availableStock = sourceLocationStock ? Number(sourceLocationStock.stockBags || 0) : 0;
 
       if (availableStock < bags) {
         const [fromKunchinittu, fromWarehouse] = await Promise.all([
@@ -385,7 +357,7 @@ router.post('/', auth, async (req, res) => {
 
         return res.status(400).json({
           error: `❌ INSUFFICIENT STOCK\n\n` +
-            `Problem: Warehouse "${fromWarehouse?.code}" in Kunchinittu "${fromKunchinittu?.code}" has only ${availableStock} bags of "${normalizedVariety}" variety available.\n` +
+            `Problem: Warehouse "${fromWarehouse?.code || fromWarehouseId}" in Kunchinittu "${fromKunchinittu?.code || fromKunchinintuId}" has only ${availableStock} bags of "${normalizedVariety}" variety available.\n` +
             `You are trying to shift ${bags} bags.\n\n` +
             `Solution: Either:\n` +
             `1. Reduce the quantity to ${availableStock} bags or less, OR\n` +
@@ -581,41 +553,14 @@ router.post('/', auth, async (req, res) => {
 
       console.log(`✅ Source stock validation passed: ${normalizedVariety} exists in source warehouse`);
 
-      // STEP 3.5: Check if source has sufficient stock quantity for production
-      const prodSourceStockTotal = await Arrival.sum('bags', {
-        where: {
-          [Op.or]: [
-            { toKunchinintuId: fromKunchinintuId, toWarehouseId: fromWarehouseId },
-            { toKunchinintuId: fromKunchinintuId, toWarehouseShiftId: fromWarehouseId }
-          ],
-          status: 'approved',
-          adminApprovedBy: { [Op.not]: null },
-          [Op.and]: [
-            sequelize.where(
-              sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
-              normalizedVariety
-            )
-          ]
-        }
-      });
+      // STEP 3.5: Check if source has sufficient stock quantity for production using single source of truth
+      const prodStockLocations = await queryOptimizationService.getStockByVariety(normalizedVariety);
+      const prodSourceLocationStock = prodStockLocations.find(l => 
+        String(l.kunchinintuId) === String(fromKunchinintuId) && 
+        String(l.warehouseId) === String(fromWarehouseId)
+      );
 
-      const prodSourceStockOut = await Arrival.sum('bags', {
-        where: {
-          fromKunchinintuId,
-          fromWarehouseId,
-          status: 'approved',
-          adminApprovedBy: { [Op.not]: null },
-          movementType: { [Op.in]: ['shifting', 'production-shifting'] },
-          [Op.and]: [
-            sequelize.where(
-              sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
-              normalizedVariety
-            )
-          ]
-        }
-      });
-
-      const prodAvailableStock = (prodSourceStockTotal || 0) - (prodSourceStockOut || 0);
+      const prodAvailableStock = prodSourceLocationStock ? Number(prodSourceLocationStock.stockBags || 0) : 0;
 
       if (prodAvailableStock < bags) {
         const fromWarehouse = await Warehouse.findByPk(fromWarehouseId, {
@@ -624,7 +569,7 @@ router.post('/', auth, async (req, res) => {
 
         return res.status(400).json({
           error: `❌ INSUFFICIENT STOCK FOR PRODUCTION\n\n` +
-            `Problem: Warehouse "${fromWarehouse?.code}" in Kunchinittu "${fromKunchinittu.code}" has only ${prodAvailableStock} bags of "${normalizedVariety}" variety available.\n` +
+            `Problem: Warehouse "${fromWarehouse?.code || fromWarehouseId}" in Kunchinittu "${fromKunchinittu?.code || fromKunchinintuId}" has only ${prodAvailableStock} bags of "${normalizedVariety}" variety available.\n` +
             `You are trying to shift ${bags} bags for production.\n\n` +
             `Solution: Either:\n` +
             `1. Reduce the quantity to ${prodAvailableStock} bags or less, OR\n` +
@@ -676,44 +621,15 @@ router.post('/', auth, async (req, res) => {
       }
 
       // Check available quantity (bags and netWeight)
-      const [sourceBagsTotal, sourceBagsOut, sourceWeightTotal, sourceWeightOut] = await Promise.all([
-        Arrival.sum('bags', {
-          where: {
-            [Op.or]: [
-              { toKunchinintuId: fromKunchinintuId, toWarehouseId: fromWarehouseId },
-              { toKunchinintuId: fromKunchinintuId, toWarehouseShiftId: fromWarehouseId }
-            ],
-            status: 'approved',
-            adminApprovedBy: { [Op.not]: null },
-            [Op.and]: [
-              sequelize.where(
-                sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
-                normalizedVariety
-              )
-            ]
-          }
-        }),
-        Arrival.sum('bags', {
-          where: {
-            fromKunchinintuId,
-            fromWarehouseId,
-            status: 'approved',
-            adminApprovedBy: { [Op.not]: null },
-            movementType: { [Op.in]: ['shifting', 'production-shifting', 'sale'] },
-            [Op.and]: [
-              sequelize.where(
-                sequelize.fn('UPPER', sequelize.fn('TRIM', sequelize.col('variety'))),
-                normalizedVariety
-              )
-            ]
-          }
-        }),
+      const [saleStockLocations, sourceWeightTotal, sourceWeightOut] = await Promise.all([
+        queryOptimizationService.getStockByVariety(normalizedVariety),
         Arrival.sum('netWeight', {
           where: {
             [Op.or]: [
               { toKunchinintuId: fromKunchinintuId, toWarehouseId: fromWarehouseId },
               { toKunchinintuId: fromKunchinintuId, toWarehouseShiftId: fromWarehouseId }
             ],
+            movementType: { [Op.in]: ['purchase', 'shifting', 'loose'] },
             status: 'approved',
             adminApprovedBy: { [Op.not]: null },
             [Op.and]: [
@@ -741,7 +657,11 @@ router.post('/', auth, async (req, res) => {
         })
       ]);
 
-      const availableBags = (sourceBagsTotal || 0) - (sourceBagsOut || 0);
+      const saleSourceLoc = saleStockLocations.find(l => 
+        String(l.kunchinintuId) === String(fromKunchinintuId) && 
+        String(l.warehouseId) === String(fromWarehouseId)
+      );
+      const availableBags = saleSourceLoc ? Number(saleSourceLoc.stockBags || 0) : 0;
       const availableWeight = (sourceWeightTotal || 0) - (sourceWeightOut || 0);
 
       if (availableBags < bags) {

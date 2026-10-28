@@ -571,6 +571,15 @@ const Arrivals: React.FC = () => {
     return kunchinittus.find(k => String(k.id) === toKunchinintuId);
   }, [kunchinittus, toKunchinintuId]);
 
+  // Selected source location for shifting (holds real-time available stock)
+  const selectedSourceLocation = useMemo(() => {
+    if (!fromKunchinintuId || !fromWarehouseId) return null;
+    return stockLocations.find(l => 
+      String(l.kunchinintuId) === String(fromKunchinintuId) && 
+      String(l.warehouseId) === String(fromWarehouseId)
+    ) || null;
+  }, [stockLocations, fromKunchinintuId, fromWarehouseId]);
+
   // Available warehouses for purchase (based on selected kunchinittu)
   const availableWarehouses = useMemo(() => {
     if (!selectedToKunchinittu) return [];
@@ -769,6 +778,23 @@ const Arrivals: React.FC = () => {
         }
       }
     } else if (movementType === 'shifting') {
+      const enteredBags = bags ? parseInt(bags) : 0;
+      if (!bags || enteredBags <= 0) {
+        toast.error('Please enter a valid number of bags (greater than 0)');
+        return;
+      }
+
+      if (selectedSourceLocation) {
+        const available = Number(selectedSourceLocation.stockBags || 0);
+        if (enteredBags > available) {
+          toast.error(
+            `❌ Insufficient Stock: Cannot shift ${enteredBags} bags! Only ${available} bags of "${variety}" available in ${selectedSourceLocation.warehouseName || 'selected warehouse'}.`,
+            { autoClose: 8000 }
+          );
+          return;
+        }
+      }
+
       if (shiftingType === 'normal') {
         if (!fromKunchinintuId || !fromWarehouseId || !toKunchinintuId || !toWarehouseShiftId) {
           toast.error('Please fill all location fields for shifting');
@@ -1216,14 +1242,32 @@ const Arrivals: React.FC = () => {
                         </FormGroup>
 
                         <FormGroup>
-                          <Label>Bags</Label>
+                          <Label>
+                            Bags *
+                            {selectedSourceLocation && (
+                              <span style={{ 
+                                marginLeft: '8px', 
+                                fontSize: '12px', 
+                                fontWeight: 600,
+                                color: Number(bags) > Number(selectedSourceLocation.stockBags) ? '#ef4444' : '#10b981' 
+                              }}>
+                                (Available: {selectedSourceLocation.stockBags} bags)
+                              </span>
+                            )}
+                          </Label>
                           <Input
                             type="number"
                             value={bags}
                             onChange={(e) => setBags(e.target.value)}
                             placeholder="Number of bags"
-                            min="0"
+                            min="1"
+                            max={selectedSourceLocation ? selectedSourceLocation.stockBags : undefined}
                           />
+                          {selectedSourceLocation && Number(bags) > Number(selectedSourceLocation.stockBags) && (
+                            <InfoText style={{ color: '#ef4444', fontWeight: 600, marginTop: '4px' }}>
+                              ⚠️ Cannot shift {bags} bags! Maximum available is {selectedSourceLocation.stockBags} bags.
+                            </InfoText>
+                          )}
                         </FormGroup>
                       </FormRow>
 
@@ -1491,14 +1535,32 @@ const Arrivals: React.FC = () => {
                         </FormGroup>
 
                         <FormGroup>
-                          <Label>Bags</Label>
+                          <Label>
+                            Bags *
+                            {selectedSourceLocation && (
+                              <span style={{ 
+                                marginLeft: '8px', 
+                                fontSize: '12px', 
+                                fontWeight: 600,
+                                color: Number(bags) > Number(selectedSourceLocation.stockBags) ? '#ef4444' : '#10b981' 
+                              }}>
+                                (Available: {selectedSourceLocation.stockBags} bags)
+                              </span>
+                            )}
+                          </Label>
                           <Input
                             type="number"
                             value={bags}
                             onChange={(e) => setBags(e.target.value)}
                             placeholder="Number of bags"
-                            min="0"
+                            min="1"
+                            max={selectedSourceLocation ? selectedSourceLocation.stockBags : undefined}
                           />
+                          {selectedSourceLocation && Number(bags) > Number(selectedSourceLocation.stockBags) && (
+                            <InfoText style={{ color: '#ef4444', fontWeight: 600, marginTop: '4px' }}>
+                              ⚠️ Cannot shift {bags} bags! Maximum available is {selectedSourceLocation.stockBags} bags.
+                            </InfoText>
+                          )}
                         </FormGroup>
                       </FormRow>
 
