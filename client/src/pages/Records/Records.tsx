@@ -2668,7 +2668,7 @@ const Records: React.FC = () => {
   // Fetch available bags when outturn is selected
   useEffect(() => {
     const fetchAvailableBags = async () => {
-      if (selectedOutturnId) {
+      if (selectedOutturnId && selectedOutturnId !== 'undefined' && selectedOutturnId !== 'null' && !isNaN(Number(selectedOutturnId))) {
         try {
           const response = await axios.get<{
             availableBags: number;
@@ -2679,7 +2679,7 @@ const Records: React.FC = () => {
             clearedAt?: string;
             remainingBags?: number;
           }>(`/rice-productions/outturn/${selectedOutturnId}/available-bags`);
-          setAvailableBags(response.data.availableBags);
+          setAvailableBags(Number(response.data.availableBags || 0));
           setIsOutturnCleared(response.data.isCleared || false);
           if (response.data.availableRemixBags !== undefined) {
             setOutturnAvailableRemixBags(response.data.availableRemixBags);

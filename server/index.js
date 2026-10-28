@@ -1472,6 +1472,26 @@ const startServer = async () => {
         console.log('⚠️ Migration 96 warning:', error.message);
       }
 
+      // Auto-migration: Ensure all production and remix columns exist with both camelCase and snake_case aliases
+      try {
+        await sequelize.query(`
+          ALTER TABLE rice_productions ADD COLUMN IF NOT EXISTS remix_bags INTEGER DEFAULT 0;
+          ALTER TABLE rice_productions ADD COLUMN IF NOT EXISTS "remixBags" INTEGER DEFAULT 0;
+          ALTER TABLE rice_productions ADD COLUMN IF NOT EXISTS remix_quintals DECIMAL(10,2) DEFAULT 0;
+          ALTER TABLE rice_productions ADD COLUMN IF NOT EXISTS "remixQuintals" DECIMAL(10,2) DEFAULT 0;
+          ALTER TABLE rice_productions ADD COLUMN IF NOT EXISTS paddy_bags_deducted INTEGER DEFAULT 0;
+          ALTER TABLE rice_productions ADD COLUMN IF NOT EXISTS "paddyBagsDeducted" INTEGER DEFAULT 0;
+          
+          ALTER TABLE rice_stock_movements ADD COLUMN IF NOT EXISTS outturn_id INTEGER;
+          ALTER TABLE rice_stock_movements ADD COLUMN IF NOT EXISTS "outturnId" INTEGER;
+          ALTER TABLE rice_stock_movements ADD COLUMN IF NOT EXISTS source_bags INTEGER;
+          ALTER TABLE rice_stock_movements ADD COLUMN IF NOT EXISTS "sourceBags" INTEGER;
+        `);
+        console.log('✅ Auto-migration: rice_productions and rice_stock_movements schema verified');
+      } catch (colErr) {
+        console.log('⚠️ Auto-migration schema verification note:', colErr.message);
+      }
+
       console.log('✅ Migrations completed.');
 
       // DIAGNOSTIC CHECK FOR ARRIVALS COLUMNS

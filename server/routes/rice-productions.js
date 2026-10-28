@@ -242,23 +242,30 @@ router.get('/outturn/:id', auth, async (req, res) => {
 // Get available bags for outturn
 router.get('/outturn/:id/available-bags', auth, async (req, res) => {
   try {
-    const outturnId = req.params.id;
+    const rawOutturnId = req.params.id;
+    if (!rawOutturnId || isNaN(parseInt(rawOutturnId))) {
+      return res.status(400).json({ error: 'Valid outturn ID is required' });
+    }
+    const outturnId = parseInt(rawOutturnId);
 
     console.log('🔍 Fetching available bags for outturn:', outturnId);
 
-    // First, check if outurn is cleared
+    // First, check if outturn is cleared
     const outturn = await Outturn.findByPk(outturnId);
     if (!outturn) {
       return res.status(404).json({ error: 'Outturn not found' });
     }
 
-    // If outurn is cleared, return zero available bags with cleared status
+    // If outturn is cleared, return zero available bags with cleared status
     if (outturn.isCleared) {
       console.log('🔒 Outturn is cleared, returning zero available bags');
       return res.json({
         availableBags: 0,
         totalBags: 0,
         usedBags: 0,
+        totalRemixBags: 0,
+        usedRemixBags: 0,
+        availableRemixBags: 0,
         isCleared: true,
         clearedAt: outturn.clearedAt,
         remainingBags: outturn.remainingBags
@@ -266,43 +273,100 @@ router.get('/outturn/:id/available-bags', auth, async (req, res) => {
     }
 
     // Get total bags for this outturn (production-shifting + for-production purchases)
-    const productionShiftingBags = await Arrival.sum('bags', {
-      where: {
-        outturnId: outturnId,
-        movementType: { [Op.in]: ['production-shifting', 'purchase'] }
+    let productionShiftingBags = 0;
+    try {
+      productionShiftingBags = await Arrival.sum('bags', {
+        where: {
+          outturnId: outturnId,
+          movementType: { [Op.in]: ['production-shifting', 'purchase'] }
+        }
+      }) || 0;
+    } catch (arrErr) {
+      console.warn('⚠️ Arrival sum note, falling back to raw query:', arrErr.message);
+      try {
+        const [arrRow] = await sequelize.query(`
+          SELECT COALESCE(SUM(bags), 0) as total_bags
+          FROM arrivals
+          WHERE (outturn_id = :outturnId OR "outturnId" = :outturnId)
+            AND movement_type IN ('production-shifting', 'purchase')
+        `, { replacements: { outturnId }, type: sequelize.QueryTypes.SELECT });
+        productionShiftingBags = arrRow ? parseInt(arrRow.total_bags || 0) : 0;
+      } catch (fallbackArrErr) {
+        console.error('Failed arrival raw fallback:', fallbackArrErr.message);
+        productionShiftingBags = 0;
       }
-    }) || 0;
+    }
 
     console.log('📊 Total paddy bags found:', productionShiftingBags);
 
-    // Get total paddy bags already DEDUCTED from productions
-    const usedPaddyBagsDeducted = await RiceProduction.sum('paddyBagsDeducted', {
-      where: {
-        outturnId: outturnId,
-        status: { [Op.in]: ['pending', 'approved'] }
+    // Get total paddy bags already DEDUCTED from productions (with fail-safe fallback)
+    let usedPaddyBagsDeducted = 0;
+    try {
+      usedPaddyBagsDeducted = await RiceProduction.sum('paddyBagsDeducted', {
+        where: {
+          outturnId: outturnId,
+          status: { [Op.in]: ['pending', 'approved'] }
+        }
+      }) || 0;
+    } catch (rpErr) {
+      console.warn('⚠️ RiceProduction sum note, falling back to raw query:', rpErr.message);
+      try {
+        const [deductRow] = await sequelize.query(`
+          SELECT COALESCE(SUM(COALESCE(paddy_bags_deducted, "paddyBagsDeducted", ROUND("quantityQuintals" * 3))), 0) as total_deducted
+          FROM rice_productions
+          WHERE ("outturnId" = :outturnId OR outturn_id = :outturnId)
+            AND status IN ('pending', 'approved')
+        `, { replacements: { outturnId }, type: sequelize.QueryTypes.SELECT });
+        usedPaddyBagsDeducted = deductRow ? parseInt(deductRow.total_deducted || 0) : 0;
+      } catch (fallbackErr) {
+        console.error('Failed RiceProduction raw fallback:', fallbackErr.message);
+        usedPaddyBagsDeducted = 0;
       }
-    }) || 0;
+    }
 
     console.log('📊 Used paddy bags (deducted):', usedPaddyBagsDeducted);
 
     // Calculate available bags (Total - Paddy Bags Deducted)
-    const availableBags = productionShiftingBags - usedPaddyBagsDeducted;
+    const availableBags = Math.max(0, productionShiftingBags - usedPaddyBagsDeducted);
 
-    // Get total remixed old bags brought into this outturn
-    const [remixRows] = await sequelize.query(`
-      SELECT COALESCE(SUM(source_bags), 0) as total_remix_bags 
-      FROM rice_stock_movements 
-      WHERE outturn_id = :outturnId AND movement_type = 'remix' AND status = 'approved'
-    `, { replacements: { outturnId: parseInt(outturnId) }, type: sequelize.QueryTypes.SELECT });
-    const totalRemixBags = remixRows ? parseInt(remixRows.total_remix_bags || 0) : 0;
+    // Get total remixed old bags brought into this outturn (fail-safe)
+    let totalRemixBags = 0;
+    try {
+      const [remixRows] = await sequelize.query(`
+        SELECT COALESCE(SUM(COALESCE(source_bags, "sourceBags", 0)), 0) as total_remix_bags 
+        FROM rice_stock_movements 
+        WHERE (outturn_id = :outturnId OR "outturnId" = :outturnId)
+          AND movement_type = 'remix' AND status = 'approved'
+      `, { replacements: { outturnId }, type: sequelize.QueryTypes.SELECT });
+      totalRemixBags = remixRows ? parseInt(remixRows.total_remix_bags || 0) : 0;
+    } catch (remixErr) {
+      console.warn('⚠️ Remix movements query note:', remixErr.message);
+      totalRemixBags = 0;
+    }
 
-    // Get total remixed bags already absorbed in rice productions
-    const usedRemixBags = await RiceProduction.sum('remixBags', {
-      where: {
-        outturnId: outturnId,
-        status: { [Op.in]: ['pending', 'approved'] }
+    // Get total remixed bags already absorbed in rice productions (fail-safe)
+    let usedRemixBags = 0;
+    try {
+      usedRemixBags = await RiceProduction.sum('remixBags', {
+        where: {
+          outturnId: outturnId,
+          status: { [Op.in]: ['pending', 'approved'] }
+        }
+      }) || 0;
+    } catch (usedErr) {
+      try {
+        const [rawUsed] = await sequelize.query(`
+          SELECT COALESCE(SUM(COALESCE(remix_bags, "remixBags", 0)), 0) as total_used_remix
+          FROM rice_productions
+          WHERE ("outturnId" = :outturnId OR outturn_id = :outturnId)
+            AND status IN ('pending', 'approved')
+        `, { replacements: { outturnId }, type: sequelize.QueryTypes.SELECT });
+        usedRemixBags = rawUsed ? parseInt(rawUsed.total_used_remix || 0) : 0;
+      } catch (fallbackUsedErr) {
+        console.warn('⚠️ Used remix sum note:', fallbackUsedErr.message);
+        usedRemixBags = 0;
       }
-    }) || 0;
+    }
 
     const availableRemixBags = Math.max(0, totalRemixBags - usedRemixBags);
 
@@ -317,24 +381,28 @@ router.get('/outturn/:id/available-bags', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Get available bags error:', error);
-    res.status(500).json({ error: 'Failed to fetch available bags' });
+    res.status(500).json({ error: 'Failed to fetch available bags', details: error.message });
   }
 });
 
 // Get available paddy bags for outturn
 router.get('/outturn/:id/available-paddy-bags', auth, async (req, res) => {
   try {
-    const outturnId = req.params.id;
+    const rawOutturnId = req.params.id;
+    if (!rawOutturnId || isNaN(parseInt(rawOutturnId))) {
+      return res.status(400).json({ error: 'Valid outturn ID is required' });
+    }
+    const outturnId = parseInt(rawOutturnId);
 
     console.log('🔍 Fetching available paddy bags for outturn:', outturnId);
 
-    // First, check if outurn is cleared
+    // First, check if outturn is cleared
     const outturn = await Outturn.findByPk(outturnId);
     if (!outturn) {
       return res.status(404).json({ error: 'Outturn not found' });
     }
 
-    // If outurn is cleared, return zero available bags with cleared status
+    // If outturn is cleared, return zero available bags with cleared status
     if (outturn.isCleared) {
       console.log('🔒 Outturn is cleared, returning zero available bags');
       return res.json({
@@ -348,37 +416,63 @@ router.get('/outturn/:id/available-paddy-bags', auth, async (req, res) => {
     }
 
     // Get total paddy bags for this outturn (production-shifting + for-production purchases)
-    const totalPaddyBags = await Arrival.sum('bags', {
-      where: {
-        outturnId: outturnId,
-        movementType: { [Op.in]: ['production-shifting', 'purchase'] }
-      }
-    }) || 0;
+    let totalPaddyBags = 0;
+    try {
+      totalPaddyBags = await Arrival.sum('bags', {
+        where: {
+          outturnId: outturnId,
+          movementType: { [Op.in]: ['production-shifting', 'purchase'] }
+        }
+      }) || 0;
+    } catch (arrErr) {
+      const [arrRow] = await sequelize.query(`
+        SELECT COALESCE(SUM(bags), 0) as total_bags
+        FROM arrivals
+        WHERE (outturn_id = :outturnId OR "outturnId" = :outturnId)
+          AND movement_type IN ('production-shifting', 'purchase')
+      `, { replacements: { outturnId }, type: sequelize.QueryTypes.SELECT });
+      totalPaddyBags = arrRow ? parseInt(arrRow.total_bags || 0) : 0;
+    }
 
     console.log('📊 Total paddy bags found:', totalPaddyBags);
 
     // Get total paddy bags already DEDUCTED from productions
-    const usedPaddyBagsDeducted = await RiceProduction.sum('paddyBagsDeducted', {
-      where: {
-        outturnId: outturnId,
-        status: { [Op.in]: ['pending', 'approved'] }
+    let usedPaddyBagsDeducted = 0;
+    try {
+      usedPaddyBagsDeducted = await RiceProduction.sum('paddyBagsDeducted', {
+        where: {
+          outturnId: outturnId,
+          status: { [Op.in]: ['pending', 'approved'] }
+        }
+      }) || 0;
+    } catch (rpErr) {
+      try {
+        const [deductRow] = await sequelize.query(`
+          SELECT COALESCE(SUM(COALESCE(paddy_bags_deducted, "paddyBagsDeducted", ROUND("quantityQuintals" * 3))), 0) as total_deducted
+          FROM rice_productions
+          WHERE ("outturnId" = :outturnId OR outturn_id = :outturnId)
+            AND status IN ('pending', 'approved')
+        `, { replacements: { outturnId }, type: sequelize.QueryTypes.SELECT });
+        usedPaddyBagsDeducted = deductRow ? parseInt(deductRow.total_deducted || 0) : 0;
+      } catch (fallbackErr) {
+        usedPaddyBagsDeducted = 0;
       }
-    }) || 0;
+    }
 
     console.log('📊 Used paddy bags (deducted):', usedPaddyBagsDeducted);
 
     // Calculate available paddy bags (Total Paddy - Already Deducted)
-    const availablePaddyBags = totalPaddyBags - usedPaddyBagsDeducted;
+    const availablePaddyBags = Math.max(0, totalPaddyBags - usedPaddyBagsDeducted);
 
     res.json({
       availablePaddyBags,
       totalPaddyBags,
-      usedPaddyBags: usedPaddyBagsDeducted, // Return deducted bags for frontend
+      usedPaddyBags: usedPaddyBagsDeducted,
       isCleared: false
     });
   } catch (error) {
     console.error('Get available paddy bags error:', error);
-    res.status(500).json({ error: 'Failed to fetch available paddy bags' });
+    res.status(500).json({ error: 'Failed to fetch available paddy bags', details: error.message });
   }
 });
 
