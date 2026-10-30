@@ -577,7 +577,7 @@ router.post('/', auth, async (req, res) => {
         });
       }
 
-      console.log(`✅ Stock quantity validation passed: ${bags} bags available for production (${prodAvailableStock} total)`);
+      console.log(`✅ Stock quantity validation passed: ${bags} bags requested, ${prodAvailableStockOnDate} available on ${prodDateToUse || 'date'} (${prodTotalAvailableStock} total)`);
       console.log(`✅ PRODUCTION SHIFTING CHAIN VALIDATION PASSED: ${normalizedVariety} → Outturn ${outturn.code}`);
     } else if (movementType === 'sale') {
       if (!fromKunchinintuId || !fromWarehouseId || !normalizedVariety || !bags) {
