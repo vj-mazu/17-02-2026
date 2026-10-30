@@ -20,51 +20,43 @@ class QueryOptimizationService {
    * @returns {Promise<Array>} Stock locations with bags
    */
   async getStockByVariety(variety, options = {}) {
-    const { dateFrom, dateTo } = options;
+    const { dateTo } = options;
     const normalizedVariety = variety.trim().toUpperCase();
-
-    let dateFilter = '';
-    if (dateFrom || dateTo) {
-      dateFilter = 'AND (';
-      if (dateFrom) dateFilter += `a.date >= '${dateFrom}'`;
-      if (dateFrom && dateTo) dateFilter += ' AND ';
-      if (dateTo) dateFilter += `a.date <= '${dateTo}'`;
-      dateFilter += ')';
-    }
 
     const stockLocations = await sequelize.query(`
       WITH inward_stock AS (
         SELECT 
           a."toKunchinintuId" as "kunchinintuId",
           COALESCE(a."toWarehouseId", a."toWarehouseShiftId") as "warehouseId",
-          SUM(COALESCE(a.bags, 0)) as "inwardBags"
+          SUM(COALESCE(a.bags, 0)) as "totalInwardBags",
+          SUM(CASE WHEN (:dateTo::date IS NULL OR a.date <= :dateTo::date) THEN COALESCE(a.bags, 0) ELSE 0 END) as "dateInwardBags"
         FROM arrivals a
         WHERE UPPER(TRIM(a.variety)) = :variety
           AND a."movementType" IN ('purchase', 'shifting', 'loose')
           AND a.status = 'approved'
           AND a."adminApprovedBy" IS NOT NULL
           AND a."toKunchinintuId" IS NOT NULL
-          ${dateFilter}
         GROUP BY a."toKunchinintuId", COALESCE(a."toWarehouseId", a."toWarehouseShiftId")
       ),
       outward_stock AS (
         SELECT 
           a."fromKunchinintuId" as "kunchinintuId",
           a."fromWarehouseId" as "warehouseId",
-          SUM(COALESCE(a.bags, 0)) as "outwardBags"
+          SUM(COALESCE(a.bags, 0)) as "totalOutwardBags",
+          SUM(CASE WHEN (:dateTo::date IS NULL OR a.date <= :dateTo::date) THEN COALESCE(a.bags, 0) ELSE 0 END) as "dateOutwardBags"
         FROM arrivals a
         WHERE UPPER(TRIM(a.variety)) = :variety
           AND a."movementType" IN ('shifting', 'production-shifting', 'sale')
           AND a.status = 'approved'
           AND a."adminApprovedBy" IS NOT NULL
           AND a."fromKunchinintuId" IS NOT NULL
-          ${dateFilter}
         GROUP BY a."fromKunchinintuId", a."fromWarehouseId"
       )
       SELECT 
         COALESCE(i."kunchinintuId", o."kunchinintuId") as "kunchinintuId",
         COALESCE(i."warehouseId", o."warehouseId") as "warehouseId",
-        (COALESCE(i."inwardBags", 0) - COALESCE(o."outwardBags", 0)) as "stockBags",
+        (COALESCE(i."dateInwardBags", 0) - COALESCE(o."dateOutwardBags", 0))::integer as "stockBags",
+        (COALESCE(i."totalInwardBags", 0) - COALESCE(o."totalOutwardBags", 0))::integer as "totalStockBags",
         k.code as "kunchinintuCode",
         k.name as "kunchinintuName",
         w.code as "warehouseCode",
@@ -75,11 +67,15 @@ class QueryOptimizationService {
         AND i."warehouseId" = o."warehouseId"
       LEFT JOIN kunchinittus k ON COALESCE(i."kunchinintuId", o."kunchinintuId") = k.id
       LEFT JOIN warehouses w ON COALESCE(i."warehouseId", o."warehouseId") = w.id
-      WHERE (COALESCE(i."inwardBags", 0) - COALESCE(o."outwardBags", 0)) > 0
-        AND k.is_closed = false
+      WHERE ((COALESCE(i."dateInwardBags", 0) - COALESCE(o."dateOutwardBags", 0)) > 0 
+             OR (COALESCE(i."totalInwardBags", 0) - COALESCE(o."totalOutwardBags", 0)) > 0)
+        AND (k.is_closed = false OR k.is_closed IS NULL)
       ORDER BY "stockBags" DESC
     `, {
-      replacements: { variety: normalizedVariety },
+      replacements: { 
+        variety: normalizedVariety,
+        dateTo: dateTo || null
+      },
       type: QueryTypes.SELECT
     });
 

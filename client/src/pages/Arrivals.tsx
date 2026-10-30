@@ -520,7 +520,7 @@ const Arrivals: React.FC = () => {
     }
   }, [varietyAllocations, movementType, shiftingType]);
 
-  // Fetch stock locations when variety changes (for shifting only)
+  // Fetch stock locations when variety or date changes (for shifting only)
   useEffect(() => {
     const fetchStockLocations = async () => {
       if (!variety || variety.trim() === '' || movementType !== 'shifting') {
@@ -530,7 +530,11 @@ const Arrivals: React.FC = () => {
 
       setLoadingStockLocations(true);
       try {
-        const response = await axios.get<{ locations: any[] }>(`/arrivals/stock/variety-locations/${encodeURIComponent(variety.trim())}`);
+        const dateStr = date ? date.toISOString().split('T')[0] : '';
+        const response = await axios.get<{ locations: any[] }>(
+          `/arrivals/stock/variety-locations/${encodeURIComponent(variety.trim())}`,
+          { params: { dateTo: dateStr } }
+        );
         setStockLocations(response.data.locations || []);
       } catch (error) {
         console.error('Error fetching stock locations:', error);
@@ -544,7 +548,7 @@ const Arrivals: React.FC = () => {
     // Debounce the API call to avoid too many requests while typing
     const timeoutId = setTimeout(fetchStockLocations, 500);
     return () => clearTimeout(timeoutId);
-  }, [variety, movementType]);
+  }, [variety, movementType, date]);
 
   // Auto-populate fields based on stock locations
   useEffect(() => {
@@ -609,8 +613,10 @@ const Arrivals: React.FC = () => {
   // Target locations available for shifting (strictly Kunchinittus allocated to the same variety + stock locations for this variety)
   const availableToShiftingLocations = useMemo(() => {
     const stockMap = new Map<string, number>();
+    const totalStockMap = new Map<string, number>();
     stockLocations.forEach(loc => {
       stockMap.set(`${loc.kunchinintuId}-${loc.warehouseId}`, loc.stockBags || 0);
+      totalStockMap.set(`${loc.kunchinintuId}-${loc.warehouseId}`, loc.totalStockBags ?? loc.stockBags ?? 0);
     });
 
     const locationsList: Array<{
@@ -621,6 +627,7 @@ const Arrivals: React.FC = () => {
       warehouseName: string;
       warehouseCode: string;
       stockBags: number;
+      totalStockBags?: number;
     }> = [];
 
     const seenKeys = new Set<string>();
@@ -637,7 +644,8 @@ const Arrivals: React.FC = () => {
           warehouseId: alloc.warehouseId,
           warehouseName: alloc.warehouseName,
           warehouseCode: alloc.warehouseCode,
-          stockBags: stockMap.get(key) || 0
+          stockBags: stockMap.get(key) || 0,
+          totalStockBags: totalStockMap.get(key) || 0
         });
       }
     });
@@ -654,7 +662,8 @@ const Arrivals: React.FC = () => {
           warehouseId: loc.warehouseId,
           warehouseName: loc.warehouseName || loc.warehouseCode || '',
           warehouseCode: loc.warehouseCode || '',
-          stockBags: loc.stockBags || 0
+          stockBags: loc.stockBags || 0,
+          totalStockBags: loc.totalStockBags ?? loc.stockBags ?? 0
         });
       }
     });
@@ -785,10 +794,13 @@ const Arrivals: React.FC = () => {
       }
 
       if (selectedSourceLocation) {
-        const available = Number(selectedSourceLocation.stockBags || 0);
-        if (enteredBags > available) {
+        const availableOnDate = Number(selectedSourceLocation.stockBags || 0);
+        const totalAvailable = Number(selectedSourceLocation.totalStockBags ?? selectedSourceLocation.stockBags ?? 0);
+        const dateFormatted = date ? date.toLocaleDateString('en-GB') : 'selected date';
+
+        if (enteredBags > availableOnDate) {
           toast.error(
-            `❌ Insufficient Stock: Cannot shift ${enteredBags} bags! Only ${available} bags of "${variety}" available in ${selectedSourceLocation.warehouseName || 'selected warehouse'}.`,
+            `❌ Insufficient Stock: Cannot shift ${enteredBags} bags! Only ${availableOnDate} bags of "${variety}" available on ${dateFormatted} (Total Current Stock: ${totalAvailable} bags).`,
             { autoClose: 8000 }
           );
           return;
@@ -1249,9 +1261,9 @@ const Arrivals: React.FC = () => {
                                 marginLeft: '8px', 
                                 fontSize: '12px', 
                                 fontWeight: 600,
-                                color: Number(bags) > Number(selectedSourceLocation.stockBags) ? '#ef4444' : '#10b981' 
+                                color: (Number(bags) > Number(selectedSourceLocation.stockBags) || Number(bags) > Number(selectedSourceLocation.totalStockBags ?? selectedSourceLocation.stockBags)) ? '#ef4444' : '#10b981' 
                               }}>
-                                (Available: {selectedSourceLocation.stockBags} bags)
+                                (On {date ? date.toLocaleDateString('en-GB') : 'Date'}: {selectedSourceLocation.stockBags} bags | Total: {selectedSourceLocation.totalStockBags ?? selectedSourceLocation.stockBags} bags)
                               </span>
                             )}
                           </Label>
@@ -1265,7 +1277,7 @@ const Arrivals: React.FC = () => {
                           />
                           {selectedSourceLocation && Number(bags) > Number(selectedSourceLocation.stockBags) && (
                             <InfoText style={{ color: '#ef4444', fontWeight: 600, marginTop: '4px' }}>
-                              ⚠️ Cannot shift {bags} bags! Maximum available is {selectedSourceLocation.stockBags} bags.
+                              ⚠️ Cannot shift {bags} bags! Only {selectedSourceLocation.stockBags} bags available on {date ? date.toLocaleDateString('en-GB') : 'this date'} (Total Stock: {selectedSourceLocation.totalStockBags ?? selectedSourceLocation.stockBags} bags).
                             </InfoText>
                           )}
                         </FormGroup>
@@ -1286,7 +1298,7 @@ const Arrivals: React.FC = () => {
                                 <option value="">Select Kunchinittu</option>
                                 {stockLocations.map((loc) => (
                                   <option key={loc.kunchinintuId} value={loc.kunchinintuId}>
-                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} (Date: {loc.stockBags} bags | Total: {loc.totalStockBags ?? loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1374,7 +1386,7 @@ const Arrivals: React.FC = () => {
                                     key={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                     value={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                   >
-                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} (Date: {loc.stockBags} bags | Total: {loc.totalStockBags ?? loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1405,7 +1417,7 @@ const Arrivals: React.FC = () => {
                                     key={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                     value={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                   >
-                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} (Date: {loc.stockBags} bags | Total: {loc.totalStockBags ?? loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1542,9 +1554,9 @@ const Arrivals: React.FC = () => {
                                 marginLeft: '8px', 
                                 fontSize: '12px', 
                                 fontWeight: 600,
-                                color: Number(bags) > Number(selectedSourceLocation.stockBags) ? '#ef4444' : '#10b981' 
+                                color: (Number(bags) > Number(selectedSourceLocation.stockBags) || Number(bags) > Number(selectedSourceLocation.totalStockBags ?? selectedSourceLocation.stockBags)) ? '#ef4444' : '#10b981' 
                               }}>
-                                (Available: {selectedSourceLocation.stockBags} bags)
+                                (On {date ? date.toLocaleDateString('en-GB') : 'Date'}: {selectedSourceLocation.stockBags} bags | Total: {selectedSourceLocation.totalStockBags ?? selectedSourceLocation.stockBags} bags)
                               </span>
                             )}
                           </Label>
@@ -1558,7 +1570,7 @@ const Arrivals: React.FC = () => {
                           />
                           {selectedSourceLocation && Number(bags) > Number(selectedSourceLocation.stockBags) && (
                             <InfoText style={{ color: '#ef4444', fontWeight: 600, marginTop: '4px' }}>
-                              ⚠️ Cannot shift {bags} bags! Maximum available is {selectedSourceLocation.stockBags} bags.
+                              ⚠️ Cannot shift {bags} bags! Only {selectedSourceLocation.stockBags} bags available on {date ? date.toLocaleDateString('en-GB') : 'this date'} (Total Stock: {selectedSourceLocation.totalStockBags ?? selectedSourceLocation.stockBags} bags).
                             </InfoText>
                           )}
                         </FormGroup>
@@ -1582,7 +1594,7 @@ const Arrivals: React.FC = () => {
                                 <option value="">Select Kunchinittu</option>
                                 {stockLocations.map((loc) => (
                                   <option key={loc.kunchinintuId} value={loc.kunchinintuId}>
-                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} (Date: {loc.stockBags} bags | Total: {loc.totalStockBags ?? loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1632,7 +1644,7 @@ const Arrivals: React.FC = () => {
                                     key={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                     value={`${loc.kunchinintuId}-${loc.warehouseId}`}
                                   >
-                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} ({loc.stockBags} bags)
+                                    {loc.kunchinintuName || loc.kunchinintuCode} - {loc.warehouseName} (Date: {loc.stockBags} bags | Total: {loc.totalStockBags ?? loc.stockBags} bags)
                                   </option>
                                 ))}
                               </Select>
@@ -1901,8 +1913,9 @@ const Arrivals: React.FC = () => {
                           <div style={{ fontSize: '0.85rem' }}>
                             <div style={{ fontWeight: 'bold', color: '#667eea' }}>{loc.kunchinintuName || loc.kunchinintuCode}</div>
                             <div style={{ color: '#6b7280' }}>{loc.warehouseName}</div>
-                            <div style={{ fontSize: '0.85rem', color: '#10b981', marginTop: '0.25rem' }}>
-                              {loc.stockBags} bags
+                            <div style={{ fontSize: '0.82rem', marginTop: '0.25rem' }}>
+                              <div style={{ color: '#10b981', fontWeight: 600 }}>📅 On Date: {loc.stockBags} bags</div>
+                              <div style={{ color: '#6b7280' }}>📦 Total Stock: {loc.totalStockBags ?? loc.stockBags} bags</div>
                             </div>
                           </div>
                         </InfoTableValue>

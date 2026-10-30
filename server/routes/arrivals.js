@@ -336,16 +336,18 @@ router.post('/', auth, async (req, res) => {
 
       console.log(`✅ Source validation passed: ${normalizedVariety} exists in source`);
 
-      // STEP 1.5: Check if source has sufficient stock quantity using single source of truth
-      const stockLocations = await queryOptimizationService.getStockByVariety(normalizedVariety);
+      // STEP 1.5: Check if source has sufficient stock quantity using single source of truth (as-of date and total)
+      const dateToUse = date ? String(date).split('T')[0] : null;
+      const stockLocations = await queryOptimizationService.getStockByVariety(normalizedVariety, { dateTo: dateToUse });
       const sourceLocationStock = stockLocations.find(l => 
         String(l.kunchinintuId) === String(fromKunchinintuId) && 
         String(l.warehouseId) === String(fromWarehouseId)
       );
 
-      const availableStock = sourceLocationStock ? Number(sourceLocationStock.stockBags || 0) : 0;
+      const availableStockOnDate = sourceLocationStock ? Number(sourceLocationStock.stockBags || 0) : 0;
+      const totalAvailableStock = sourceLocationStock ? Number(sourceLocationStock.totalStockBags || 0) : 0;
 
-      if (availableStock < bags) {
+      if (availableStockOnDate < bags) {
         const [fromKunchinittu, fromWarehouse] = await Promise.all([
           Kunchinittu.findByPk(fromKunchinintuId, {
             attributes: ['name', 'code']
@@ -356,12 +358,10 @@ router.post('/', auth, async (req, res) => {
         ]);
 
         return res.status(400).json({
-          error: `❌ INSUFFICIENT STOCK\n\n` +
-            `Problem: Warehouse "${fromWarehouse?.code || fromWarehouseId}" in Kunchinittu "${fromKunchinittu?.code || fromKunchinintuId}" has only ${availableStock} bags of "${normalizedVariety}" variety available.\n` +
+          error: `❌ INSUFFICIENT STOCK ON SELECTED DATE\n\n` +
+            `Problem: Warehouse "${fromWarehouse?.code || fromWarehouseId}" in Kunchinittu "${fromKunchinittu?.code || fromKunchinintuId}" had only ${availableStockOnDate} bags of "${normalizedVariety}" variety available on ${dateToUse || 'this date'} (Total Current Stock: ${totalAvailableStock} bags).\n` +
             `You are trying to shift ${bags} bags.\n\n` +
-            `Solution: Either:\n` +
-            `1. Reduce the quantity to ${availableStock} bags or less, OR\n` +
-            `2. Select a different source warehouse with more stock.`
+            `Solution: Reduce the quantity to ${availableStockOnDate} bags or less, or select a date after incoming stock arrived.`
         });
       }
 
@@ -553,27 +553,27 @@ router.post('/', auth, async (req, res) => {
 
       console.log(`✅ Source stock validation passed: ${normalizedVariety} exists in source warehouse`);
 
-      // STEP 3.5: Check if source has sufficient stock quantity for production using single source of truth
-      const prodStockLocations = await queryOptimizationService.getStockByVariety(normalizedVariety);
+      // STEP 3.5: Check if source has sufficient stock quantity for production using single source of truth (as-of date and total)
+      const prodDateToUse = date ? String(date).split('T')[0] : null;
+      const prodStockLocations = await queryOptimizationService.getStockByVariety(normalizedVariety, { dateTo: prodDateToUse });
       const prodSourceLocationStock = prodStockLocations.find(l => 
         String(l.kunchinintuId) === String(fromKunchinintuId) && 
         String(l.warehouseId) === String(fromWarehouseId)
       );
 
-      const prodAvailableStock = prodSourceLocationStock ? Number(prodSourceLocationStock.stockBags || 0) : 0;
+      const prodAvailableStockOnDate = prodSourceLocationStock ? Number(prodSourceLocationStock.stockBags || 0) : 0;
+      const prodTotalAvailableStock = prodSourceLocationStock ? Number(prodSourceLocationStock.totalStockBags || 0) : 0;
 
-      if (prodAvailableStock < bags) {
+      if (prodAvailableStockOnDate < bags) {
         const fromWarehouse = await Warehouse.findByPk(fromWarehouseId, {
           attributes: ['name', 'code']
         });
 
         return res.status(400).json({
-          error: `❌ INSUFFICIENT STOCK FOR PRODUCTION\n\n` +
-            `Problem: Warehouse "${fromWarehouse?.code || fromWarehouseId}" in Kunchinittu "${fromKunchinittu?.code || fromKunchinintuId}" has only ${prodAvailableStock} bags of "${normalizedVariety}" variety available.\n` +
+          error: `❌ INSUFFICIENT STOCK FOR PRODUCTION ON SELECTED DATE\n\n` +
+            `Problem: Warehouse "${fromWarehouse?.code || fromWarehouseId}" in Kunchinittu "${fromKunchinittu?.code || fromKunchinintuId}" had only ${prodAvailableStockOnDate} bags of "${normalizedVariety}" variety available on ${prodDateToUse || 'this date'} (Total Current Stock: ${prodTotalAvailableStock} bags).\n` +
             `You are trying to shift ${bags} bags for production.\n\n` +
-            `Solution: Either:\n` +
-            `1. Reduce the quantity to ${prodAvailableStock} bags or less, OR\n` +
-            `2. Select a different source warehouse with more stock.`
+            `Solution: Reduce the quantity to ${prodAvailableStockOnDate} bags or less, or select a date after incoming stock arrived.`
         });
       }
 
@@ -621,8 +621,9 @@ router.post('/', auth, async (req, res) => {
       }
 
       // Check available quantity (bags and netWeight)
+      const saleDateToUse = date ? String(date).split('T')[0] : null;
       const [saleStockLocations, sourceWeightTotal, sourceWeightOut] = await Promise.all([
-        queryOptimizationService.getStockByVariety(normalizedVariety),
+        queryOptimizationService.getStockByVariety(normalizedVariety, { dateTo: saleDateToUse }),
         Arrival.sum('netWeight', {
           where: {
             [Op.or]: [
