@@ -365,7 +365,7 @@ router.post('/', auth, async (req, res) => {
         });
       }
 
-      console.log(`✅ Stock quantity validation passed: ${bags} bags available (${availableStock} total)`);
+      console.log(`✅ Stock quantity validation passed: ${bags} bags requested, ${availableStockOnDate} available on ${dateToUse || 'date'} (${totalAvailableStock} total)`);
 
       // STEP 2: Validate DESTINATION Kunchinittu's allotted variety
       const toKunchinittu = await Kunchinittu.findByPk(toKunchinintuId, {
