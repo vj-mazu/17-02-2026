@@ -895,8 +895,10 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
     let quantityQuintals = oldQuantityQuintals;
     let paddyBagsDeducted = production.paddyBagsDeducted;
     let finalBags = bags !== undefined ? parseFloat(bags) : production.bags;
+    let remixBagsNum = req.body.remixBags !== undefined ? (parseInt(req.body.remixBags) || 0) : (production.remixBags || 0);
+    let remixQuintals = parseFloat(production.remixQuintals) || 0;
 
-    if (bags !== undefined || packagingId) {
+    if (bags !== undefined || packagingId || req.body.remixBags !== undefined) {
       const pkgId = packagingId ? parseInt(packagingId) : production.packagingId;
       const packaging = await Packaging.findByPk(pkgId);
       if (!packaging) {
@@ -909,8 +911,7 @@ router.put('/:id', auth, authorize('manager', 'admin'), async (req, res) => {
       quantityQuintals = (finalBags * kgPerBag) / 100;
 
       // Handle remixed old rice bags included in this production run
-      const remixBagsNum = req.body.remixBags !== undefined ? (parseInt(req.body.remixBags) || 0) : (production.remixBags || 0);
-      const remixQuintals = (remixBagsNum * kgPerBag) / 100;
+      remixQuintals = (remixBagsNum * kgPerBag) / 100;
       const netPaddyQuintals = Math.max(0, quantityQuintals - remixQuintals);
 
       // Calculate paddy bags deducted using formula ONLY ON NET PADDY QUINTALS
